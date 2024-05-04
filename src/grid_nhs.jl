@@ -358,29 +358,6 @@ end
     return floor(Int, i)
 end
 
-# Sorting only really makes sense in longer simulations where particles
-# end up very unordered.
-# WARNING: This is currently unmaintained.
-function z_index_sort!(coordinates, system)
-    (; mass, pressure, neighborhood_search) = system
-
-    perm = sortperm(eachparticle(system),
-                    by = (i -> cell_z_index(extract_svector(coordinates, system, i),
-                                            neighborhood_search)))
-
-    permute!(mass, perm)
-    permute!(pressure, perm)
-    Base.permutecols!!(u, perm)
-
-    return nothing
-end
-
-@inline function cell_z_index(coords, neighborhood_search)
-    cell = cell_coords(coords, neighborhood_search.search_radius) .+ 1
-
-    return cartesian2morton(SVector(cell))
-end
-
 # Create a copy of a neighborhood search but with a different search radius
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, u)
     if nhs.periodic_box === nothing
