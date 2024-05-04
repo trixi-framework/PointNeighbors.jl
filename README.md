@@ -8,3 +8,5 @@
 [![Codecov](https://codecov.io/gh/trixi-framework/TrixiNeighborhoodSearch.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/trixi-framework/TrixiNeighborhoodSearch.jl)
 [![SciML Code Style](https://img.shields.io/static/v1?label=code%20style&message=SciML&color=9558b2&labelColor=389826)](https://github.com/SciML/SciMLStyle)
 [![License: MIT](https://img.shields.io/badge/License-MIT-success.svg)](https://opensource.org/license/mit/)
+
+Work in Progress!
