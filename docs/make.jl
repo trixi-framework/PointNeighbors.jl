@@ -12,7 +12,8 @@ end
 using TrixiNeighborhoodSearch
 
 # Define module-wide setups such that the respective modules are available in doctests
-DocMeta.setdocmeta!(TrixiNeighborhoodSearch, :DocTestSetup, :(using TrixiNeighborhoodSearch); recursive = true)
+DocMeta.setdocmeta!(TrixiNeighborhoodSearch, :DocTestSetup,
+                    :(using TrixiNeighborhoodSearch); recursive = true)
 
 # Copy files to not need to synchronize them manually
 function copy_file(filename, replaces...; new_filename = lowercase(filename))
