@@ -9,10 +9,10 @@ struct PeriodicBox{NDIMS, ELTYPE}
     end
 end
 
-@inline function for_particle_neighbor(f::T, system_coords, neighbor_coords,
+@inline function for_particle_neighbor(f, system_coords, neighbor_coords,
                                        neighborhood_search;
                                        particles = axes(system_coords, 2),
-                                       parallel = true) where {T}
+                                       parallel = true)
     for_particle_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particles,
                           Val(parallel))
 end
