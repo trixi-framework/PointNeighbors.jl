@@ -44,13 +44,13 @@ since not sorting makes our implementation a lot faster (although less paralleli
     without it being considered a breaking change.
 
     To run a simulation with this neighborhood search, just pass the type to the constructor
-    of [`Semidiscretization`](@ref):
+    of `Semidiscretization`:
     ```julia
     semi = Semidiscretization(system1, system2,
                               neighborhood_search=GridNeighborhoodSearch)
     ```
     The keyword arguments `periodic_box_min_corner` and `periodic_box_max_corner` explained
-    above can also be passed to the [`Semidiscretization`](@ref) and will internally be
+    above can also be passed to the `Semidiscretization` and will internally be
     forwarded to the neighborhood search:
     ```julia
     semi = Semidiscretization(system1, system2,
