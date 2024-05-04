@@ -3,5 +3,14 @@ uuid = "1c4d5385-0a27-49de-8e2c-43b175c8985c"
 authors = ["Erik Faulhaber <44124897+efaulhaber@users.noreply.github.com>"]
 version = "0.1.0-pre"
 
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Polyester = "f517fe37-dbe3-4b94-8317-1923a5111588"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
 [compat]
+Polyester = "0.7.5"
+Reexport = "1"
+StaticArrays = "1"
 julia = "1.9"
