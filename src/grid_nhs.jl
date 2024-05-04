@@ -101,9 +101,9 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, PB}
     threaded_nhs_update :: Bool
 
     function GridNeighborhoodSearch{NDIMS}(search_radius, n_particles;
-                                           periodic_box_min_corner=nothing,
-                                           periodic_box_max_corner=nothing,
-                                           threaded_nhs_update=true) where {NDIMS}
+                                           periodic_box_min_corner = nothing,
+                                           periodic_box_max_corner = nothing,
+                                           threaded_nhs_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
 
         hashtable = Dict{NTuple{NDIMS, Int}, Vector{Int}}()
@@ -385,8 +385,8 @@ function z_index_sort!(coordinates, system)
     (; mass, pressure, neighborhood_search) = system
 
     perm = sortperm(eachparticle(system),
-                    by=(i -> cell_z_index(extract_svector(coordinates, system, i),
-                                          neighborhood_search)))
+                    by = (i -> cell_z_index(extract_svector(coordinates, system, i),
+                                            neighborhood_search)))
 
     permute!(mass, perm)
     permute!(pressure, perm)
@@ -407,8 +407,8 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, u)
         search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs))
     else
         search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs),
-                                                    periodic_box_min_corner=nhs.periodic_box.min_corner,
-                                                    periodic_box_max_corner=nhs.periodic_box.max_corner)
+                                                    periodic_box_min_corner = nhs.periodic_box.min_corner,
+                                                    periodic_box_max_corner = nhs.periodic_box.max_corner)
     end
 
     # Initialize neighborhood search

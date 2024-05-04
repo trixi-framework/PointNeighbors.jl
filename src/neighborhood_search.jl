@@ -11,7 +11,8 @@ end
 
 @inline function for_particle_neighbor(f::T, system_coords, neighbor_coords,
                                        neighborhood_search;
-                                       particles=axes(system_coords, 2), parallel=true) where T
+                                       particles = axes(system_coords, 2),
+                                       parallel = true) where {T}
     for_particle_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particles,
                           Val(parallel))
 end

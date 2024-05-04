@@ -66,8 +66,10 @@ struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB}
     periodic_box  :: PB
 
     function TrivialNeighborhoodSearch{NDIMS}(search_radius, eachparticle;
-                                              periodic_box_min_corner=nothing,
-                                              periodic_box_max_corner=nothing) where {NDIMS}
+                                              periodic_box_min_corner = nothing,
+                                              periodic_box_max_corner = nothing) where {
+                                                                                        NDIMS
+                                                                                        }
         if search_radius < eps() ||
            (periodic_box_min_corner === nothing && periodic_box_max_corner === nothing)
 
