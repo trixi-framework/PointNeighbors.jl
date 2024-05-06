@@ -29,7 +29,7 @@
         nhs1 = GridNeighborhoodSearch{2}(radius, nparticles)
 
         coords_fun(i) = coordinates1[:, i]
-        initialize!(nhs1, coords_fun)
+        initialize_grid!(nhs1, coords_fun)
 
         # Get each neighbor for `particle_position1`
         neighbors1 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
@@ -40,7 +40,7 @@
 
         # Update neighborhood search
         coords_fun2(i) = coordinates2[:, i]
-        update!(nhs1, coords_fun2)
+        update_grid!(nhs1, coords_fun2)
 
         # Get each neighbor for updated NHS
         neighbors2 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
@@ -55,7 +55,7 @@
 
         # Double search radius
         nhs2 = GridNeighborhoodSearch{2}(2 * radius, size(coordinates1, 2))
-        initialize!(nhs2, coords_fun)
+        initialize_grid!(nhs2, coords_fun)
 
         # Get each neighbor in double search radius
         neighbors4 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
@@ -65,7 +65,7 @@
         coordinates2 = coordinates1 .+ [0.4, -0.4]
 
         # Update neighborhood search
-        update!(nhs2, coords_fun2)
+        update_grid!(nhs2, coords_fun2)
 
         # Get each neighbor in double search radius
         neighbors5 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
@@ -102,7 +102,7 @@
         nhs1 = GridNeighborhoodSearch{3}(radius, nparticles)
 
         coords_fun(i) = coordinates1[:, i]
-        initialize!(nhs1, coords_fun)
+        initialize_grid!(nhs1, coords_fun)
 
         # Get each neighbor for `particle_position1`
         neighbors1 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
@@ -113,7 +113,7 @@
 
         # Update neighborhood search
         coords_fun2(i) = coordinates2[:, i]
-        update!(nhs1, coords_fun2)
+        update_grid!(nhs1, coords_fun2)
 
         # Get each neighbor for updated NHS
         neighbors2 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
@@ -148,7 +148,7 @@
                                             periodic_box_min_corner = [-0.1, -0.2],
                                             periodic_box_max_corner = [0.2, 0.4])
 
-            initialize!(nhs, coords)
+            initialize_grid!(nhs, coords)
 
             neighbors = [sort(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:, i],
                                                                            nhs)))
@@ -187,7 +187,7 @@
                                             periodic_box_min_corner = [-0.1, -0.2],
                                             periodic_box_max_corner = [0.205, 0.43])
 
-            initialize!(nhs, coords)
+            initialize_grid!(nhs, coords)
 
             neighbors = [sort(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:, i],
                                                                            nhs)))
@@ -234,7 +234,7 @@
                                             periodic_box_min_corner = [-1.5, 0.0],
                                             periodic_box_max_corner = [2.5, 3.0])
 
-            initialize!(nhs, coords)
+            initialize_grid!(nhs, coords)
 
             neighbors = [sort(unique(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:,
                                                                                          i],
@@ -256,7 +256,7 @@
                                         periodic_box_min_corner = [-0.1, -0.2, 0.05],
                                         periodic_box_max_corner = [0.2, 0.4, 0.35])
 
-        initialize!(nhs, coords)
+        initialize_grid!(nhs, coords)
 
         neighbors = [sort(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:, i], nhs)))
                      for i in 1:5]

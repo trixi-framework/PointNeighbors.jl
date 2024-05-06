@@ -137,12 +137,21 @@ function initialize!(neighborhood_search::GridNeighborhoodSearch, ::Nothing, ::N
     return neighborhood_search
 end
 
-function initialize!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-                     x::AbstractMatrix, y::AbstractMatrix) where {NDIMS}
-    initialize!(neighborhood_search, nothing, i -> extract_svector(y, Val(NDIMS), i))
+function initialize!(neighborhood_search::GridNeighborhoodSearch,
+                     x::AbstractMatrix, y::AbstractMatrix)
+    initialize_grid!(neighborhood_search, y)
+end
+
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
+                          y::AbstractMatrix) where {NDIMS}
+    initialize_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
 end
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coords_fun2)
+    initialize_grid!(neighborhood_search, coords_fun2)
+end
+
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     (; hashtable) = neighborhood_search
 
     empty!(hashtable)
@@ -153,7 +162,7 @@ function initialize!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, c
 
     for particle in 1:nparticles(neighborhood_search)
         # Get cell index of the particle's cell
-        cell = cell_coords(coords_fun2(particle), neighborhood_search)
+        cell = cell_coords(coords_fun(particle), neighborhood_search)
 
         # Add particle to corresponding cell or create cell if it does not exist
         if haskey(hashtable, cell)
@@ -172,16 +181,33 @@ function update!(neighborhood_search::GridNeighborhoodSearch, ::Nothing, ::Nothi
     return neighborhood_search
 end
 
-function update!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
+function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix,
-                 particles_moving = (true, true)) where {NDIMS}
-    update!(neighborhood_search, nothing, i -> extract_svector(y, Val(NDIMS), i),
-            particles_moving = particles_moving)
+                 particles_moving = (true, true))
+    # The coordinates of the first set of particles are irrelevant for this NHS.
+    # Only update when the second set is moving.
+    particles_moving[2] || return neighborhood_search
+
+    update_grid!(neighborhood_search, y)
+end
+
+# Update only with neighbor coordinates
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
+                      y::AbstractMatrix) where {NDIMS}
+    update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
+end
+
+function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coords_fun2;
+                 particles_moving = (true, true))
+    # The coordinates of the first set of particles are irrelevant for this NHS.
+    # Only update when the second set is moving.
+    particles_moving[2] || return neighborhood_search
+
+    update_grid!(neighborhood_search, coords_fun2)
 end
 
 # Modify the existing hash table by moving particles into their new cells
-function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coords_fun2;
-                 particles_moving = (true, true))
+function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     (; hashtable, cell_buffer, cell_buffer_indices, threaded_nhs_update) = neighborhood_search
 
     # Reset `cell_buffer` by moving all pointers to the beginning.
@@ -189,7 +215,7 @@ function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coord
 
     # Find all cells containing particles that now belong to another cell.
     # `collect` the keyset to be able to loop over it with `@threaded`.
-    mark_changed_cell!(neighborhood_search, hashtable, coords_fun2,
+    mark_changed_cell!(neighborhood_search, hashtable, coords_fun,
                        Val(threaded_nhs_update))
 
     # This is needed to prevent lagging on macOS ARM.
@@ -205,13 +231,13 @@ function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coord
 
             # Find all particles whose coordinates do not match this cell
             moved_particle_indices = (i for i in eachindex(particles)
-                                      if cell_coords(coords_fun2(particles[i]),
+                                      if cell_coords(coords_fun(particles[i]),
                                                      neighborhood_search) != cell)
 
             # Add moved particles to new cell
             for i in moved_particle_indices
                 particle = particles[i]
-                new_cell_coords = cell_coords(coords_fun2(particle), neighborhood_search)
+                new_cell_coords = cell_coords(coords_fun(particle), neighborhood_search)
 
                 # Add particle to corresponding cell or create cell if it does not exist
                 if haskey(hashtable, new_cell_coords)

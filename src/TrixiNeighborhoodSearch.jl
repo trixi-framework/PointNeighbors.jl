@@ -13,6 +13,6 @@ include("grid_nhs.jl")
 
 export for_particle_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch
-export initialize!, update!
+export initialize!, update!, initialize_grid!, update_grid!
 
 end # module TrixiNeighborhoodSearch
