@@ -167,21 +167,21 @@ function initialize!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, c
 end
 
 function update!(neighborhood_search::GridNeighborhoodSearch, ::Nothing, ::Nothing;
-                 particles_moving=(true, true))
+                 particles_moving = (true, true))
     # No particle coordinates function -> don't update.
     return neighborhood_search
 end
 
 function update!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
                  x::AbstractMatrix, y::AbstractMatrix,
-                 particles_moving=(true, true)) where {NDIMS}
+                 particles_moving = (true, true)) where {NDIMS}
     update!(neighborhood_search, nothing, i -> extract_svector(y, Val(NDIMS), i),
-            particles_moving=particles_moving)
+            particles_moving = particles_moving)
 end
 
 # Modify the existing hash table by moving particles into their new cells
 function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coords_fun2;
-                 particles_moving=(true, true))
+                 particles_moving = (true, true))
     (; hashtable, cell_buffer, cell_buffer_indices, threaded_nhs_update) = neighborhood_search
 
     # Reset `cell_buffer` by moving all pointers to the beginning.
@@ -189,7 +189,8 @@ function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coord
 
     # Find all cells containing particles that now belong to another cell.
     # `collect` the keyset to be able to loop over it with `@threaded`.
-    mark_changed_cell!(neighborhood_search, hashtable, coords_fun2, Val(threaded_nhs_update))
+    mark_changed_cell!(neighborhood_search, hashtable, coords_fun2,
+                       Val(threaded_nhs_update))
 
     # This is needed to prevent lagging on macOS ARM.
     # See https://github.com/JuliaSIMD/Polyester.jl/issues/89
