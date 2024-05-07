@@ -132,11 +132,6 @@ end
     return size(neighborhood_search.cell_buffer, 1)
 end
 
-function initialize!(neighborhood_search::GridNeighborhoodSearch, ::Nothing, ::Nothing)
-    # No particle coordinates function -> don't initialize.
-    return neighborhood_search
-end
-
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
     initialize_grid!(neighborhood_search, y)
