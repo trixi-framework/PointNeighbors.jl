@@ -1,9 +1,9 @@
 # API reference
 
 ```@meta
-CurrentModule = TrixiNeighborhoodSearch
+CurrentModule = PointNeighbors
 ```
 
 ```@autodocs
-Modules = [TrixiNeighborhoodSearch]
+Modules = [PointNeighbors]
 ```
