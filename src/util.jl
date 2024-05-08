@@ -51,6 +51,6 @@ macro threaded(expr)
     #     Look at the comments for `wrap_array` when considering to change this macro.
 
     return esc(quote
-                   TrixiNeighborhoodSearch.@batch $(expr)
+                   PointNeighbors.@batch $(expr)
                end)
 end

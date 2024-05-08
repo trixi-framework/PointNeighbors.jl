@@ -1,4 +1,4 @@
-module TrixiNeighborhoodSearch
+module PointNeighbors
 
 using Reexport: @reexport
 
@@ -15,4 +15,4 @@ export for_particle_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch
 export initialize!, update!
 
-end # module TrixiNeighborhoodSearch
+end # module PointNeighbors
