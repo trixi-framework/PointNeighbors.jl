@@ -1,4 +1,4 @@
-name = "TrixiNeighborhoodSearch"
+name = "PointNeighbors"
 uuid = "1c4d5385-0a27-49de-8e2c-43b175c8985c"
 authors = ["Erik Faulhaber <44124897+efaulhaber@users.noreply.github.com>"]
 version = "0.1.0-pre"

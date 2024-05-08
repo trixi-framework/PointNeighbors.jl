@@ -1,6 +1,6 @@
 using Documenter
 
-# Get TrixiNeighborhoodSearch.jl root directory
+# Get PointNeighbors.jl root directory
 trixibase_root_dir = dirname(@__DIR__)
 
 # Fix for https://github.com/trixi-framework/Trixi.jl/issues/668
@@ -9,11 +9,11 @@ if (get(ENV, "CI", nothing) != "true") &&
     push!(LOAD_PATH, trixibase_root_dir)
 end
 
-using TrixiNeighborhoodSearch
+using PointNeighbors
 
 # Define module-wide setups such that the respective modules are available in doctests
-DocMeta.setdocmeta!(TrixiNeighborhoodSearch, :DocTestSetup,
-                    :(using TrixiNeighborhoodSearch); recursive = true)
+DocMeta.setdocmeta!(PointNeighbors, :DocTestSetup,
+                    :(using PointNeighbors); recursive = true)
 
 # Copy files to not need to synchronize them manually
 function copy_file(filename, replaces...; new_filename = lowercase(filename))
@@ -22,7 +22,7 @@ function copy_file(filename, replaces...; new_filename = lowercase(filename))
 
     header = """
     ```@meta
-    EditURL = "https://github.com/trixi-framework/TrixiNeighborhoodSearch.jl/blob/main/$filename"
+    EditURL = "https://github.com/trixi-framework/PointNeighbors.jl/blob/main/$filename"
     ```
     """
     content = header * content
@@ -39,14 +39,14 @@ copy_file("LICENSE.md",
           "\n" => "\n> ", r"^" => "# License\n\n> ")
 
 # Make documentation
-makedocs(modules = [TrixiNeighborhoodSearch],
-         sitename = "TrixiNeighborhoodSearch.jl",
+makedocs(modules = [PointNeighbors],
+         sitename = "PointNeighbors.jl",
          # Provide additional formatting options
          format = Documenter.HTML(
                                   # Disable pretty URLs during manual testing
                                   prettyurls = get(ENV, "CI", nothing) == "true",
                                   # Set canonical URL to GitHub pages URL
-                                  canonical = "https://trixi-framework.github.io/TrixiNeighborhoodSearch.jl/stable"),
+                                  canonical = "https://trixi-framework.github.io/PointNeighbors.jl/stable"),
          # Explicitly specify documentation structure
          pages = [
              "Home" => "index.md",
@@ -56,6 +56,6 @@ makedocs(modules = [TrixiNeighborhoodSearch],
          ])
 
 deploydocs(;
-           repo = "github.com/trixi-framework/TrixiNeighborhoodSearch.jl",
+           repo = "github.com/trixi-framework/PointNeighbors.jl",
            devbranch = "main",
            push_preview = true)

@@ -1,7 +1,7 @@
 # All `using` calls are in this file, so that one can run any test file
 # after running only this file.
 using Test: @test, @testset
-using TrixiNeighborhoodSearch
+using PointNeighbors
 
 """
     @trixi_testset "name of the testset" #= code to test #=
@@ -18,7 +18,7 @@ macro trixi_testset(name, expr)
     quote
         @eval module $mod
         using Test
-        using TrixiNeighborhoodSearch
+        using PointNeighbors
 
         # We also include this file again to provide the definition of
         # the other testing macros. This allows to use `@trixi_testset`
