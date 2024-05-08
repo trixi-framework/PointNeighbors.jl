@@ -5,11 +5,11 @@
         coords2 = [NaN, 0]
         coords3 = [typemax(Int) + 1.0, -typemax(Int) - 1.0]
 
-        @test TrixiNeighborhoodSearch.cell_coords(coords1, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords1, nothing, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int))
-        @test TrixiNeighborhoodSearch.cell_coords(coords2, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords2, nothing, (1.0, 1.0)) ==
               (typemax(Int), 0)
-        @test TrixiNeighborhoodSearch.cell_coords(coords3, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords3, nothing, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int))
     end
 
@@ -32,8 +32,7 @@
         initialize_grid!(nhs1, coords_fun)
 
         # Get each neighbor for `particle_position1`
-        neighbors1 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
-                                                                       nhs1)))
+        neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs1)))
 
         # Move particles
         coordinates2 = coordinates1 .+ [1.4, -3.5]
@@ -43,23 +42,23 @@
         update_grid!(nhs1, coords_fun2)
 
         # Get each neighbor for updated NHS
-        neighbors2 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
-                                                                       nhs1)))
+        neighbors2 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
+                                                              nhs1)))
 
         # Change position
         particle_position2 = particle_position1 .+ [1.4, -3.5]
 
         # Get each neighbor for `particle_position2`
-        neighbors3 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position2,
-                                                                       nhs1)))
+        neighbors3 = sort(collect(PointNeighbors.eachneighbor(particle_position2,
+                                                              nhs1)))
 
         # Double search radius
         nhs2 = GridNeighborhoodSearch{2}(2 * radius, size(coordinates1, 2))
         initialize_grid!(nhs2, coords_fun)
 
         # Get each neighbor in double search radius
-        neighbors4 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
-                                                                       nhs2)))
+        neighbors4 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
+                                                              nhs2)))
 
         # Move particles
         coordinates2 = coordinates1 .+ [0.4, -0.4]
@@ -68,8 +67,8 @@
         update_grid!(nhs2, coords_fun2)
 
         # Get each neighbor in double search radius
-        neighbors5 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
-                                                                       nhs2)))
+        neighbors5 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
+                                                              nhs2)))
 
         #### Verification
         @test neighbors1 == [17, 18, 19, 24, 25, 26, 31, 32, 33]
@@ -105,8 +104,8 @@
         initialize_grid!(nhs1, coords_fun)
 
         # Get each neighbor for `particle_position1`
-        neighbors1 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
-                                                                       nhs1)))
+        neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
+                                                              nhs1)))
 
         # Move particles
         coordinates2 = coordinates1 .+ [1.4, -3.5, 0.8]
@@ -116,15 +115,15 @@
         update_grid!(nhs1, coords_fun2)
 
         # Get each neighbor for updated NHS
-        neighbors2 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position1,
-                                                                       nhs1)))
+        neighbors2 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
+                                                              nhs1)))
 
         # Change position
         particle_position2 = particle_position1 .+ [1.4, -3.5, 0.8]
 
         # Get each neighbor for `particle_position2`
-        neighbors3 = sort(collect(TrixiNeighborhoodSearch.eachneighbor(particle_position2,
-                                                                       nhs1)))
+        neighbors3 = sort(collect(PointNeighbors.eachneighbor(particle_position2,
+                                                              nhs1)))
 
         #### Verification
         @test neighbors1 ==
@@ -150,8 +149,8 @@
 
             initialize_grid!(nhs, coords)
 
-            neighbors = [sort(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:, i],
-                                                                           nhs)))
+            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i],
+                                                                  nhs)))
                          for i in 1:5]
 
             # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
@@ -189,8 +188,8 @@
 
             initialize_grid!(nhs, coords)
 
-            neighbors = [sort(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:, i],
-                                                                           nhs)))
+            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i],
+                                                                  nhs)))
                          for i in 1:5]
 
             # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
@@ -224,7 +223,7 @@
             # see the right particle, even though it is within the search distance.
             # The domain size is an integer multiple of the cell size, but the NHS did not
             # offset the grid based on the domain position.
-            # See https://github.com/trixi-framework/TrixiNeighborhoodSearch.jl/pull/211
+            # See https://github.com/trixi-framework/PointNeighbors.jl/pull/211
             # for a more detailed explanation.
             coords = [-1.4 1.9
                       0.0 0.0]
@@ -236,9 +235,9 @@
 
             initialize_grid!(nhs, coords)
 
-            neighbors = [sort(unique(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:,
-                                                                                         i],
-                                                                                  nhs))))
+            neighbors = [sort(unique(collect(PointNeighbors.eachneighbor(coords[:,
+                                                                                i],
+                                                                         nhs))))
                          for i in 1:2]
 
             @test neighbors[1] == [1, 2]
@@ -258,7 +257,7 @@
 
         initialize_grid!(nhs, coords)
 
-        neighbors = [sort(collect(TrixiNeighborhoodSearch.eachneighbor(coords[:, i], nhs)))
+        neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
                      for i in 1:5]
 
         # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
