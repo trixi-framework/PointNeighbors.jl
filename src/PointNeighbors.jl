@@ -10,6 +10,7 @@ include("util.jl")
 include("neighborhood_search.jl")
 include("trivial_nhs.jl")
 include("grid_nhs.jl")
+include("celllistmap_nhs.jl")
 
 export for_particle_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch
