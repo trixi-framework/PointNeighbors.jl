@@ -32,8 +32,7 @@
         initialize!(nhs1, coords_fun)
 
         # Get each neighbor for `particle_position1`
-        neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
-                                                                       nhs1)))
+        neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs1)))
 
         # Move particles
         coordinates2 = coordinates1 .+ [1.4, -3.5]
@@ -44,14 +43,14 @@
 
         # Get each neighbor for updated NHS
         neighbors2 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
-                                                                       nhs1)))
+                                                              nhs1)))
 
         # Change position
         particle_position2 = particle_position1 .+ [1.4, -3.5]
 
         # Get each neighbor for `particle_position2`
         neighbors3 = sort(collect(PointNeighbors.eachneighbor(particle_position2,
-                                                                       nhs1)))
+                                                              nhs1)))
 
         # Double search radius
         nhs2 = GridNeighborhoodSearch{2}(2 * radius, size(coordinates1, 2))
@@ -59,7 +58,7 @@
 
         # Get each neighbor in double search radius
         neighbors4 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
-                                                                       nhs2)))
+                                                              nhs2)))
 
         # Move particles
         coordinates2 = coordinates1 .+ [0.4, -0.4]
@@ -69,7 +68,7 @@
 
         # Get each neighbor in double search radius
         neighbors5 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
-                                                                       nhs2)))
+                                                              nhs2)))
 
         #### Verification
         @test neighbors1 == [17, 18, 19, 24, 25, 26, 31, 32, 33]
@@ -106,7 +105,7 @@
 
         # Get each neighbor for `particle_position1`
         neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
-                                                                       nhs1)))
+                                                              nhs1)))
 
         # Move particles
         coordinates2 = coordinates1 .+ [1.4, -3.5, 0.8]
@@ -117,14 +116,14 @@
 
         # Get each neighbor for updated NHS
         neighbors2 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
-                                                                       nhs1)))
+                                                              nhs1)))
 
         # Change position
         particle_position2 = particle_position1 .+ [1.4, -3.5, 0.8]
 
         # Get each neighbor for `particle_position2`
         neighbors3 = sort(collect(PointNeighbors.eachneighbor(particle_position2,
-                                                                       nhs1)))
+                                                              nhs1)))
 
         #### Verification
         @test neighbors1 ==
@@ -151,7 +150,7 @@
             initialize!(nhs, coords)
 
             neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i],
-                                                                           nhs)))
+                                                                  nhs)))
                          for i in 1:5]
 
             # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
@@ -190,7 +189,7 @@
             initialize!(nhs, coords)
 
             neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i],
-                                                                           nhs)))
+                                                                  nhs)))
                          for i in 1:5]
 
             # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
@@ -237,8 +236,8 @@
             initialize!(nhs, coords)
 
             neighbors = [sort(unique(collect(PointNeighbors.eachneighbor(coords[:,
-                                                                                         i],
-                                                                                  nhs))))
+                                                                                i],
+                                                                         nhs))))
                          for i in 1:2]
 
             @test neighbors[1] == [1, 2]
