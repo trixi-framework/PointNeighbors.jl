@@ -15,7 +15,7 @@ used in the Julia ecosystem is supported with security updates.
 ## Reporting a Vulnerability
 
 To report a security issue, please use the GitHub Security Advisory
-["Report a Vulnerability"](https://github.com/trixi-framework/TrixiNeighborhoodSearch.jl/security/advisories/new)
+["Report a Vulnerability"](https://github.com/trixi-framework/PointNeighbors.jl/security/advisories/new)
 tab.
 
 We will send a response indicating the next steps in handling your report.
