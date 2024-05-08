@@ -147,10 +147,6 @@ function initialize!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
 
     empty!(hashtable)
 
-    # This is needed to prevent lagging on macOS ARM.
-    # See https://github.com/JuliaSIMD/Polyester.jl/issues/89
-    # ThreadingUtilities.sleep_all_tasks()
-
     for particle in 1:nparticles(neighborhood_search)
         # Get cell index of the particle's cell
         cell = cell_coords(coords_fun(particle), neighborhood_search)
@@ -186,10 +182,6 @@ function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     # Find all cells containing particles that now belong to another cell.
     # `collect` the keyset to be able to loop over it with `@threaded`.
     mark_changed_cell!(neighborhood_search, hashtable, coords_fun, Val(threaded_nhs_update))
-
-    # This is needed to prevent lagging on macOS ARM.
-    # See https://github.com/JuliaSIMD/Polyester.jl/issues/89
-    # ThreadingUtilities.sleep_all_tasks()
 
     # Iterate over all marked cells and move the particles into their new cells.
     for thread in 1:Threads.nthreads()
