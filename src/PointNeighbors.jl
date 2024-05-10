@@ -2,6 +2,7 @@ module PointNeighbors
 
 using Reexport: @reexport
 
+using CellListMap: CellListMap
 using LinearAlgebra: dot
 using Polyester: @batch
 @reexport using StaticArrays: SVector
