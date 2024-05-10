@@ -35,8 +35,8 @@ function initialize!(search::NeighborListsNeighborhoodSearch,
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
 end
 
-function update!(search::NeighborListsNeighborhoodSearch, x::AbstractMatrix,
-                 y::AbstractMatrix;
+function update!(search::NeighborListsNeighborhoodSearch,
+                 x::AbstractMatrix, y::AbstractMatrix;
                  particles_moving = (true, true))
     (; neighborhood_search, neighbor_lists) = search
 
