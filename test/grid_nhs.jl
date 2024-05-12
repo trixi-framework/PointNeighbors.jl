@@ -1,6 +1,6 @@
 @testset verbose=true "GridNeighborhoodSearch" begin
     @testset "Cells at Coordinate Limits" begin
-        # Test the threshold for very large and very small coordinates.
+        # Test the threshold for very large and very small coordinates
         coords1 = [Inf, -Inf]
         coords2 = [NaN, 0]
         coords3 = [typemax(Int) + 1.0, -typemax(Int) - 1.0]
@@ -15,8 +15,8 @@
 
     @testset "Rectangular Point Cloud 2D" begin
         #### Setup
-        # Rectangular filled with equidistant spaced particles
-        # from (x, y) = (-0.25, -0.25) to (x, y) = (0.35, 0.35)
+        # Rectangle of equidistantly spaced particles
+        # from (x, y) = (-0.25, -0.25) to (x, y) = (0.35, 0.35).
         range = -0.25:0.1:0.35
         coordinates1 = hcat(collect.(Iterators.product(range, range))...)
         nparticles = size(coordinates1, 2)
@@ -78,17 +78,16 @@
         @test neighbors3 == [17, 18, 19, 24, 25, 26, 31, 32, 33]
 
         @test neighbors4 == [
-            9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 24, 25,
-            26, 27, 28, 30, 31, 32, 33, 34, 35, 37, 38, 39, 40, 41, 42, 44, 45, 46, 47,
-            48, 49]
+            9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26, 27, 28, 30, 31,
+            32, 33, 34, 35, 37, 38, 39, 40, 41, 42, 44, 45, 46, 47, 48, 49]
 
         @test neighbors5 == [36, 37, 38, 43, 44, 45]
     end
 
     @testset "Rectangular Point Cloud 3D" begin
         #### Setup
-        # Rectangular filled with equidistant spaced particles
-        # from (x, y, z) = (-0.25, -0.25, -0.25) to (x, y) = (0.35, 0.35, 0.35)
+        # Rectangle of equidistantly spaced particles
+        # from (x, y, z) = (-0.25, -0.25, -0.25) to (x, y) = (0.35, 0.35, 0.35).
         range = -0.25:0.1:0.35
         coordinates1 = hcat(collect.(Iterators.product(range, range, range))...)
         nparticles = size(coordinates1, 2)
