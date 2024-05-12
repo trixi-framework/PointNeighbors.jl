@@ -9,6 +9,7 @@ using Polyester: @batch
 include("util.jl")
 include("neighborhood_search.jl")
 include("trivial_nhs.jl")
+include("cell_lists.jl")
 include("grid_nhs.jl")
 
 export for_particle_neighbor

@@ -61,3 +61,8 @@ end
 end
 
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachparticle
+
+# Create a copy of a neighborhood search but with a different search radius
+function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch, search_radius, x, y)
+    return nhs
+end
