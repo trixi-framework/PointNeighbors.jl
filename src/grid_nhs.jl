@@ -142,10 +142,6 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
     initialize_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
 end
 
-function initialize!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coords_fun2)
-    initialize_grid!(neighborhood_search, coords_fun2)
-end
-
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     (; hashtable) = neighborhood_search
 
@@ -180,15 +176,6 @@ end
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
                       y::AbstractMatrix) where {NDIMS}
     update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
-end
-
-function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun1, coords_fun2;
-                 particles_moving = (true, true))
-    # The coordinates of the first set of particles are irrelevant for this NHS.
-    # Only update when the second set is moving.
-    particles_moving[2] || return neighborhood_search
-
-    update_grid!(neighborhood_search, coords_fun2)
 end
 
 # Modify the existing hash table by moving particles into their new cells
