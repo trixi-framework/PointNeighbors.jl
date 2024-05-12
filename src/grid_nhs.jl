@@ -166,12 +166,6 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fu
     return neighborhood_search
 end
 
-function update!(neighborhood_search::GridNeighborhoodSearch, ::Nothing, ::Nothing;
-                 particles_moving = (true, true))
-    # No particle coordinates function -> don't update.
-    return neighborhood_search
-end
-
 function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix,
                  particles_moving = (true, true))
