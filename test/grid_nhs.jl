@@ -28,8 +28,7 @@
         # Create neighborhood search
         nhs1 = GridNeighborhoodSearch{2}(radius, nparticles)
 
-        coords_fun(i) = coordinates1[:, i]
-        initialize_grid!(nhs1, coords_fun)
+        initialize_grid!(nhs1, coordinates1)
 
         # Get each neighbor for `particle_position1`
         neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs1)))
@@ -38,8 +37,7 @@
         coordinates2 = coordinates1 .+ [1.4, -3.5]
 
         # Update neighborhood search
-        coords_fun2(i) = coordinates2[:, i]
-        update_grid!(nhs1, coords_fun2)
+        update_grid!(nhs1, coordinates2)
 
         # Get each neighbor for updated NHS
         neighbors2 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
@@ -54,7 +52,7 @@
 
         # Double search radius
         nhs2 = GridNeighborhoodSearch{2}(2 * radius, size(coordinates1, 2))
-        initialize_grid!(nhs2, coords_fun)
+        initialize!(nhs2, coordinates1, coordinates1)
 
         # Get each neighbor in double search radius
         neighbors4 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
@@ -64,7 +62,7 @@
         coordinates2 = coordinates1 .+ [0.4, -0.4]
 
         # Update neighborhood search
-        update_grid!(nhs2, coords_fun2)
+        update!(nhs2, coordinates2, coordinates2)
 
         # Get each neighbor in double search radius
         neighbors5 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
