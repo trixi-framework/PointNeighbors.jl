@@ -387,6 +387,6 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, x,
 end
 
 # Create a copy of a neighborhood search but with a different search radius
-function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch, search_radius, u)
+function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch, search_radius, x, y)
     return nhs
 end
