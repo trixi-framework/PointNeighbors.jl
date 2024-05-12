@@ -1,5 +1,5 @@
 @testset verbose=true "GridNeighborhoodSearch" begin
-    @testset "Coordinate Limits" begin
+    @testset "Cells at Coordinate Limits" begin
         # Test the threshold for very large and very small coordinates.
         coords1 = [Inf, -Inf]
         coords2 = [NaN, 0]
@@ -70,7 +70,7 @@
         neighbors5 = sort(collect(PointNeighbors.eachneighbor(particle_position1,
                                                               nhs2)))
 
-        #### Verification
+        #### Verification against lists of potential neighbors built by hand
         @test neighbors1 == [17, 18, 19, 24, 25, 26, 31, 32, 33]
 
         @test neighbors2 == Int[]
@@ -125,7 +125,7 @@
         neighbors3 = sort(collect(PointNeighbors.eachneighbor(particle_position2,
                                                               nhs1)))
 
-        #### Verification
+        #### Verification against lists of potential neighbors built by hand
         @test neighbors1 ==
               [115, 116, 117, 122, 123, 124, 129, 130, 131, 164, 165, 166, 171, 172,
             173, 178, 179, 180, 213, 214, 215, 220, 221, 222, 227, 228, 229]
@@ -137,8 +137,11 @@
             173, 178, 179, 180, 213, 214, 215, 220, 221, 222, 227, 228, 229]
     end
 
-    @testset verbose=true "Periodicity 2D" begin
-        @testset "Simple Example" begin
+    @testset verbose=true "Periodicity" begin
+        # Most of these setups are the same as in `test/neighborhood_search.jl`,
+        # but instead of testing the actual neighbors with `for_particle_neighbor`,
+        # we only test the potential neighbors (particles in neighboring cells) here.
+        @testset "Simple Example 2D" begin
             coords = [-0.08 0.0 0.18 0.1 -0.08
                       -0.12 -0.05 -0.09 0.15 0.39]
 
@@ -159,25 +162,11 @@
             @test neighbors[3] == [1, 2, 3]
             @test neighbors[4] == [4]
             @test neighbors[5] == [1, 5]
-
-            neighbors_loop = [Int[] for _ in axes(coords, 2)]
-
-            for_particle_neighbor(coords, coords, nhs,
-                                  particles = axes(coords, 2)) do particle,
-                                                                  neighbor,
-                                                                  pos_diff,
-                                                                  distance
-                append!(neighbors_loop[particle], neighbor)
-            end
-
-            @test sort(neighbors_loop[1]) == [1, 3, 5]
-            @test sort(neighbors_loop[2]) == [2]
-            @test sort(neighbors_loop[3]) == [1, 3]
-            @test sort(neighbors_loop[4]) == [4]
-            @test sort(neighbors_loop[5]) == [1, 5]
         end
 
-        @testset "Rounding Up Cell Sizes" begin
+        @testset "Box Not Multiple of Search Radius 2D" begin
+            # The `GridNeighborhoodSearch` is forced to round up the cell sizes to deal
+            # with this test without split cells.
             coords = [-0.08 0.0 0.18 0.1 -0.08
                       -0.12 -0.05 -0.09 0.15 0.42]
 
@@ -198,29 +187,13 @@
             @test neighbors[3] == [1, 2, 3]
             @test neighbors[4] == [4]
             @test neighbors[5] == [1, 5]
-
-            neighbors_loop = [Int[] for _ in axes(coords, 2)]
-
-            for_particle_neighbor(coords, coords, nhs,
-                                  particles = axes(coords, 2)) do particle,
-                                                                  neighbor,
-                                                                  pos_diff,
-                                                                  distance
-                append!(neighbors_loop[particle], neighbor)
-            end
-
-            @test sort(neighbors_loop[1]) == [1, 3, 5]
-            @test sort(neighbors_loop[2]) == [2]
-            @test sort(neighbors_loop[3]) == [1, 3]
-            @test sort(neighbors_loop[4]) == [4]
-            @test sort(neighbors_loop[5]) == [1, 5]
         end
 
         @testset "Offset Domain Triggering Split Cells" begin
             # This used to trigger a "split cell bug", where the left and right boundary
             # cells were only partially contained in the domain.
-            # The left particle was placed inside a ghost cells, which causes it to not
-            # see the right particle, even though it is within the search distance.
+            # The left particle was placed inside a ghost cells, which caused it to not
+            # see the right particle, even though it was within the search distance.
             # The domain size is an integer multiple of the cell size, but the NHS did not
             # offset the grid based on the domain position.
             # See https://github.com/trixi-framework/PointNeighbors.jl/pull/211
@@ -243,41 +216,28 @@
             @test neighbors[1] == [1, 2]
             @test neighbors[2] == [1, 2]
         end
-    end
 
-    @testset verbose=true "Periodicity 3D" begin
-        coords = [-0.08 0.0 0.18 0.1 -0.08
-                  -0.12 -0.05 -0.09 0.15 0.39
-                  0.14 0.34 0.12 0.06 0.13]
+        @testset verbose=true "Simple Example 3D" begin
+            coords = [-0.08 0.0 0.18 0.1 -0.08
+                      -0.12 -0.05 -0.09 0.15 0.39
+                      0.14 0.34 0.12 0.06 0.13]
 
-        # 3 x 6 x 3 cells
-        nhs = GridNeighborhoodSearch{3}(0.1, size(coords, 2),
-                                        periodic_box_min_corner = [-0.1, -0.2, 0.05],
-                                        periodic_box_max_corner = [0.2, 0.4, 0.35])
+            # 3 x 6 x 3 cells
+            nhs = GridNeighborhoodSearch{3}(0.1, size(coords, 2),
+                                            periodic_box_min_corner = [-0.1, -0.2, 0.05],
+                                            periodic_box_max_corner = [0.2, 0.4, 0.35])
 
-        initialize_grid!(nhs, coords)
+            initialize_grid!(nhs, coords)
 
-        neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
-                     for i in 1:5]
+            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
+                         for i in 1:5]
 
-        # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
-        @test neighbors[1] == [1, 2, 3, 5]
-        @test neighbors[2] == [1, 2, 3]
-        @test neighbors[3] == [1, 2, 3]
-        @test neighbors[4] == [4]
-        @test neighbors[5] == [1, 5]
-
-        neighbors_loop = [Int[] for _ in axes(coords, 2)]
-
-        for_particle_neighbor(coords, coords,
-                              nhs) do particle, neighbor, pos_diff, distance
-            append!(neighbors_loop[particle], neighbor)
+            # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
+            @test neighbors[1] == [1, 2, 3, 5]
+            @test neighbors[2] == [1, 2, 3]
+            @test neighbors[3] == [1, 2, 3]
+            @test neighbors[4] == [4]
+            @test neighbors[5] == [1, 5]
         end
-
-        @test sort(neighbors_loop[1]) == [1, 3, 5]
-        @test sort(neighbors_loop[2]) == [2]
-        @test sort(neighbors_loop[3]) == [1, 3]
-        @test sort(neighbors_loop[4]) == [4]
-        @test sort(neighbors_loop[5]) == [1, 5]
     end
-end
+end;
