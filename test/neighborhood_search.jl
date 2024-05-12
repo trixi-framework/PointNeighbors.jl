@@ -2,16 +2,17 @@
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "Neighborhood Searches" begin
     neighborhood_searches = [
-        (coords, min, max) -> TrivialNeighborhoodSearch{size(coords, 1)}(0.1, axes(coords, 2),
-                                                                      periodic_box_min_corner = min,
-                                                                      periodic_box_max_corner = max),
+        (coords, min, max) -> TrivialNeighborhoodSearch{size(coords, 1)}(0.1,
+                                                                         axes(coords, 2),
+                                                                         periodic_box_min_corner = min,
+                                                                         periodic_box_max_corner = max),
         (coords, min, max) -> GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
                                                                       periodic_box_min_corner = min,
                                                                       periodic_box_max_corner = max),
     ]
     neighborhood_searches_names = [
         "`TrivialNeighborhoodSearch`",
-        "`GridNeighborhoodSearch`"
+        "`GridNeighborhoodSearch`",
     ]
 
     @testset verbose=true "Periodicity" begin

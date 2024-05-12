@@ -138,47 +138,45 @@
     end
 
     @testset verbose=true "Periodicity" begin
-        # Most of these setups are the same as in `test/neighborhood_search.jl`,
+        # These setups are the same as in `test/neighborhood_search.jl`,
         # but instead of testing the actual neighbors with `for_particle_neighbor`,
         # we only test the potential neighbors (particles in neighboring cells) here.
-        @testset "Simple Example 2D" begin
-            coords = [-0.08 0.0 0.18 0.1 -0.08
-                      -0.12 -0.05 -0.09 0.15 0.39]
 
-            # 3 x 6 cells
-            nhs = GridNeighborhoodSearch{2}(0.1, size(coords, 2),
-                                            periodic_box_min_corner = [-0.1, -0.2],
-                                            periodic_box_max_corner = [0.2, 0.4])
+        # Names, coordinates and corresponding periodic boxes for each test
+        names = [
+            "Simple Example 2D",
+            "Box Not Multiple of Search Radius 2D",
+            "Simple Example 3D",
+        ]
+
+        coordinates = [
+            [-0.08 0.0 0.18 0.1 -0.08
+             -0.12 -0.05 -0.09 0.15 0.39],
+            [-0.08 0.0 0.18 0.1 -0.08
+             -0.12 -0.05 -0.09 0.15 0.42],
+            [-0.08 0.0 0.18 0.1 -0.08
+             -0.12 -0.05 -0.09 0.15 0.39
+             0.14 0.34 0.12 0.06 0.13],
+        ]
+
+        periodic_boxes = [
+            ([-0.1, -0.2], [0.2, 0.4]),
+            # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
+            # to avoid split cells.
+            ([-0.1, -0.2], [0.205, 0.43]),
+            ([-0.1, -0.2, 0.05], [0.2, 0.4, 0.35]),
+        ]
+
+        @testset verbose=true "$(names[i])" for i in eachindex(names)
+            coords = coordinates[i]
+
+            nhs = GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
+                                                          periodic_box_min_corner = periodic_boxes[i][1],
+                                                          periodic_box_max_corner = periodic_boxes[i][2])
 
             initialize_grid!(nhs, coords)
 
-            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i],
-                                                                  nhs)))
-                         for i in 1:5]
-
-            # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
-            @test neighbors[1] == [1, 2, 3, 5]
-            @test neighbors[2] == [1, 2, 3]
-            @test neighbors[3] == [1, 2, 3]
-            @test neighbors[4] == [4]
-            @test neighbors[5] == [1, 5]
-        end
-
-        @testset "Box Not Multiple of Search Radius 2D" begin
-            # The `GridNeighborhoodSearch` is forced to round up the cell sizes to deal
-            # with this test without split cells.
-            coords = [-0.08 0.0 0.18 0.1 -0.08
-                      -0.12 -0.05 -0.09 0.15 0.42]
-
-            # 3 x 6 cells
-            nhs = GridNeighborhoodSearch{2}(0.1, size(coords, 2),
-                                            periodic_box_min_corner = [-0.1, -0.2],
-                                            periodic_box_max_corner = [0.205, 0.43])
-
-            initialize_grid!(nhs, coords)
-
-            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i],
-                                                                  nhs)))
+            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
                          for i in 1:5]
 
             # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
@@ -190,8 +188,8 @@
         end
 
         @testset "Offset Domain Triggering Split Cells" begin
-            # This used to trigger a "split cell bug", where the left and right boundary
-            # cells were only partially contained in the domain.
+            # This test used to trigger a "split cell bug", where the left and right
+            # boundary cells were only partially contained in the domain.
             # The left particle was placed inside a ghost cells, which caused it to not
             # see the right particle, even though it was within the search distance.
             # The domain size is an integer multiple of the cell size, but the NHS did not
@@ -215,29 +213,6 @@
 
             @test neighbors[1] == [1, 2]
             @test neighbors[2] == [1, 2]
-        end
-
-        @testset verbose=true "Simple Example 3D" begin
-            coords = [-0.08 0.0 0.18 0.1 -0.08
-                      -0.12 -0.05 -0.09 0.15 0.39
-                      0.14 0.34 0.12 0.06 0.13]
-
-            # 3 x 6 x 3 cells
-            nhs = GridNeighborhoodSearch{3}(0.1, size(coords, 2),
-                                            periodic_box_min_corner = [-0.1, -0.2, 0.05],
-                                            periodic_box_max_corner = [0.2, 0.4, 0.35])
-
-            initialize_grid!(nhs, coords)
-
-            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
-                         for i in 1:5]
-
-            # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
-            @test neighbors[1] == [1, 2, 3, 5]
-            @test neighbors[2] == [1, 2, 3]
-            @test neighbors[3] == [1, 2, 3]
-            @test neighbors[4] == [4]
-            @test neighbors[5] == [1, 5]
         end
     end
 end;
