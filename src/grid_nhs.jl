@@ -371,7 +371,7 @@ end
 end
 
 # Create a copy of a neighborhood search but with a different search radius
-function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, u)
+function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, x, y)
     if nhs.periodic_box === nothing
         search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs))
     else
@@ -381,7 +381,7 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, u)
     end
 
     # Initialize neighborhood search
-    initialize!(search, u)
+    initialize!(search, x, y)
 
     return search
 end
