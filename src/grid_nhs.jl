@@ -38,27 +38,6 @@ since not sorting makes our implementation a lot faster (although less paralleli
                                 This can be one of the largest sources of variations between simulations
                                 with different thread numbers due to particle ordering changes.
 
-!!! warning "Internal use only"
-    Please note that this constructor is intended for internal use only. It is *not* part of
-    the public API of TrixiParticles.jl, and it thus can altered (or be removed) at any time
-    without it being considered a breaking change.
-
-    To run a simulation with this neighborhood search, just pass the type to the constructor
-    of `Semidiscretization`:
-    ```julia
-    semi = Semidiscretization(system1, system2,
-                              neighborhood_search=GridNeighborhoodSearch)
-    ```
-    The keyword arguments `periodic_box_min_corner` and `periodic_box_max_corner` explained
-    above can also be passed to the `Semidiscretization` and will internally be
-    forwarded to the neighborhood search:
-    ```julia
-    semi = Semidiscretization(system1, system2,
-                              neighborhood_search=GridNeighborhoodSearch,
-                              periodic_box_min_corner=[0.0, -0.25],
-                              periodic_box_max_corner=[1.0, 0.75])
-    ```
-
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
   "GriSPy: A Python package for fixed-radius nearest neighbors search".
