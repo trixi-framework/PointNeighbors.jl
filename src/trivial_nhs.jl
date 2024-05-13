@@ -18,27 +18,6 @@ internal function `eachneighbor`.
 - `periodic_box_max_corner`:    In order to use a (rectangular) periodic domain, pass the
                                 coordinates of the domain corner in positive coordinate
                                 directions.
-
-!!! warning "Internal use only"
-    Please note that this constructor is intended for internal use only. It is *not* part of
-    the public API of TrixiParticles.jl, and it thus can altered (or be removed) at any time
-    without it being considered a breaking change.
-
-    To run a simulation with this neighborhood search, just pass the type to the constructor
-    of `Semidiscretization`:
-    ```julia
-    semi = Semidiscretization(system1, system2,
-                              neighborhood_search=TrivialNeighborhoodSearch)
-    ```
-    The keyword arguments `periodic_box_min_corner` and `periodic_box_max_corner` explained
-    above can also be passed to the `Semidiscretization` and will internally be
-    forwarded to the neighborhood search:
-    ```julia
-    semi = Semidiscretization(system1, system2,
-                              neighborhood_search=TrivialNeighborhoodSearch,
-                              periodic_box_min_corner=[0.0, -0.25],
-                              periodic_box_max_corner=[1.0, 0.75])
-    ```
 """
 struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB}
     search_radius :: ELTYPE
@@ -74,6 +53,11 @@ end
     return NDIMS
 end
 
-@inline initialize!(search::TrivialNeighborhoodSearch, coords_fun) = search
-@inline update!(search::TrivialNeighborhoodSearch, coords_fun) = search
+@inline initialize!(search::TrivialNeighborhoodSearch, x, y) = search
+
+@inline function update!(search::TrivialNeighborhoodSearch, x, y;
+                         particles_moving = (true, true))
+    return search
+end
+
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachparticle

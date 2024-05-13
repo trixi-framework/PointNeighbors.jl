@@ -38,27 +38,6 @@ since not sorting makes our implementation a lot faster (although less paralleli
                                 This can be one of the largest sources of variations between simulations
                                 with different thread numbers due to particle ordering changes.
 
-!!! warning "Internal use only"
-    Please note that this constructor is intended for internal use only. It is *not* part of
-    the public API of TrixiParticles.jl, and it thus can altered (or be removed) at any time
-    without it being considered a breaking change.
-
-    To run a simulation with this neighborhood search, just pass the type to the constructor
-    of `Semidiscretization`:
-    ```julia
-    semi = Semidiscretization(system1, system2,
-                              neighborhood_search=GridNeighborhoodSearch)
-    ```
-    The keyword arguments `periodic_box_min_corner` and `periodic_box_max_corner` explained
-    above can also be passed to the `Semidiscretization` and will internally be
-    forwarded to the neighborhood search:
-    ```julia
-    semi = Semidiscretization(system1, system2,
-                              neighborhood_search=GridNeighborhoodSearch,
-                              periodic_box_min_corner=[0.0, -0.25],
-                              periodic_box_max_corner=[1.0, 0.75])
-    ```
-
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
   "GriSPy: A Python package for fixed-radius nearest neighbors search".
@@ -132,24 +111,20 @@ end
     return size(neighborhood_search.cell_buffer, 1)
 end
 
-function initialize!(neighborhood_search::GridNeighborhoodSearch, ::Nothing)
-    # No particle coordinates function -> don't initialize.
-    return neighborhood_search
+function initialize!(neighborhood_search::GridNeighborhoodSearch,
+                     x::AbstractMatrix, y::AbstractMatrix)
+    initialize_grid!(neighborhood_search, y)
 end
 
-function initialize!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-                     x::AbstractArray) where {NDIMS}
-    initialize!(neighborhood_search, i -> extract_svector(x, Val(NDIMS), i))
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
+                          y::AbstractMatrix) where {NDIMS}
+    initialize_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
 end
 
-function initialize!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     (; hashtable) = neighborhood_search
 
     empty!(hashtable)
-
-    # This is needed to prevent lagging on macOS ARM.
-    # See https://github.com/JuliaSIMD/Polyester.jl/issues/89
-    # ThreadingUtilities.sleep_all_tasks()
 
     for particle in 1:nparticles(neighborhood_search)
         # Get cell index of the particle's cell
@@ -166,18 +141,24 @@ function initialize!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     return neighborhood_search
 end
 
-function update!(neighborhood_search::GridNeighborhoodSearch, ::Nothing)
-    # No particle coordinates function -> don't update.
-    return neighborhood_search
+function update!(neighborhood_search::GridNeighborhoodSearch,
+                 x::AbstractMatrix, y::AbstractMatrix,
+                 particles_moving = (true, true))
+    # The coordinates of the first set of particles are irrelevant for this NHS.
+    # Only update when the second set is moving.
+    particles_moving[2] || return neighborhood_search
+
+    update_grid!(neighborhood_search, y)
 end
 
-function update!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-                 x::AbstractArray) where {NDIMS}
-    update!(neighborhood_search, i -> extract_svector(x, Val(NDIMS), i))
+# Update only with neighbor coordinates
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
+                      y::AbstractMatrix) where {NDIMS}
+    update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
 end
 
 # Modify the existing hash table by moving particles into their new cells
-function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
+function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     (; hashtable, cell_buffer, cell_buffer_indices, threaded_nhs_update) = neighborhood_search
 
     # Reset `cell_buffer` by moving all pointers to the beginning.
@@ -185,11 +166,8 @@ function update!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
 
     # Find all cells containing particles that now belong to another cell.
     # `collect` the keyset to be able to loop over it with `@threaded`.
-    mark_changed_cell!(neighborhood_search, hashtable, coords_fun, Val(threaded_nhs_update))
-
-    # This is needed to prevent lagging on macOS ARM.
-    # See https://github.com/JuliaSIMD/Polyester.jl/issues/89
-    # ThreadingUtilities.sleep_all_tasks()
+    mark_changed_cell!(neighborhood_search, hashtable, coords_fun,
+                       Val(threaded_nhs_update))
 
     # Iterate over all marked cells and move the particles into their new cells.
     for thread in 1:Threads.nthreads()
@@ -358,31 +336,8 @@ end
     return floor(Int, i)
 end
 
-# Sorting only really makes sense in longer simulations where particles
-# end up very unordered.
-# WARNING: This is currently unmaintained.
-function z_index_sort!(coordinates, system)
-    (; mass, pressure, neighborhood_search) = system
-
-    perm = sortperm(eachparticle(system),
-                    by = (i -> cell_z_index(extract_svector(coordinates, system, i),
-                                            neighborhood_search)))
-
-    permute!(mass, perm)
-    permute!(pressure, perm)
-    Base.permutecols!!(u, perm)
-
-    return nothing
-end
-
-@inline function cell_z_index(coords, neighborhood_search)
-    cell = cell_coords(coords, neighborhood_search.search_radius) .+ 1
-
-    return cartesian2morton(SVector(cell))
-end
-
 # Create a copy of a neighborhood search but with a different search radius
-function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, u)
+function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, x, y)
     if nhs.periodic_box === nothing
         search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs))
     else
@@ -392,12 +347,12 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, u)
     end
 
     # Initialize neighborhood search
-    initialize!(search, u)
+    initialize!(search, x, y)
 
     return search
 end
 
 # Create a copy of a neighborhood search but with a different search radius
-function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch, search_radius, u)
+function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch, search_radius, x, y)
     return nhs
 end
