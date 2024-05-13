@@ -142,7 +142,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fu
 end
 
 function update!(neighborhood_search::GridNeighborhoodSearch,
-                 x::AbstractMatrix, y::AbstractMatrix,
+                 x::AbstractMatrix, y::AbstractMatrix;
                  particles_moving = (true, true))
     # The coordinates of the first set of particles are irrelevant for this NHS.
     # Only update when the second set is moving.
