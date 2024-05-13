@@ -74,6 +74,11 @@ end
     return NDIMS
 end
 
-@inline initialize!(search::TrivialNeighborhoodSearch, coords_fun) = search
-@inline update!(search::TrivialNeighborhoodSearch, coords_fun) = search
+@inline initialize!(search::TrivialNeighborhoodSearch, x, y) = search
+
+@inline function update!(search::TrivialNeighborhoodSearch, x, y;
+                         particles_moving = (true, true))
+    return search
+end
+
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachparticle
