@@ -9,10 +9,13 @@ struct PeriodicBox{NDIMS, ELTYPE}
     end
 end
 
-@inline function for_particle_neighbor(f, system_coords, neighbor_coords,
-                                       neighborhood_search;
-                                       particles = axes(system_coords, 2),
-                                       parallel = true)
+# The type annotation is to make Julia specialize on the type of the function.
+# Otherwise, unspecialized code will cause a lot of allocations
+# and heavily impact performance.
+# See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+function for_particle_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
+                               particles = axes(system_coords, 2),
+                               parallel = true) where {T}
     for_particle_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particles,
                           Val(parallel))
 end
