@@ -1,20 +1,6 @@
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "Neighborhood Searches" begin
-    neighborhood_searches = [
-        (coords, min, max) -> TrivialNeighborhoodSearch{size(coords, 1)}(0.1,
-                                                                         axes(coords, 2),
-                                                                         periodic_box_min_corner = min,
-                                                                         periodic_box_max_corner = max),
-        (coords, min, max) -> GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
-                                                                      periodic_box_min_corner = min,
-                                                                      periodic_box_max_corner = max),
-    ]
-    neighborhood_searches_names = [
-        "`TrivialNeighborhoodSearch`",
-        "`GridNeighborhoodSearch`",
-    ]
-
     @testset verbose=true "Periodicity" begin
         # These examples are constructed by hand and are therefore a good test for the
         # trivial neighborhood search as well.
@@ -48,9 +34,22 @@
         @testset verbose=true "$(names[i])" for i in eachindex(names)
             coords = coordinates[i]
 
+            neighborhood_searches = [
+                TrivialNeighborhoodSearch{size(coords, 1)}(0.1, axes(coords, 2),
+                                                           periodic_box_min_corner = periodic_boxes[i][1],
+                                                           periodic_box_max_corner = periodic_boxes[i][2]),
+                GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
+                                                        periodic_box_min_corner = periodic_boxes[i][1],
+                                                        periodic_box_max_corner = periodic_boxes[i][2]),
+            ]
+            neighborhood_searches_names = [
+                "`TrivialNeighborhoodSearch`",
+                "`GridNeighborhoodSearch`",
+            ]
+
             # Run this for every neighborhood search
             @testset "$(neighborhood_searches_names[j])" for j in eachindex(neighborhood_searches_names)
-                nhs = neighborhood_searches[j](coords, periodic_boxes[i]...)
+                nhs = neighborhood_searches[j]
 
                 initialize!(nhs, coords, coords)
 
