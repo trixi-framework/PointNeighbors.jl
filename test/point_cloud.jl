@@ -1,5 +1,4 @@
 using Random
-using StaticArrays
 
 # Generate a rectangular point cloud, optionally with a perturbation in the point positions
 function point_cloud(n_points_per_dimension;
