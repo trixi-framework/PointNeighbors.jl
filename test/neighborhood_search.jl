@@ -91,6 +91,7 @@
 
             coords = point_cloud(cloud_size, seed = seed)
             NDIMS = length(cloud_size)
+            search_radius = 2.5
 
             # Use different coordinates for `initialize!` and then `update!` with the
             # correct coordinates to make sure that `update!` is working as well.
@@ -98,7 +99,7 @@
 
             # Compute expected neighbor lists by brute-force looping over all particles
             # as potential neighbors (`TrivialNeighborhoodSearch`).
-            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(2.5, axes(coords, 2))
+            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(search_radius, axes(coords, 2))
 
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
@@ -109,7 +110,7 @@
             end
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(2.5, size(coords, 2)),
+                GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2)),
             ]
 
             neighborhood_searches_names = [
