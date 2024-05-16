@@ -1,6 +1,6 @@
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
-@testset verbose=true "Neighborhood Searches" begin
+@testset verbose=true "All Neighborhood Searches" begin
     @testset verbose=true "Periodicity" begin
         # These examples are constructed by hand and are therefore a good test for the
         # trivial neighborhood search as well.
@@ -73,6 +73,71 @@
                 @test sort(neighbors[3]) == [1, 3]
                 @test sort(neighbors[4]) == [4]
                 @test sort(neighbors[5]) == [1, 5]
+            end
+        end
+    end
+
+    @testset verbose=true "Compare Against `TrivialNeighborhoodSearch`" begin
+        cloud_sizes = [
+            (10, 11),
+            (100, 90),
+            (9, 10, 7),
+            (39, 40, 41),
+        ]
+
+        seeds = [1, 2]
+        @testset verbose=true "$(length(cloud_size))D with $(prod(cloud_size)) Particles ($(seed == 1 ? "`initialize!`" : "`update!`"))" for cloud_size in cloud_sizes,
+                                                                                                                                             seed in seeds
+
+            coords = point_cloud(cloud_size, seed = seed)
+            NDIMS = length(cloud_size)
+
+            # Use different coordinates for `initialize!` and then `update!` with the
+            # correct coordinates to make sure that `update!` is working as well.
+            coords_initialize = point_cloud(cloud_size, seed = 1)
+
+            # Compute expected neighbor lists by brute-force looping over all particles
+            # as potential neighbors (`TrivialNeighborhoodSearch`).
+            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(2.5, axes(coords, 2))
+
+            neighbors_expected = [Int[] for _ in axes(coords, 2)]
+
+            for_particle_neighbor(coords, coords, trivial_nhs,
+                                  parallel = false) do particle, neighbor,
+                                                       pos_diff, distance
+                append!(neighbors_expected[particle], neighbor)
+            end
+
+            neighborhood_searches = [
+                GridNeighborhoodSearch{NDIMS}(2.5, size(coords, 2)),
+            ]
+
+            neighborhood_searches_names = [
+                "`GridNeighborhoodSearch`",
+            ]
+
+            @testset "$(neighborhood_searches_names[i])" for i in eachindex(neighborhood_searches_names)
+                nhs = neighborhood_searches[i]
+
+                # Initialize with `seed = 1`
+                initialize!(nhs, coords_initialize, coords_initialize)
+
+                # For other seeds, update with the correct coordinates.
+                # This way, we test only `initialize!` when `seed == 1`,
+                # and `initialize!` plus `update!` else.
+                if seed != 1
+                    update!(nhs, coords, coords)
+                end
+
+                neighbors = [Int[] for _ in axes(coords, 2)]
+
+                for_particle_neighbor(coords, coords, nhs,
+                                      parallel = false) do particle, neighbor,
+                                                           pos_diff, distance
+                    append!(neighbors[particle], neighbor)
+                end
+
+                @test sort.(neighbors) == neighbors_expected
             end
         end
     end

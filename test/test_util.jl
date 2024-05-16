@@ -74,3 +74,5 @@ macro test_nowarn_mod(expr, additional_ignore_content = String[])
         end
     end
 end
+
+include("point_cloud.jl")
