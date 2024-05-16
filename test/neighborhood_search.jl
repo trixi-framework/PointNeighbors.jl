@@ -34,13 +34,17 @@
         @testset verbose=true "$(names[i])" for i in eachindex(names)
             coords = coordinates[i]
 
+            NDIMS = size(coords, 1)
+            n_particles = size(coords, 2)
+            search_radius = 0.1
+
             neighborhood_searches = [
-                TrivialNeighborhoodSearch{size(coords, 1)}(0.1, axes(coords, 2),
-                                                           periodic_box_min_corner = periodic_boxes[i][1],
-                                                           periodic_box_max_corner = periodic_boxes[i][2]),
-                GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
-                                                        periodic_box_min_corner = periodic_boxes[i][1],
-                                                        periodic_box_max_corner = periodic_boxes[i][2]),
+                TrivialNeighborhoodSearch{NDIMS}(search_radius, 1:n_particles,
+                                                 periodic_box_min_corner = periodic_boxes[i][1],
+                                                 periodic_box_max_corner = periodic_boxes[i][2]),
+                GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
+                                              periodic_box_min_corner = periodic_boxes[i][1],
+                                              periodic_box_max_corner = periodic_boxes[i][2]),
             ]
             neighborhood_searches_names = [
                 "`TrivialNeighborhoodSearch`",
