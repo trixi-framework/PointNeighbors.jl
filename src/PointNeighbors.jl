@@ -8,8 +8,8 @@ using Polyester: @batch
 
 include("util.jl")
 include("neighborhood_search.jl")
-include("trivial_nhs.jl")
-include("grid_nhs.jl")
+include("nhs_trivial.jl")
+include("nhs_grid.jl")
 
 export for_particle_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch
