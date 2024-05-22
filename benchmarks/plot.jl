@@ -13,7 +13,7 @@ Run a benchmark for with several neighborhood searches multiple times for increa
 of points and plot the results.
 
 # Arguments
-- `benchmark`:              The benchmark function. See [`benchmark_count_neigbors`](@ref)
+- `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref)
                             and [`benchmark_n_body`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
