@@ -81,7 +81,7 @@
     @testset "Rectangular Point Cloud 3D" begin
         #### Setup
         # Rectangle of equidistantly spaced particles
-        # from (x, y, z) = (-0.25, -0.25, -0.25) to (x, y) = (0.35, 0.35, 0.35).
+        # from (x, y, z) = (-0.25, -0.25, -0.25) to (x, y, z) = (0.35, 0.35, 0.35).
         range = -0.25:0.1:0.35
         coordinates1 = hcat(collect.(Iterators.product(range, range, range))...)
         nparticles = size(coordinates1, 2)
