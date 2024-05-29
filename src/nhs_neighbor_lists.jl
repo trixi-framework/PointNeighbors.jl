@@ -8,15 +8,15 @@ struct NeighborListsNeighborhoodSearch{NDIMS, NHS, NL, PB}
                                                     periodic_box_max_corner = nothing) where {
                                                                                               NDIMS
                                                                                               }
-        backend = GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
-                                                periodic_box_min_corner = periodic_box_min_corner,
-                                                periodic_box_max_corner = periodic_box_max_corner)
+        nhs = GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
+                                            periodic_box_min_corner = periodic_box_min_corner,
+                                            periodic_box_max_corner = periodic_box_max_corner)
 
         neighbor_lists = Vector{Vector{Int}}()
 
-        new{NDIMS, typeof(backend),
+        new{NDIMS, typeof(nhs),
             typeof(neighbor_lists),
-            typeof(backend.periodic_box)}(backend, neighbor_lists, backend.periodic_box)
+            typeof(nhs.periodic_box)}(nhs, neighbor_lists, nhs.periodic_box)
     end
 end
 
