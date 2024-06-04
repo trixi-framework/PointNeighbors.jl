@@ -6,9 +6,9 @@ abstract type AbstractNeighborhoodSearch end
 Initialize a neighborhood search with the two coordinate arrays `x` and `y`.
 
 In general, the purpose of a neighborhood search is to find for one point in `x`
-all points in `y` that are closer to that point than the search radius.
-`x` and `y` are expected to be matrices, where `x[:, i]` are the coordinates of point `i`.
-`x` and `y` can be identical.
+all points in `y` whose distances to that point are smaller than the search radius.
+`x` and `y` are expected to be matrices, where the `i`-th column contains the coordinates
+of point `i`. Note that `x` and `y` can be identical.
 
 See also [`update!`](@ref).
 """
