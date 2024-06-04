@@ -19,7 +19,7 @@ internal function `eachneighbor`.
                                 coordinates of the domain corner in positive coordinate
                                 directions.
 """
-struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB}
+struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodSearch
     search_radius :: ELTYPE
     eachparticle  :: EP
     periodic_box  :: PB

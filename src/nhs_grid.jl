@@ -48,7 +48,7 @@ since not sorting makes our implementation a lot faster (although less paralleli
   In: Computer Graphics Forum 30.1 (2011), pages 99–112.
   [doi: 10.1111/J.1467-8659.2010.01832.X](https://doi.org/10.1111/J.1467-8659.2010.01832.X)
 """
-struct GridNeighborhoodSearch{NDIMS, ELTYPE, PB}
+struct GridNeighborhoodSearch{NDIMS, ELTYPE, PB} <: AbstractNeighborhoodSearch
     hashtable           :: Dict{NTuple{NDIMS, Int}, Vector{Int}}
     search_radius       :: ELTYPE
     empty_vector        :: Vector{Int} # Just an empty vector (used in `eachneighbor`)
