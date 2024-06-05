@@ -1,3 +1,46 @@
+abstract type AbstractNeighborhoodSearch end
+
+"""
+    initialize!(search::AbstractNeighborhoodSearch, x, y)
+
+Initialize a neighborhood search with the two coordinate arrays `x` and `y`.
+
+In general, the purpose of a neighborhood search is to find for one point in `x`
+all points in `y` whose distances to that point are smaller than the search radius.
+`x` and `y` are expected to be matrices, where the `i`-th column contains the coordinates
+of point `i`. Note that `x` and `y` can be identical.
+
+See also [`update!`](@ref).
+"""
+@inline initialize!(search::AbstractNeighborhoodSearch, x, y) = search
+
+"""
+    update!(search::AbstractNeighborhoodSearch, x, y; particles_moving = (true, true))
+
+Update an already initialized neighborhood search with the two coordinate arrays `x` and `y`.
+
+Like [`initialize!`](@ref), but reusing the existing data structures of the already
+initialized neighborhood search.
+When the points only moved a small distance since the last `update!` or `initialize!`,
+this is significantly faster than `initialize!`.
+
+Not all implementations support incremental updates.
+If incremental updates are not possible for an implementation, `update!` will fall back
+to a regular `initialize!`.
+
+Some neighborhood searches might not need to update when only `x` changed since the last
+`update!` or `initialize!` and `y` did not change. Pass `particles_moving = (true, false)`
+in this case to avoid unnecessary updates.
+The first flag in `particles_moving` indicates if points in `x` are moving.
+The second flag indicates if points in `y` are moving.
+
+See also [`initialize!`](@ref).
+"""
+@inline function update!(search::AbstractNeighborhoodSearch, x, y;
+                         particles_moving = (true, true))
+    return search
+end
+
 struct PeriodicBox{NDIMS, ELTYPE}
     min_corner :: SVector{NDIMS, ELTYPE}
     max_corner :: SVector{NDIMS, ELTYPE}
