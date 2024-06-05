@@ -52,6 +52,38 @@ struct PeriodicBox{NDIMS, ELTYPE}
     end
 end
 
+"""
+    for_particle_neighbor(f, system_coords, neighbor_coords, neighborhood_search;
+                          particles = axes(system_coords, 2), parallel = true)
+
+Loop for each point in `system_coords` all points in `neighbor_coords` whose distances
+to that point are smaller than the search radius and execute the function `f(i, j, x, y, d)`,
+where `i` is the column index of the point in `system_coords`, `j` the column index of the
+neighbor in `neighbor_coords`, `x` the coordinates of the point, `y` the coordinates of the
+neighbor, and `d` the distance between `x` and `y`.
+
+`x` will be an `SVector` of `system_coords[:, i]`,
+`y` will be an `SVector` of `neighbor_coords[:, j]`.
+
+The `neighborhood_search` must have been initialized or updated with `system_coords`
+as first coordinate array and `neighbor_coords` as second coordinate array.
+
+Note that `system_coords` and `neighbor_coords` can be identical.
+
+# Arguments
+- `f`: The function explained above.
+- `system_coords`: A matrix where the `i`-th column contains the coordinates of point `i`.
+- `neighbor_coords`: A matrix where the `j`-th column contains the coordinates of point `j`.
+- `neighborhood_search`: A neighborhood search initialized or updated with `system_coords`
+                         as first coordinate array and `neighbor_coords` as second
+                         coordinate array.
+
+# Keywords
+- `particles`: Loop over these point indices. By default all columns of `system_coords`.
+- `parallel=true`: Run the outer loop over `particles` thread-parallel.
+
+See also [`initialize!`](@ref), [`update!`](@ref).
+"""
 # The type annotation is to make Julia specialize on the type of the function.
 # Otherwise, unspecialized code will cause a lot of allocations
 # and heavily impact performance.
