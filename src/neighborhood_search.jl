@@ -66,8 +66,7 @@ end
 @inline function for_particle_neighbor(f, system_coords, neighbor_coords,
                                        neighborhood_search, particles, parallel::Val{true})
     @threaded for particle in particles
-        for_particle_neighbor_inner(f, system_coords, neighbor_coords, neighborhood_search,
-                                    particle)
+        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particle)
     end
 
     return nothing
@@ -76,20 +75,16 @@ end
 @inline function for_particle_neighbor(f, system_coords, neighbor_coords,
                                        neighborhood_search, particles, parallel::Val{false})
     for particle in particles
-        for_particle_neighbor_inner(f, system_coords, neighbor_coords, neighborhood_search,
-                                    particle)
+        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particle)
     end
 
     return nothing
 end
 
-# Use this function barrier and unpack inside to avoid passing closures to Polyester.jl
-# with `@batch` (`@threaded`).
-# Otherwise, `@threaded` does not work here with Julia ARM on macOS.
-# See https://github.com/JuliaSIMD/Polyester.jl/issues/88.
-@inline function for_particle_neighbor_inner(f, system_coords, neighbor_system_coords,
-                                             neighborhood_search, particle)
-    (; search_radius, periodic_box) = neighborhood_search
+@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                  neighborhood_search, particle;
+                                  search_radius = neighborhood_search.search_radius)
+    (; periodic_box) = neighborhood_search
 
     particle_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)),
                                       particle)
