@@ -48,24 +48,25 @@ since not sorting makes our implementation a lot faster (although less paralleli
   In: Computer Graphics Forum 30.1 (2011), pages 99–112.
   [doi: 10.1111/J.1467-8659.2010.01832.X](https://doi.org/10.1111/J.1467-8659.2010.01832.X)
 """
-struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSearch
+struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, CB, PB} <: AbstractNeighborhoodSearch
     cell_list           :: CL
     search_radius       :: ELTYPE
     periodic_box        :: PB
     n_cells             :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
     cell_size           :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
-    cell_buffer         :: Array{NTuple{NDIMS, Int}, 2} # Multithreaded buffer for `update!`
+    cell_buffer         :: CB                    # Multithreaded buffer for `update!`
     cell_buffer_indices :: Vector{Int} # Store which entries of `cell_buffer` are initialized
     threaded_nhs_update :: Bool
 
     function GridNeighborhoodSearch{NDIMS}(search_radius, n_particles;
                                            periodic_box_min_corner = nothing,
                                            periodic_box_max_corner = nothing,
+                                           cell_list = DictionaryCellList{NDIMS}(),
                                            threaded_nhs_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
-        cell_list = DictionaryCellList{NDIMS}()
 
-        cell_buffer = Array{NTuple{NDIMS, Int}, 2}(undef, n_particles, Threads.nthreads())
+        cell_buffer = Array{index_type(cell_list), 2}(undef, n_particles,
+                                                      Threads.nthreads())
         cell_buffer_indices = zeros(Int, Threads.nthreads())
 
         if search_radius < eps() ||
@@ -96,7 +97,7 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
                                 "must either be both `nothing` or both an array or tuple"))
         end
 
-        new{NDIMS, ELTYPE, typeof(cell_list),
+        new{NDIMS, ELTYPE, typeof(cell_list), typeof(cell_buffer),
             typeof(periodic_box)}(cell_list, search_radius, periodic_box, n_cells,
                                   cell_size, cell_buffer, cell_buffer_indices,
                                   threaded_nhs_update)
@@ -166,13 +167,15 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     for thread in 1:Threads.nthreads()
         # Only the entries `1:cell_buffer_indices[thread]` are initialized for `thread`.
         for i in 1:cell_buffer_indices[thread]
-            cell = cell_buffer[i, thread]
-            particles = cell_list[cell]
+            cell_index = cell_buffer[i, thread]
+            particles = cell_list[cell_index]
 
             # Find all particles whose coordinates do not match this cell
             moved_particle_indices = (i for i in eachindex(particles)
-                                      if cell_coords(coords_fun(particles[i]),
-                                                     neighborhood_search) != cell)
+                                      if !is_correct_cell(cell_list,
+                                                          cell_coords(coords_fun(particles[i]),
+                                                                      neighborhood_search),
+                                                          cell_index))
 
             # Add moved particles to new cell
             for i in moved_particle_indices
@@ -184,7 +187,7 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
             end
 
             # Remove moved particles from this cell
-            deleteat_cell!(cell_list, cell, moved_particle_indices)
+            deleteat_cell!(cell_list, cell_index, moved_particle_indices)
         end
     end
 
@@ -194,14 +197,14 @@ end
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                                     threaded_nhs_update::Val{true})
     # `collect` the keyset to be able to loop over it with `@threaded`
-    @threaded for cell in collect(eachcell(cell_list))
+    @threaded for cell in collect(each_cell_index(cell_list))
         mark_changed_cell!(neighborhood_search, cell, coords_fun)
     end
 end
 
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                                     threaded_nhs_update::Val{false})
-    for cell in eachcell(cell_list)
+    for cell in each_cell_index(cell_list)
         mark_changed_cell!(neighborhood_search, cell, coords_fun)
     end
 end
@@ -210,17 +213,22 @@ end
 # with `@batch` (`@threaded`).
 # Otherwise, `@threaded` does not work here with Julia ARM on macOS.
 # See https://github.com/JuliaSIMD/Polyester.jl/issues/88.
-@inline function mark_changed_cell!(neighborhood_search, cell, coords_fun)
+@inline function mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     (; cell_list, cell_buffer, cell_buffer_indices) = neighborhood_search
 
-    for particle in cell_list[cell]
-        if cell_coords(coords_fun(particle), neighborhood_search) != cell
+    for particle in cell_list[cell_index]
+        cell = cell_coords(coords_fun(particle), neighborhood_search)
+
+        # `cell` is a tuple, `cell_index` is the linear index used internally be the
+        # cell list to store particles inside `cell`.
+        # These can be identical (see `DictionaryCellList`)
+        if !is_correct_cell(cell_list, cell, cell_index)
             # Mark this cell and continue with the next one.
             #
             # `cell_buffer` is preallocated,
             # but only the entries 1:i are used for this thread.
             i = cell_buffer_indices[Threads.threadid()] += 1
-            cell_buffer[i, Threads.threadid()] = cell
+            cell_buffer[i, Threads.threadid()] = cell_index
             break
         end
     end
@@ -298,25 +306,6 @@ end
     offset_coords = periodic_coords(coords, periodic_box) .- periodic_box.min_corner
 
     return Tuple(floor_to_int.(offset_coords ./ cell_size))
-end
-
-# When particles end up with coordinates so big that the cell coordinates
-# exceed the range of Int, then `floor(Int, i)` will fail with an InexactError.
-# In this case, we can just use typemax(Int), since we can assume that particles
-# that far away will not interact with anything, anyway.
-# This usually indicates an instability, but we don't want the simulation to crash,
-# since adaptive time integration methods may detect the instability and reject the
-# time step.
-# If we threw an error here, we would prevent the time integration method from
-# retrying with a smaller time step, and we would thus crash perfectly fine simulations.
-@inline function floor_to_int(i)
-    if isnan(i) || i > typemax(Int)
-        return typemax(Int)
-    elseif i < typemin(Int)
-        return typemin(Int)
-    end
-
-    return floor(Int, i)
 end
 
 # Create a copy of a neighborhood search but with a different search radius

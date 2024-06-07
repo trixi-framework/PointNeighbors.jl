@@ -45,10 +45,19 @@
                 GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
                                               periodic_box_min_corner = periodic_boxes[i][1],
                                               periodic_box_max_corner = periodic_boxes[i][2]),
+                GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
+                                              periodic_box_min_corner = periodic_boxes[i][1],
+                                              periodic_box_max_corner = periodic_boxes[i][2],
+                                              cell_list = FullGridCellList(periodic_boxes[i][1],
+                                                                           periodic_boxes[i][2],
+                                                                           search_radius,
+                                                                           periodicity = true)),
             ]
+
             neighborhood_searches_names = [
                 "`TrivialNeighborhoodSearch`",
                 "`GridNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `FullGridCellList",
             ]
 
             # Run this for every neighborhood search
@@ -111,10 +120,17 @@
 
             neighborhood_searches = [
                 GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2)),
+                GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2),
+                                              cell_list = FullGridCellList(minimum(coords,
+                                                                                   dims = 2),
+                                                                           maximum(coords,
+                                                                                   dims = 2),
+                                                                           search_radius)),
             ]
 
             neighborhood_searches_names = [
                 "`GridNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `FullGridCellList`",
             ]
 
             @testset "$(neighborhood_searches_names[i])" for i in eachindex(neighborhood_searches_names)

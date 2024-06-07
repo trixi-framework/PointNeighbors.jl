@@ -43,7 +43,7 @@ function delete_cell!(cell_list, cell)
     delete!(cell_list.hashtable, cell)
 end
 
-@inline eachcell(cell_list::DictionaryCellList) = keys(cell_list.hashtable)
+@inline each_cell_index(cell_list::DictionaryCellList) = keys(cell_list.hashtable)
 
 @inline function Base.getindex(cell_list::DictionaryCellList, cell)
     (; hashtable, empty_vector) = cell_list
@@ -52,3 +52,9 @@ end
     # reuse the empty vector to avoid allocations.
     return get(hashtable, cell, empty_vector)
 end
+
+@inline function is_correct_cell(::DictionaryCellList, cell_coords, cell_index)
+    return cell_coords == cell_index
+end
+
+@inline index_type(::DictionaryCellList{NDIMS}) where {NDIMS} = NTuple{NDIMS, Int}
