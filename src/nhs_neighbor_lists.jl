@@ -59,9 +59,9 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
     end
 end
 
-@inline function for_particle_neighbor_inner(f, system_coords, neighbor_system_coords,
-                                             neighborhood_search::NeighborListsNeighborhoodSearch,
-                                             particle)
+@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                  neighborhood_search::NeighborListsNeighborhoodSearch,
+                                  particle, search_radius = nothing)
     (; periodic_box, neighbor_lists) = neighborhood_search
     (; search_radius) = neighborhood_search.neighborhood_search
 
