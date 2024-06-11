@@ -30,6 +30,7 @@ function initialize!(search::NeighborListsNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
     (; neighborhood_search, neighbor_lists) = search
 
+    # Initialize grid NHS
     initialize!(neighborhood_search, x, y)
 
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
@@ -40,9 +41,13 @@ function update!(search::NeighborListsNeighborhoodSearch,
                  particles_moving = (true, true))
     (; neighborhood_search, neighbor_lists) = search
 
+    # Update grid NHS
     update!(neighborhood_search, x, y, particles_moving = particles_moving)
 
-    initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+    # Skip update if both point sets are static
+    if any(particles_moving)
+        initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+    end
 end
 
 function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
@@ -53,7 +58,7 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
         neighbor_lists[i] = Int[]
     end
 
-    # Compute neighbor lists
+    # Fill neighbor lists
     for_particle_neighbor(x, y, neighborhood_search) do particle, neighbor, _, _
         push!(neighbor_lists[particle], neighbor)
     end
@@ -61,7 +66,7 @@ end
 
 @inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
                                   neighborhood_search::NeighborListsNeighborhoodSearch,
-                                  particle, search_radius = nothing)
+                                  particle; search_radius = nothing)
     (; periodic_box, neighbor_lists) = neighborhood_search
     (; search_radius) = neighborhood_search.neighborhood_search
 
