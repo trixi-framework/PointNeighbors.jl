@@ -90,11 +90,14 @@
         ]
 
         seeds = [1, 2]
-        @testset verbose=true "$(length(cloud_size))D with $(prod(cloud_size)) Particles ($(seed == 1 ? "`initialize!`" : "`update!`"))" for cloud_size in cloud_sizes,
-                                                                                                                                             seed in seeds
+        name(size, seed) = "$(length(size))D with $(prod(size)) Particles " *
+                           "($(seed == 1 ? "`initialize!`" : "`update!`"))"
+        @testset verbose=true "$(name(cloud_size, seed)))" for cloud_size in cloud_sizes,
+                                                               seed in seeds
 
             coords = point_cloud(cloud_size, seed = seed)
             NDIMS = length(cloud_size)
+            n_particles = size(coords, 2)
             search_radius = 2.5
 
             # Use different coordinates for `initialize!` and then `update!` with the
@@ -114,11 +117,13 @@
             end
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2)),
+                GridNeighborhoodSearch{NDIMS}(search_radius, n_particles),
+                NeighborListsNeighborhoodSearch{NDIMS}(search_radius, n_particles),
             ]
 
             neighborhood_searches_names = [
                 "`GridNeighborhoodSearch`",
+                "`NeighborListsNeighborhoodSearch`",
             ]
 
             @testset "$(neighborhood_searches_names[i])" for i in eachindex(neighborhood_searches_names)
