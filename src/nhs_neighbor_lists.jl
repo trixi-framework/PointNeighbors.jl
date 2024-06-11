@@ -1,3 +1,29 @@
+@doc raw"""
+    NeighborListsNeighborhoodSearch{NDIMS}(search_radius, n_particles;
+                                           periodic_box_min_corner = nothing,
+                                           periodic_box_max_corner = nothing)
+
+Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
+for each particle during initialization and update.
+This neighborhood search maximizes the performance of neighbor loops at the cost of a much
+slower [`update!`](@ref).
+
+A [`GridNeighborhoodSearch`](@ref) is used internally to compute the neighbor lists during
+initialization and update.
+
+# Arguments
+- `NDIMS`:          Number of dimensions.
+- `search_radius`:  The uniform search radius.
+- `n_particles`:    Total number of particles.
+
+# Keywords
+- `periodic_box_min_corner`:    In order to use a (rectangular) periodic domain, pass the
+                                coordinates of the domain corner in negative coordinate
+                                directions.
+- `periodic_box_max_corner`:    In order to use a (rectangular) periodic domain, pass the
+                                coordinates of the domain corner in positive coordinate
+                                directions.
+"""
 struct NeighborListsNeighborhoodSearch{NDIMS, NHS, NL, PB}
     neighborhood_search :: NHS
     neighbor_lists      :: NL
@@ -20,9 +46,7 @@ struct NeighborListsNeighborhoodSearch{NDIMS, NHS, NL, PB}
     end
 end
 
-@inline function Base.ndims(neighborhood_search::NeighborListsNeighborhoodSearch{NDIMS}) where {
-                                                                                                NDIMS
-                                                                                                }
+@inline function Base.ndims(::NeighborListsNeighborhoodSearch{NDIMS}) where {NDIMS}
     return NDIMS
 end
 
