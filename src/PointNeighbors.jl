@@ -12,7 +12,7 @@ include("nhs_trivial.jl")
 include("nhs_grid.jl")
 include("cell_lists/cell_lists.jl")
 
-export for_particle_neighbor
+export for_particle_neighbor, foreach_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch
 export initialize!, update!, initialize_grid!, update_grid!
 
