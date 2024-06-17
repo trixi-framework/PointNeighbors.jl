@@ -9,6 +9,7 @@ using Polyester: @batch
 include("util.jl")
 include("neighborhood_search.jl")
 include("nhs_trivial.jl")
+include("cell_lists/cell_lists.jl")
 include("nhs_grid.jl")
 include("nhs_neighbor_lists.jl")
 
