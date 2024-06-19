@@ -14,7 +14,7 @@ include("nhs_grid.jl")
 include("nhs_neighbor_lists.jl")
 
 export for_particle_neighbor, foreach_neighbor
-export TrivialNeighborhoodSearch, GridNeighborhoodSearch, NeighborListsNeighborhoodSearch
+export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
 export initialize!, update!, initialize_grid!, update_grid!
 
 end # module PointNeighbors

@@ -1,7 +1,7 @@
 @doc raw"""
-    NeighborListsNeighborhoodSearch{NDIMS}(search_radius, n_particles;
-                                           periodic_box_min_corner = nothing,
-                                           periodic_box_max_corner = nothing)
+    PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_particles;
+                                         periodic_box_min_corner = nothing,
+                                         periodic_box_max_corner = nothing)
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
 for each particle during initialization and update.
@@ -24,14 +24,14 @@ initialization and update.
                                 coordinates of the domain corner in positive coordinate
                                 directions.
 """
-struct NeighborListsNeighborhoodSearch{NDIMS, NHS, NL, PB}
+struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     neighborhood_search :: NHS
     neighbor_lists      :: NL
     periodic_box        :: PB
 
-    function NeighborListsNeighborhoodSearch{NDIMS}(search_radius, n_particles;
-                                                    periodic_box_min_corner = nothing,
-                                                    periodic_box_max_corner = nothing) where {
+    function PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_particles;
+                                                  periodic_box_min_corner = nothing,
+                                                  periodic_box_max_corner = nothing) where {
                                                                                               NDIMS
                                                                                               }
         nhs = GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
@@ -46,11 +46,11 @@ struct NeighborListsNeighborhoodSearch{NDIMS, NHS, NL, PB}
     end
 end
 
-@inline function Base.ndims(::NeighborListsNeighborhoodSearch{NDIMS}) where {NDIMS}
+@inline function Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS}
     return NDIMS
 end
 
-function initialize!(search::NeighborListsNeighborhoodSearch,
+function initialize!(search::PrecomputedNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
     (; neighborhood_search, neighbor_lists) = search
 
@@ -60,7 +60,7 @@ function initialize!(search::NeighborListsNeighborhoodSearch,
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
 end
 
-function update!(search::NeighborListsNeighborhoodSearch,
+function update!(search::PrecomputedNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
                  particles_moving = (true, true))
     (; neighborhood_search, neighbor_lists) = search
@@ -89,7 +89,7 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
 end
 
 @inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                  neighborhood_search::NeighborListsNeighborhoodSearch,
+                                  neighborhood_search::PrecomputedNeighborhoodSearch,
                                   particle; search_radius = nothing)
     (; periodic_box, neighbor_lists) = neighborhood_search
     (; search_radius) = neighborhood_search.neighborhood_search
