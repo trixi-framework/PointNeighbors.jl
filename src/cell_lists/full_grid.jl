@@ -14,7 +14,11 @@ function FullGridCellList(min_corner, max_corner, search_radius; periodicity = f
         max_corner = max_corner .- min_corner
         min_corner = min_corner .- min_corner
     end
-    n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius)
+
+    # Note that we don't shift everything so that the first cell starts at `min_corner`.
+    # The first cell is the cell containing `min_corner`, so we need to add one layer
+    # in order for `max_corner` to be inside a cell.
+    n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius) .+ 1
     linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
     min_cell = Tuple(floor_to_int.(min_corner ./ search_radius))
 

@@ -118,13 +118,16 @@
                 append!(neighbors_expected[particle], neighbor)
             end
 
+            min_corner = minimum(coords, dims = 2) .- search_radius
+            max_corner = maximum(coords, dims = 2) .+ search_radius
+
             neighborhood_searches = [
                 GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2)),
+                # Expand the domain by `search_radius`, as we need the neighboring cells of
+                # the minimum and maximum coordinates as well.
                 GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2),
-                                              cell_list = FullGridCellList(minimum(coords,
-                                                                                   dims = 2),
-                                                                           maximum(coords,
-                                                                                   dims = 2),
+                                              cell_list = FullGridCellList(min_corner,
+                                                                           max_corner,
                                                                            search_radius)),
             ]
 
