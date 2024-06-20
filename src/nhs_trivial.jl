@@ -19,7 +19,7 @@ internal function `eachneighbor`.
                                 coordinates of the domain corner in positive coordinate
                                 directions.
 """
-struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB}
+struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodSearch
     search_radius :: ELTYPE
     eachparticle  :: EP
     periodic_box  :: PB
@@ -61,3 +61,8 @@ end
 end
 
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachparticle
+
+# Create a copy of a neighborhood search but with a different search radius
+function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch, search_radius, x, y)
+    return nhs
+end
