@@ -15,7 +15,7 @@ See also [`update!`](@ref).
 @inline initialize!(search::AbstractNeighborhoodSearch, x, y) = search
 
 """
-    update!(search::AbstractNeighborhoodSearch, x, y; particles_moving = (true, true))
+    update!(search::AbstractNeighborhoodSearch, x, y; points_moving = (true, true))
 
 Update an already initialized neighborhood search with the two coordinate arrays `x` and `y`.
 
@@ -29,15 +29,15 @@ If incremental updates are not possible for an implementation, `update!` will fa
 to a regular `initialize!`.
 
 Some neighborhood searches might not need to update when only `x` changed since the last
-`update!` or `initialize!` and `y` did not change. Pass `particles_moving = (true, false)`
+`update!` or `initialize!` and `y` did not change. Pass `points_moving = (true, false)`
 in this case to avoid unnecessary updates.
-The first flag in `particles_moving` indicates if points in `x` are moving.
+The first flag in `points_moving` indicates if points in `x` are moving.
 The second flag indicates if points in `y` are moving.
 
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
-                         particles_moving = (true, true))
+                         points_moving = (true, true))
     return search
 end
 
@@ -56,43 +56,42 @@ end
 # Otherwise, unspecialized code will cause a lot of allocations
 # and heavily impact performance.
 # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
-function for_particle_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
-                               particles = axes(system_coords, 2),
-                               parallel = true) where {T}
-    for_particle_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particles,
-                          Val(parallel))
+function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
+                                ppointes = axes(system_coords, 2),
+                                parallel = true) where {T}
+    foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search, points,
+                           Val(parallel))
 end
 
-@inline function for_particle_neighbor(f, system_coords, neighbor_coords,
-                                       neighborhood_search, particles, parallel::Val{true})
-    @threaded for particle in particles
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particle)
+@inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
+                                        neighborhood_search, points, parallel::Val{true})
+    @threaded for point in points
+        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
     end
 
     return nothing
 end
 
-@inline function for_particle_neighbor(f, system_coords, neighbor_coords,
-                                       neighborhood_search, particles, parallel::Val{false})
-    for particle in particles
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, particle)
+@inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
+                                        neighborhood_search, points, parallel::Val{false})
+    for point in points
+        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
     end
 
     return nothing
 end
 
 @inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                  neighborhood_search, particle;
+                                  neighborhood_search, point;
                                   search_radius = neighborhood_search.search_radius)
     (; periodic_box) = neighborhood_search
 
-    particle_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)),
-                                      particle)
-    for neighbor in eachneighbor(particle_coords, neighborhood_search)
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+    for neighbor in eachneighbor(point_coords, neighborhood_search)
         neighbor_coords = extract_svector(neighbor_system_coords,
                                           Val(ndims(neighborhood_search)), neighbor)
 
-        pos_diff = particle_coords - neighbor_coords
+        pos_diff = point_coords - neighbor_coords
         distance2 = dot(pos_diff, pos_diff)
 
         pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
@@ -102,8 +101,8 @@ end
             distance = sqrt(distance2)
 
             # Inline to avoid loss of performance
-            # compared to not using `for_particle_neighbor`.
-            @inline f(particle, neighbor, pos_diff, distance)
+            # compared to not using `foreach_point_neighbor`.
+            @inline f(point, neighbor, pos_diff, distance)
         end
     end
 end
@@ -113,8 +112,7 @@ end
     return pos_diff, distance2
 end
 
-@inline function compute_periodic_distance(pos_diff, distance2, search_radius,
-                                           periodic_box)
+@inline function compute_periodic_distance(pos_diff, distance2, search_radius, periodic_box)
     if distance2 > search_radius^2
         # Use periodic `pos_diff`
         pos_diff -= periodic_box.size .* round.(pos_diff ./ periodic_box.size)
