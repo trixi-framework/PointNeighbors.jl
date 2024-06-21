@@ -46,6 +46,6 @@ end
 
 function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch,
                                   search_radius, n_points; eachpoint = 1:n_points)
-    return TrivialNeighborhoodSearch{ndims(nhs)}(; search_radius, eachparticle = eachpoint,
+    return TrivialNeighborhoodSearch{ndims(nhs)}(; search_radius, eachpoint,
                                                  periodic_box = nhs.periodic_box)
 end

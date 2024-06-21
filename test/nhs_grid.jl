@@ -49,7 +49,7 @@
 
         # Double search radius
         nhs2 = GridNeighborhoodSearch{2}(search_radius = 2 * search_radius,
-                                         n_particles = size(coordinates1, 2))
+                                         n_points = size(coordinates1, 2))
         initialize!(nhs2, coordinates1, coordinates1)
 
         # Get each neighbor in double search radius
@@ -160,7 +160,7 @@
             coords = coordinates[i]
 
             nhs = GridNeighborhoodSearch{size(coords, 1)}(search_radius = 0.1,
-                                                          n_particles = size(coords, 2),
+                                                          n_points = size(coords, 2),
                                                           periodic_box = periodic_boxes[i])
 
             initialize_grid!(nhs, coords)
@@ -189,8 +189,7 @@
                       0.0 0.0]
 
             # 5 x 1 cells
-            nhs = GridNeighborhoodSearch{2}(search_radius = 1.0,
-                                            n_particles = size(coords, 2),
+            nhs = GridNeighborhoodSearch{2}(search_radius = 1.0, n_points = size(coords, 2),
                                             periodic_box = PeriodicBox(min_corner = [
                                                                            -1.5,
                                                                            0.0,

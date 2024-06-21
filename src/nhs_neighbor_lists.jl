@@ -23,7 +23,7 @@ initialization and update.
 - `threaded_update = true`: Can be used to deactivate thread parallelization in the
                             neighborhood search update. This can be one of the largest
                             sources of variations between simulations with different
-                            thread numbers due to particle ordering changes.
+                            thread numbers due to neighbor ordering changes.
 """
 struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     neighborhood_search :: NHS
@@ -115,8 +115,7 @@ end
 function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                   search_radius, n_points; eachpoint = 1:n_points)
     threaded_update = nhs.neighborhood_search.threaded_update
-    return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius,
-                                                     n_particles = n_points,
+    return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                                      periodic_box = nhs.periodic_box,
                                                      threaded_update)
 end

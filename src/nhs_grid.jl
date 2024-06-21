@@ -311,7 +311,7 @@ end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
-    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_particles = n_points,
+    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                               periodic_box = nhs.periodic_box,
                                               threaded_update = nhs.threaded_update)
 end

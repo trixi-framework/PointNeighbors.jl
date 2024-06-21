@@ -59,7 +59,7 @@
                 GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
                 PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
             ]
-            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_particles)
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
 
             names_copied = [name * " copied" for name in names]
@@ -117,7 +117,7 @@
             # Compute expected neighbor lists by brute-force looping over all points
             # as potential neighbors (`TrivialNeighborhoodSearch`).
             trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(; search_radius,
-                                                           eachparticle = axes(coords, 2))
+                                                           eachpoint = axes(coords, 2))
 
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
@@ -142,7 +142,7 @@
                 GridNeighborhoodSearch{NDIMS}(),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
             ]
-            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_particles)
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
 
             names_copied = [name * " copied" for name in names]
