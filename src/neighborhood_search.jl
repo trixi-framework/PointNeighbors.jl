@@ -63,7 +63,7 @@ nhs = GridNeighborhoodSearch{2}()
 nhs1 = copy_neighborhood_search(nhs, 1.0, 100)
 
 # output
-GridNeighborhoodSearch{2, Float64, ...}(...)
+GridNeighborhoodSearch{3, Float64, ...}(...)
 ```
 """
 @inline function copy_neighborhood_search(search::AbstractNeighborhoodSearch,
