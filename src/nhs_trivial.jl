@@ -18,7 +18,7 @@ Trivial neighborhood search that simply loops over all points.
 """
 struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodSearch
     search_radius :: ELTYPE
-    eachpoint  :: EP
+    eachpoint     :: EP
     periodic_box  :: PB
 
     function TrivialNeighborhoodSearch{NDIMS}(search_radius, eachpoint;

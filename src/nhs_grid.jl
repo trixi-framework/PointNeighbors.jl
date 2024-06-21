@@ -171,8 +171,8 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
 
             # Find all points whose coordinates do not match this cell
             moved_point_indices = (i for i in eachindex(points)
-                                      if cell_coords(coords_fun(points[i]),
-                                                     neighborhood_search) != cell)
+                                   if cell_coords(coords_fun(points[i]),
+                                                  neighborhood_search) != cell)
 
             # Add moved points to new cell
             for i in moved_point_indices
