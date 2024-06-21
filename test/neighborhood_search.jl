@@ -57,7 +57,7 @@
             template_nhs = [
                 TrivialNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
-                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i])
+                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_particles)
             append!(neighborhood_searches, copied_nhs)
@@ -140,7 +140,7 @@
             # Also test copied templates
             template_nhs = [
                 GridNeighborhoodSearch{NDIMS}(),
-                PrecomputedNeighborhoodSearch{NDIMS}()
+                PrecomputedNeighborhoodSearch{NDIMS}(),
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_particles)
             append!(neighborhood_searches, copied_nhs)

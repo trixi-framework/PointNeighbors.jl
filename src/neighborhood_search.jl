@@ -55,7 +55,7 @@ This is useful when a simulation code requires multiple neighborhood searches of
 kind. One can then just pass an empty neighborhood search as a template and use
 this function inside the simulation code to generate similar neighborhood searches with
 different search radii and different numbers of points.
-```jldoctest
+```jldoctest; filter = r"GridNeighborhoodSearch{2,.*"
 # Template
 nhs = GridNeighborhoodSearch{2}()
 
@@ -63,7 +63,8 @@ nhs = GridNeighborhoodSearch{2}()
 nhs1 = copy_neighborhood_search(nhs, 1.0, 100)
 
 # output
-1
+GridNeighborhoodSearch{2, Float64, ...}(...)
+```
 """
 @inline function copy_neighborhood_search(search::AbstractNeighborhoodSearch,
                                           search_radius, n_points; eachpoint = 1:n_points)
