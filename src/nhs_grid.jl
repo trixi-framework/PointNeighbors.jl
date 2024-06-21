@@ -1,5 +1,5 @@
 @doc raw"""
-    GridNeighborhoodSearch{NDIMS}(search_radius, n_points;
+    GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                   periodic_box = nothing, threaded_update = true)
 
 Simple grid-based neighborhood search with uniform search radius.
@@ -23,11 +23,13 @@ As opposed to (Ihmsen et al. 2011), we do not sort the points in any way,
 since not sorting makes our implementation a lot faster (although less parallelizable).
 
 # Arguments
-- `NDIMS`:          Number of dimensions.
-- `search_radius`:  The uniform search radius.
-- `n_points`:    Total number of points.
+- `NDIMS`: Number of dimensions.
 
 # Keywords
+- `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
+                            with [`copy_neighborhood_search`](@ref).
+- `n_points = 0`:           Total number of points. The default of `0` is useful together
+                            with [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
 - `threaded_update = true`: Can be used to deactivate thread parallelization in the
@@ -55,7 +57,7 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
     cell_buffer_indices :: Vector{Int} # Store which entries of `cell_buffer` are initialized
     threaded_update     :: Bool
 
-    function GridNeighborhoodSearch{NDIMS}(search_radius, n_points;
+    function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                            periodic_box = nothing,
                                            threaded_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
@@ -309,7 +311,7 @@ end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
-    return GridNeighborhoodSearch{ndims(nhs)}(search_radius, n_points,
+    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                               periodic_box = nhs.periodic_box,
                                               threaded_update = nhs.threaded_update)
 end
