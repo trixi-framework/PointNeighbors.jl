@@ -1,10 +1,11 @@
 @doc raw"""
-    TrivialNeighborhoodSearch{NDIMS}(search_radius, eachpoint, periodic_box = nothing)
+    TrivialNeighborhoodSearch{NDIMS}(; search_radius = 0.0, eachpoint = 1:0,
+                                     periodic_box = nothing)
 
 Trivial neighborhood search that simply loops over all points.
 
 # Arguments
-- `NDIMS`:          Number of dimensions.
+- `NDIMS`: Number of dimensions.
 
 # Keywords
 - `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
@@ -20,7 +21,7 @@ struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodS
     eachpoint     :: EP
     periodic_box  :: PB
 
-    function TrivialNeighborhoodSearch{NDIMS}(; search_radius = 0.0, eachpoint = 1:0;
+    function TrivialNeighborhoodSearch{NDIMS}(; search_radius = 0.0, eachpoint = 1:0,
                                               periodic_box = nothing) where {NDIMS}
         new{NDIMS, typeof(search_radius),
             typeof(eachpoint), typeof(periodic_box)}(search_radius, eachpoint, periodic_box)

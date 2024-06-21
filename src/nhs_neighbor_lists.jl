@@ -1,5 +1,5 @@
 @doc raw"""
-    PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points;
+    PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                          periodic_box = nothing, threaded_update = true)
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
@@ -30,10 +30,10 @@ struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     neighbor_lists      :: NL
     periodic_box        :: PB
 
-    function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0;
+    function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                                   periodic_box = nothing,
                                                   threaded_update = true) where {NDIMS}
-        nhs = GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
+        nhs = GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                             periodic_box = periodic_box,
                                             threaded_update = threaded_update)
 

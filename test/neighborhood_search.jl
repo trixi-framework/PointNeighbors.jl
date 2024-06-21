@@ -39,11 +39,11 @@
             search_radius = 0.1
 
             neighborhood_searches = [
-                TrivialNeighborhoodSearch{NDIMS}(search_radius, 1:n_points,
+                TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_points,
                                                  periodic_box = periodic_boxes[i]),
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i]),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points,
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                                      periodic_box = periodic_boxes[i]),
             ]
             neighborhood_searches_names = [
@@ -103,7 +103,8 @@
 
             # Compute expected neighbor lists by brute-force looping over all points
             # as potential neighbors (`TrivialNeighborhoodSearch`).
-            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(search_radius, axes(coords, 2))
+            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(; search_radius,
+                                                           eachparticle = axes(coords, 2))
 
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
@@ -114,8 +115,8 @@
             end
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_points),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
             ]
 
             neighborhood_searches_names = [
