@@ -35,17 +35,17 @@
             coords = coordinates[i]
 
             NDIMS = size(coords, 1)
-            n_particles = size(coords, 2)
+            n_points = size(coords, 2)
             search_radius = 0.1
 
             neighborhood_searches = [
-                TrivialNeighborhoodSearch{NDIMS}(search_radius, 1:n_particles,
+                TrivialNeighborhoodSearch{NDIMS}(search_radius, 1:n_points,
                                                  periodic_box_min_corner = periodic_boxes[i][1],
                                                  periodic_box_max_corner = periodic_boxes[i][2]),
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
+                GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
                                               periodic_box_min_corner = periodic_boxes[i][1],
                                               periodic_box_max_corner = periodic_boxes[i][2]),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_particles,
+                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points,
                                                      periodic_box_min_corner = periodic_boxes[i][1],
                                                      periodic_box_max_corner = periodic_boxes[i][2]),
             ]
@@ -63,10 +63,10 @@
 
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
-                for_particle_neighbor(coords, coords, nhs,
-                                      particles = axes(coords, 2)) do particle, neighbor,
-                                                                      pos_diff, distance
-                    append!(neighbors[particle], neighbor)
+                foreach_point_neighbor(coords, coords, nhs,
+                                       points = axes(coords, 2)) do point, neighbor,
+                                                                    pos_diff, distance
+                    append!(neighbors[point], neighbor)
                 end
 
                 # All of these tests are designed to yield the same neighbor lists.
@@ -97,28 +97,28 @@
 
             coords = point_cloud(cloud_size, seed = seed)
             NDIMS = length(cloud_size)
-            n_particles = size(coords, 2)
+            n_points = size(coords, 2)
             search_radius = 2.5
 
             # Use different coordinates for `initialize!` and then `update!` with the
             # correct coordinates to make sure that `update!` is working as well.
             coords_initialize = point_cloud(cloud_size, seed = 1)
 
-            # Compute expected neighbor lists by brute-force looping over all particles
+            # Compute expected neighbor lists by brute-force looping over all points
             # as potential neighbors (`TrivialNeighborhoodSearch`).
             trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(search_radius, axes(coords, 2))
 
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
-            for_particle_neighbor(coords, coords, trivial_nhs,
-                                  parallel = false) do particle, neighbor,
-                                                       pos_diff, distance
-                append!(neighbors_expected[particle], neighbor)
+            foreach_point_neighbor(coords, coords, trivial_nhs,
+                                   parallel = false) do point, neighbor,
+                                                        pos_diff, distance
+                append!(neighbors_expected[point], neighbor)
             end
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_particles),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_particles),
+                GridNeighborhoodSearch{NDIMS}(search_radius, n_points),
+                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points),
             ]
 
             neighborhood_searches_names = [
@@ -141,10 +141,10 @@
 
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
-                for_particle_neighbor(coords, coords, nhs,
-                                      parallel = false) do particle, neighbor,
-                                                           pos_diff, distance
-                    append!(neighbors[particle], neighbor)
+                foreach_point_neighbor(coords, coords, nhs,
+                                       parallel = false) do point, neighbor,
+                                                            pos_diff, distance
+                    append!(neighbors[point], neighbor)
                 end
 
                 @test sort.(neighbors) == neighbors_expected
