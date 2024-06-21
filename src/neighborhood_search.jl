@@ -41,12 +41,21 @@ See also [`initialize!`](@ref).
     return search
 end
 
+"""
+    PeriodicBox(; min_corner, max_corner)
+
+Define a rectangular periodic domain.
+
+# Keywords
+- `min_corner`: Coordinates of the domain corner in negative coordinate directions.
+- `max_corner`: Coordinates of the domain corner in positive coordinate directions.
+"""
 struct PeriodicBox{NDIMS, ELTYPE}
     min_corner :: SVector{NDIMS, ELTYPE}
     max_corner :: SVector{NDIMS, ELTYPE}
     size       :: SVector{NDIMS, ELTYPE}
 
-    function PeriodicBox(min_corner, max_corner)
+    function PeriodicBox(; min_corner, max_corner)
         new{length(min_corner), eltype(min_corner)}(min_corner, max_corner,
                                                     max_corner - min_corner)
     end

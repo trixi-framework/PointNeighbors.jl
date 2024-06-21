@@ -1,6 +1,6 @@
 @doc raw"""
-    GridNeighborhoodSearch{NDIMS}(search_radius, n_particles; periodic_box_min_corner=nothing,
-                                  periodic_box_max_corner=nothing, threaded_nhs_update=true)
+    GridNeighborhoodSearch{NDIMS}(search_radius, n_particles;
+                                  periodic_box = nothing, threaded_nhs_update = true)
 
 Simple grid-based neighborhood search with uniform search radius.
 The domain is divided into a regular grid.
@@ -28,15 +28,12 @@ since not sorting makes our implementation a lot faster (although less paralleli
 - `n_particles`:    Total number of particles.
 
 # Keywords
-- `periodic_box_min_corner`:    In order to use a (rectangular) periodic domain, pass the
-                                coordinates of the domain corner in negative coordinate
-                                directions.
-- `periodic_box_max_corner`:    In order to use a (rectangular) periodic domain, pass the
-                                coordinates of the domain corner in positive coordinate
-                                directions.
-- `threaded_nhs_update=true`:              Can be used to deactivate thread parallelization in the neighborhood search update.
-                                This can be one of the largest sources of variations between simulations
-                                with different thread numbers due to particle ordering changes.
+- `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
+                            [`PeriodicBox`](@ref).
+- `threaded_nhs_update = true`: Can be used to deactivate thread parallelization in the
+                                neighborhood search update. This can be one of the largest
+                                sources of variations between simulations with different
+                                thread numbers due to particle ordering changes.
 
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
@@ -59,8 +56,7 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
     threaded_nhs_update :: Bool
 
     function GridNeighborhoodSearch{NDIMS}(search_radius, n_particles;
-                                           periodic_box_min_corner = nothing,
-                                           periodic_box_max_corner = nothing,
+                                           periodic_box = nothing,
                                            threaded_nhs_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
         cell_list = DictionaryCellList{NDIMS}()
@@ -68,16 +64,11 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
         cell_buffer = Array{NTuple{NDIMS, Int}, 2}(undef, n_particles, Threads.nthreads())
         cell_buffer_indices = zeros(Int, Threads.nthreads())
 
-        if search_radius < eps() ||
-           (periodic_box_min_corner === nothing && periodic_box_max_corner === nothing)
-
+        if search_radius < eps() || isnothing(periodic_box)
             # No periodicity
-            periodic_box = nothing
             n_cells = ntuple(_ -> -1, Val(NDIMS))
             cell_size = ntuple(_ -> search_radius, Val(NDIMS))
-        elseif periodic_box_min_corner !== nothing && periodic_box_max_corner !== nothing
-            periodic_box = PeriodicBox(periodic_box_min_corner, periodic_box_max_corner)
-
+        else
             # Round up search radius so that the grid fits exactly into the domain without
             # splitting any cells. This might impact performance slightly, since larger
             # cells mean that more potential neighbors are considered than necessary.
@@ -91,9 +82,6 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
                                     "in each dimension when used with periodicity. " *
                                     "Please use no NHS for very small problems."))
             end
-        else
-            throw(ArgumentError("`periodic_box_min_corner` and `periodic_box_max_corner` " *
-                                "must either be both `nothing` or both an array or tuple"))
         end
 
         new{NDIMS, ELTYPE, typeof(cell_list),
@@ -103,7 +91,7 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
     end
 end
 
-@inline Base.ndims(neighborhood_search::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
+@inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
 @inline function nparticles(neighborhood_search::GridNeighborhoodSearch)
     return size(neighborhood_search.cell_buffer, 1)
@@ -321,13 +309,8 @@ end
 
 # Create a copy of a neighborhood search but with a different search radius
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, x, y)
-    if nhs.periodic_box === nothing
-        search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs))
-    else
-        search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs),
-                                                    periodic_box_min_corner = nhs.periodic_box.min_corner,
-                                                    periodic_box_max_corner = nhs.periodic_box.max_corner)
-    end
+    search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs),
+                                                periodic_box = nhs.periodic_box)
 
     # Initialize neighborhood search
     initialize!(search, x, y)

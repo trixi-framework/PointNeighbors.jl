@@ -150,19 +150,18 @@
         ]
 
         periodic_boxes = [
-            ([-0.1, -0.2], [0.2, 0.4]),
+            PeriodicBox([-0.1, -0.2], [0.2, 0.4]),
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
-            ([-0.1, -0.2], [0.205, 0.43]),
-            ([-0.1, -0.2, 0.05], [0.2, 0.4, 0.35]),
+            PeriodicBox([-0.1, -0.2], [0.205, 0.43]),
+            PeriodicBox([-0.1, -0.2, 0.05], [0.2, 0.4, 0.35]),
         ]
 
         @testset verbose=true "$(names[i])" for i in eachindex(names)
             coords = coordinates[i]
 
             nhs = GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
-                                                          periodic_box_min_corner = periodic_boxes[i][1],
-                                                          periodic_box_max_corner = periodic_boxes[i][2])
+                                                          periodic_box = periodic_boxes[i])
 
             initialize_grid!(nhs, coords)
 
@@ -191,13 +190,12 @@
 
             # 5 x 1 cells
             nhs = GridNeighborhoodSearch{2}(1.0, size(coords, 2),
-                                            periodic_box_min_corner = [-1.5, 0.0],
-                                            periodic_box_max_corner = [2.5, 3.0])
+                                            periodic_box = PeriodicBox([-1.5, 0.0],
+                                                                       [2.5, 3.0]))
 
             initialize_grid!(nhs, coords)
 
-            neighbors = [sort(unique(collect(PointNeighbors.eachneighbor(coords[:,
-                                                                                i],
+            neighbors = [sort(unique(collect(PointNeighbors.eachneighbor(coords[:, i],
                                                                          nhs))))
                          for i in 1:2]
 
