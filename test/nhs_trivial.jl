@@ -1,5 +1,5 @@
 @testset verbose=true "TrivialNeighborhoodSearch" begin
-    # Setup with 5 particles
+    # Setup with 5 points
     nhs = TrivialNeighborhoodSearch{2}(1.0, Base.OneTo(5))
 
     # Get each neighbor for arbitrary coordinates

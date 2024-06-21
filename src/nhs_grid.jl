@@ -1,10 +1,10 @@
 @doc raw"""
-    GridNeighborhoodSearch{NDIMS}(search_radius, n_particles;
+    GridNeighborhoodSearch{NDIMS}(search_radius, n_points;
                                   periodic_box = nothing, threaded_nhs_update = true)
 
 Simple grid-based neighborhood search with uniform search radius.
 The domain is divided into a regular grid.
-For each (non-empty) grid cell, a list of particles in this cell is stored.
+For each (non-empty) grid cell, a list of points in this cell is stored.
 Instead of representing a finite domain by an array of cells, a potentially infinite domain
 is represented by storing cell lists in a hash table (using Julia's `Dict` data structure),
 indexed by the cell index tuple
@@ -14,18 +14,18 @@ indexed by the cell index tuple
 ```
 where ``x, y, z`` are the space coordinates and ``d`` is the search radius.
 
-To find particles within the search radius around a point, only particles in the neighboring
+To find points within the search radius around a position, only points in the neighboring
 cells are considered.
 
 See also (Chalela et al., 2021), (Ihmsen et al. 2011, Section 4.4).
 
-As opposed to (Ihmsen et al. 2011), we do not sort the particles in any way,
+As opposed to (Ihmsen et al. 2011), we do not sort the points in any way,
 since not sorting makes our implementation a lot faster (although less parallelizable).
 
 # Arguments
 - `NDIMS`:          Number of dimensions.
 - `search_radius`:  The uniform search radius.
-- `n_particles`:    Total number of particles.
+- `n_points`:    Total number of points.
 
 # Keywords
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
@@ -33,7 +33,7 @@ since not sorting makes our implementation a lot faster (although less paralleli
 - `threaded_nhs_update = true`: Can be used to deactivate thread parallelization in the
                                 neighborhood search update. This can be one of the largest
                                 sources of variations between simulations with different
-                                thread numbers due to particle ordering changes.
+                                thread numbers due to neighbor ordering changes.
 
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
@@ -55,13 +55,13 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
     cell_buffer_indices :: Vector{Int} # Store which entries of `cell_buffer` are initialized
     threaded_nhs_update :: Bool
 
-    function GridNeighborhoodSearch{NDIMS}(search_radius, n_particles;
+    function GridNeighborhoodSearch{NDIMS}(search_radius, n_points;
                                            periodic_box = nothing,
                                            threaded_nhs_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
         cell_list = DictionaryCellList{NDIMS}()
 
-        cell_buffer = Array{NTuple{NDIMS, Int}, 2}(undef, n_particles, Threads.nthreads())
+        cell_buffer = Array{NTuple{NDIMS, Int}, 2}(undef, n_points, Threads.nthreads())
         cell_buffer_indices = zeros(Int, Threads.nthreads())
 
         if search_radius < eps() || isnothing(periodic_box)
@@ -93,7 +93,7 @@ end
 
 @inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
-@inline function nparticles(neighborhood_search::GridNeighborhoodSearch)
+@inline function npoints(neighborhood_search::GridNeighborhoodSearch)
     return size(neighborhood_search.cell_buffer, 1)
 end
 
@@ -112,12 +112,12 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fu
 
     empty!(cell_list)
 
-    for particle in 1:nparticles(neighborhood_search)
-        # Get cell index of the particle's cell
-        cell = cell_coords(coords_fun(particle), neighborhood_search)
+    for point in 1:npoints(neighborhood_search)
+        # Get cell index of the point's cell
+        cell = cell_coords(coords_fun(point), neighborhood_search)
 
-        # Add particle to corresponding cell
-        push_cell!(cell_list, cell, particle)
+        # Add point to corresponding cell
+        push_cell!(cell_list, cell, point)
     end
 
     return neighborhood_search
@@ -125,10 +125,10 @@ end
 
 function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 particles_moving = (true, true))
-    # The coordinates of the first set of particles are irrelevant for this NHS.
+                 points_moving = (true, true))
+    # The coordinates of the first set of points are irrelevant for this NHS.
     # Only update when the second set is moving.
-    particles_moving[2] || return neighborhood_search
+    points_moving[2] || return neighborhood_search
 
     update_grid!(neighborhood_search, y)
 end
@@ -139,40 +139,40 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
     update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
 end
 
-# Modify the existing hash table by moving particles into their new cells
+# Modify the existing hash table by moving points into their new cells
 function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     (; cell_list, cell_buffer, cell_buffer_indices, threaded_nhs_update) = neighborhood_search
 
     # Reset `cell_buffer` by moving all pointers to the beginning
     cell_buffer_indices .= 0
 
-    # Find all cells containing particles that now belong to another cell
+    # Find all cells containing points that now belong to another cell
     mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                        Val(threaded_nhs_update))
 
-    # Iterate over all marked cells and move the particles into their new cells.
+    # Iterate over all marked cells and move the points into their new cells.
     for thread in 1:Threads.nthreads()
         # Only the entries `1:cell_buffer_indices[thread]` are initialized for `thread`.
         for i in 1:cell_buffer_indices[thread]
             cell = cell_buffer[i, thread]
-            particles = cell_list[cell]
+            points = cell_list[cell]
 
-            # Find all particles whose coordinates do not match this cell
-            moved_particle_indices = (i for i in eachindex(particles)
-                                      if cell_coords(coords_fun(particles[i]),
-                                                     neighborhood_search) != cell)
+            # Find all points whose coordinates do not match this cell
+            moved_point_indices = (i for i in eachindex(points)
+                                   if cell_coords(coords_fun(points[i]),
+                                                  neighborhood_search) != cell)
 
-            # Add moved particles to new cell
-            for i in moved_particle_indices
-                particle = particles[i]
-                new_cell_coords = cell_coords(coords_fun(particle), neighborhood_search)
+            # Add moved points to new cell
+            for i in moved_point_indices
+                point = points[i]
+                new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
 
-                # Add particle to corresponding cell or create cell if it does not exist
-                push_cell!(cell_list, new_cell_coords, particle)
+                # Add point to corresponding cell or create cell if it does not exist
+                push_cell!(cell_list, new_cell_coords, point)
             end
 
-            # Remove moved particles from this cell
-            deleteat_cell!(cell_list, cell, moved_particle_indices)
+            # Remove moved points from this cell
+            deleteat_cell!(cell_list, cell, moved_point_indices)
         end
     end
 
@@ -201,8 +201,8 @@ end
 @inline function mark_changed_cell!(neighborhood_search, cell, coords_fun)
     (; cell_list, cell_buffer, cell_buffer_indices) = neighborhood_search
 
-    for particle in cell_list[cell]
-        if cell_coords(coords_fun(particle), neighborhood_search) != cell
+    for point in cell_list[cell]
+        if cell_coords(coords_fun(point), neighborhood_search) != cell
             # Mark this cell and continue with the next one.
             #
             # `cell_buffer` is preallocated,
@@ -221,8 +221,8 @@ end
     # Generator of all neighboring cells to consider
     neighboring_cells = ((x + i) for i in -1:1)
 
-    # Merge all lists of particles in the neighboring cells into one iterator
-    Iterators.flatten(particles_in_cell(cell, neighborhood_search)
+    # Merge all lists of points in the neighboring cells into one iterator
+    Iterators.flatten(points_in_cell(cell, neighborhood_search)
                       for cell in neighboring_cells)
 end
 
@@ -233,8 +233,8 @@ end
     # Generator of all neighboring cells to consider
     neighboring_cells = ((x + i, y + j) for i in -1:1, j in -1:1)
 
-    # Merge all lists of particles in the neighboring cells into one iterator
-    Iterators.flatten(particles_in_cell(cell, neighborhood_search)
+    # Merge all lists of points in the neighboring cells into one iterator
+    Iterators.flatten(points_in_cell(cell, neighborhood_search)
                       for cell in neighboring_cells)
 end
 
@@ -245,12 +245,12 @@ end
     # Generator of all neighboring cells to consider
     neighboring_cells = ((x + i, y + j, z + k) for i in -1:1, j in -1:1, k in -1:1)
 
-    # Merge all lists of particles in the neighboring cells into one iterator
-    Iterators.flatten(particles_in_cell(cell, neighborhood_search)
+    # Merge all lists of points in the neighboring cells into one iterator
+    Iterators.flatten(points_in_cell(cell, neighborhood_search)
                       for cell in neighboring_cells)
 end
 
-@inline function particles_in_cell(cell_index, neighborhood_search)
+@inline function points_in_cell(cell_index, neighborhood_search)
     (; cell_list) = neighborhood_search
 
     return cell_list[periodic_cell_index(cell_index, neighborhood_search)]
@@ -288,9 +288,9 @@ end
     return Tuple(floor_to_int.(offset_coords ./ cell_size))
 end
 
-# When particles end up with coordinates so big that the cell coordinates
+# When points end up with coordinates so big that the cell coordinates
 # exceed the range of Int, then `floor(Int, i)` will fail with an InexactError.
-# In this case, we can just use typemax(Int), since we can assume that particles
+# In this case, we can just use typemax(Int), since we can assume that points
 # that far away will not interact with anything, anyway.
 # This usually indicates an instability, but we don't want the simulation to crash,
 # since adaptive time integration methods may detect the instability and reject the
@@ -309,7 +309,7 @@ end
 
 # Create a copy of a neighborhood search but with a different search radius
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, x, y)
-    search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, nparticles(nhs),
+    search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, npoints(nhs),
                                                 periodic_box = nhs.periodic_box)
 
     # Initialize neighborhood search
