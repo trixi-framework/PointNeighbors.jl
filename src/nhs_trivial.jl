@@ -1,20 +1,16 @@
 @doc raw"""
-    TrivialNeighborhoodSearch{NDIMS}(search_radius, eachpoint)
+    TrivialNeighborhoodSearch{NDIMS}(search_radius, eachpoint, periodic_box = nothing)
 
 Trivial neighborhood search that simply loops over all points.
 
 # Arguments
 - `NDIMS`:          Number of dimensions.
 - `search_radius`:  The uniform search radius.
-- `eachpoint`:   `UnitRange` of all point indices. Usually just `1:n_points`.
+- `eachparticle`:   Iterator for all point indices. Usually just `1:n_points`.
 
 # Keywords
-- `periodic_box_min_corner`:    In order to use a (rectangular) periodic domain, pass the
-                                coordinates of the domain corner in negative coordinate
-                                directions.
-- `periodic_box_max_corner`:    In order to use a (rectangular) periodic domain, pass the
-                                coordinates of the domain corner in positive coordinate
-                                directions.
+- `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
+                            [`PeriodicBox`](@ref).
 """
 struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodSearch
     search_radius :: ELTYPE
@@ -22,32 +18,13 @@ struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodS
     periodic_box  :: PB
 
     function TrivialNeighborhoodSearch{NDIMS}(search_radius, eachpoint;
-                                              periodic_box_min_corner = nothing,
-                                              periodic_box_max_corner = nothing) where {
-                                                                                        NDIMS
-                                                                                        }
-        if search_radius < eps() ||
-           (periodic_box_min_corner === nothing && periodic_box_max_corner === nothing)
-
-            # No periodicity
-            periodic_box = nothing
-        elseif periodic_box_min_corner !== nothing && periodic_box_max_corner !== nothing
-            periodic_box = PeriodicBox(periodic_box_min_corner, periodic_box_max_corner)
-        else
-            throw(ArgumentError("`periodic_box_min_corner` and `periodic_box_max_corner` " *
-                                "must either be both `nothing` or both an array or tuple"))
-        end
-
+                                              periodic_box = nothing) where {NDIMS}
         new{NDIMS, typeof(search_radius),
             typeof(eachpoint), typeof(periodic_box)}(search_radius, eachpoint, periodic_box)
     end
 end
 
-@inline function Base.ndims(neighborhood_search::TrivialNeighborhoodSearch{NDIMS}) where {
-                                                                                          NDIMS
-                                                                                          }
-    return NDIMS
-end
+@inline Base.ndims(::TrivialNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
 @inline initialize!(search::TrivialNeighborhoodSearch, x, y) = search
 

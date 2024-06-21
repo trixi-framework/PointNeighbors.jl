@@ -1,7 +1,6 @@
 @doc raw"""
     PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points;
-                                         periodic_box_min_corner = nothing,
-                                         periodic_box_max_corner = nothing)
+                                         periodic_box = nothing)
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
 for each point during initialization and update.
@@ -17,12 +16,8 @@ initialization and update.
 - `n_points`:    Total number of points.
 
 # Keywords
-- `periodic_box_min_corner`:    In order to use a (rectangular) periodic domain, pass the
-                                coordinates of the domain corner in negative coordinate
-                                directions.
-- `periodic_box_max_corner`:    In order to use a (rectangular) periodic domain, pass the
-                                coordinates of the domain corner in positive coordinate
-                                directions.
+- `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
+                            [`PeriodicBox`](@ref).
 """
 struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     neighborhood_search :: NHS
@@ -30,19 +25,15 @@ struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     periodic_box        :: PB
 
     function PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points;
-                                                  periodic_box_min_corner = nothing,
-                                                  periodic_box_max_corner = nothing) where {
-                                                                                            NDIMS
-                                                                                            }
+                                                  periodic_box = nothing) where {NDIMS}
         nhs = GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
-                                            periodic_box_min_corner = periodic_box_min_corner,
-                                            periodic_box_max_corner = periodic_box_max_corner)
+                                            periodic_box = periodic_box)
 
         neighbor_lists = Vector{Vector{Int}}()
 
         new{NDIMS, typeof(nhs),
             typeof(neighbor_lists),
-            typeof(nhs.periodic_box)}(nhs, neighbor_lists, nhs.periodic_box)
+            typeof(periodic_box)}(nhs, neighbor_lists, periodic_box)
     end
 end
 

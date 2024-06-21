@@ -24,11 +24,11 @@
         ]
 
         periodic_boxes = [
-            ([-0.1, -0.2], [0.2, 0.4]),
+            PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.2, 0.4]),
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
-            ([-0.1, -0.2], [0.205, 0.43]),
-            ([-0.1, -0.2, 0.05], [0.2, 0.4, 0.35]),
+            PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.205, 0.43]),
+            PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35]),
         ]
 
         @testset verbose=true "$(names[i])" for i in eachindex(names)
@@ -40,14 +40,11 @@
 
             neighborhood_searches = [
                 TrivialNeighborhoodSearch{NDIMS}(search_radius, 1:n_points,
-                                                 periodic_box_min_corner = periodic_boxes[i][1],
-                                                 periodic_box_max_corner = periodic_boxes[i][2]),
+                                                 periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
-                                              periodic_box_min_corner = periodic_boxes[i][1],
-                                              periodic_box_max_corner = periodic_boxes[i][2]),
+                                              periodic_box = periodic_boxes[i]),
                 PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points,
-                                                     periodic_box_min_corner = periodic_boxes[i][1],
-                                                     periodic_box_max_corner = periodic_boxes[i][2]),
+                                                     periodic_box = periodic_boxes[i]),
             ]
             neighborhood_searches_names = [
                 "`TrivialNeighborhoodSearch`",
