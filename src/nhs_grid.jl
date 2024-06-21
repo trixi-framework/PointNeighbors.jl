@@ -1,6 +1,6 @@
 @doc raw"""
     GridNeighborhoodSearch{NDIMS}(search_radius, n_points;
-                                  periodic_box = nothing, threaded_nhs_update = true)
+                                  periodic_box = nothing, threaded_update = true)
 
 Simple grid-based neighborhood search with uniform search radius.
 The domain is divided into a regular grid.
@@ -30,10 +30,10 @@ since not sorting makes our implementation a lot faster (although less paralleli
 # Keywords
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
-- `threaded_nhs_update = true`: Can be used to deactivate thread parallelization in the
-                                neighborhood search update. This can be one of the largest
-                                sources of variations between simulations with different
-                                thread numbers due to neighbor ordering changes.
+- `threaded_update = true`: Can be used to deactivate thread parallelization in the
+                            neighborhood search update. This can be one of the largest
+                            sources of variations between simulations with different
+                            thread numbers due to neighbor ordering changes.
 
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
@@ -53,11 +53,11 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
     cell_size           :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
     cell_buffer         :: Array{NTuple{NDIMS, Int}, 2} # Multithreaded buffer for `update!`
     cell_buffer_indices :: Vector{Int} # Store which entries of `cell_buffer` are initialized
-    threaded_nhs_update :: Bool
+    threaded_update     :: Bool
 
     function GridNeighborhoodSearch{NDIMS}(search_radius, n_points;
                                            periodic_box = nothing,
-                                           threaded_nhs_update = true) where {NDIMS}
+                                           threaded_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
         cell_list = DictionaryCellList{NDIMS}()
 
@@ -87,7 +87,7 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
         new{NDIMS, ELTYPE, typeof(cell_list),
             typeof(periodic_box)}(cell_list, search_radius, periodic_box, n_cells,
                                   cell_size, cell_buffer, cell_buffer_indices,
-                                  threaded_nhs_update)
+                                  threaded_update)
     end
 end
 
@@ -141,14 +141,14 @@ end
 
 # Modify the existing hash table by moving points into their new cells
 function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
-    (; cell_list, cell_buffer, cell_buffer_indices, threaded_nhs_update) = neighborhood_search
+    (; cell_list, cell_buffer, cell_buffer_indices, threaded_update) = neighborhood_search
 
     # Reset `cell_buffer` by moving all pointers to the beginning
     cell_buffer_indices .= 0
 
     # Find all cells containing points that now belong to another cell
     mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
-                       Val(threaded_nhs_update))
+                       Val(threaded_update))
 
     # Iterate over all marked cells and move the points into their new cells.
     for thread in 1:Threads.nthreads()
@@ -180,7 +180,7 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
 end
 
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
-                                    threaded_nhs_update::Val{true})
+                                    threaded_update::Val{true})
     # `collect` the keyset to be able to loop over it with `@threaded`
     @threaded for cell in collect(eachcell(cell_list))
         mark_changed_cell!(neighborhood_search, cell, coords_fun)
@@ -188,7 +188,7 @@ end
 end
 
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
-                                    threaded_nhs_update::Val{false})
+                                    threaded_update::Val{false})
     for cell in eachcell(cell_list)
         mark_changed_cell!(neighborhood_search, cell, coords_fun)
     end
@@ -307,13 +307,9 @@ end
     return floor(Int, i)
 end
 
-# Create a copy of a neighborhood search but with a different search radius
-function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, x, y)
-    search = GridNeighborhoodSearch{ndims(nhs)}(search_radius, npoints(nhs),
-                                                periodic_box = nhs.periodic_box)
-
-    # Initialize neighborhood search
-    initialize!(search, x, y)
-
-    return search
+function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
+                                  eachpoint = 1:n_points)
+    return GridNeighborhoodSearch{ndims(nhs)}(search_radius, n_points,
+                                              periodic_box = nhs.periodic_box,
+                                              threaded_update = nhs.threaded_update)
 end
