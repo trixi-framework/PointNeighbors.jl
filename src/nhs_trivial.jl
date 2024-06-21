@@ -1,5 +1,5 @@
 @doc raw"""
-    TrivialNeighborhoodSearch{NDIMS}(search_radius, eachparticle)
+    TrivialNeighborhoodSearch{NDIMS}(search_radius, eachparticle, periodic_box = nothing)
 
 Trivial neighborhood search that simply loops over all particles.
 The search radius still needs to be passed in order to sort out particles outside the
@@ -9,7 +9,7 @@ internal function `eachneighbor`.
 # Arguments
 - `NDIMS`:          Number of dimensions.
 - `search_radius`:  The uniform search radius.
-- `eachparticle`:   `UnitRange` of all particle indices. Usually just `1:n_particles`.
+- `eachparticle`:   Iterator for all particle indices. Usually just `1:n_particles`.
 
 # Keywords
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
