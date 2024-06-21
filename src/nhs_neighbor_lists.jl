@@ -1,6 +1,6 @@
 @doc raw"""
     PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points;
-                                         periodic_box = nothing)
+                                         periodic_box = nothing, threaded_update = true)
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
 for each point during initialization and update.
@@ -18,6 +18,10 @@ initialization and update.
 # Keywords
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
+- `threaded_update = true`: Can be used to deactivate thread parallelization in the
+                            neighborhood search update. This can be one of the largest
+                            sources of variations between simulations with different
+                            thread numbers due to particle ordering changes.
 """
 struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     neighborhood_search :: NHS
@@ -25,9 +29,11 @@ struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     periodic_box        :: PB
 
     function PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points;
-                                                  periodic_box = nothing) where {NDIMS}
+                                                  periodic_box = nothing,
+                                                  threaded_update = true) where {NDIMS}
         nhs = GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
-                                            periodic_box = periodic_box)
+                                            periodic_box = periodic_box,
+                                            threaded_update = threaded_update)
 
         neighbor_lists = Vector{Vector{Int}}()
 
@@ -102,4 +108,12 @@ end
         # compared to not using `foreach_point_neighbor`.
         @inline f(point, neighbor, pos_diff, distance)
     end
+end
+
+function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
+                                  search_radius, n_points; eachpoint = 1:n_points)
+    threaded_update = nhs.neighborhood_search.threaded_update
+    return PrecomputedNeighborhoodSearch{ndims(nhs)}(search_radius, n_points,
+                                                     periodic_box = nhs.periodic_box,
+                                                     threaded_update = threaded_update)
 end
