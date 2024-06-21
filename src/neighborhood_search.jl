@@ -57,7 +57,7 @@ end
 # and heavily impact performance.
 # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
-                                ppointes = axes(system_coords, 2),
+                                points = axes(system_coords, 2),
                                 parallel = true) where {T}
     foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search, points,
                            Val(parallel))
