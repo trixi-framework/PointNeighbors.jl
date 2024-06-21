@@ -56,8 +56,11 @@ struct PeriodicBox{NDIMS, ELTYPE}
     size       :: SVector{NDIMS, ELTYPE}
 
     function PeriodicBox(; min_corner, max_corner)
-        new{length(min_corner), eltype(min_corner)}(min_corner, max_corner,
-                                                    max_corner - min_corner)
+        min_corner_ = SVector(Tuple(min_corner))
+        max_corner_ = SVector(Tuple(max_corner))
+
+        new{length(min_corner), eltype(min_corner)}(min_corner_, max_corner_,
+                                                    max_corner_ - min_corner_)
     end
 end
 
