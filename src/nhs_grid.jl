@@ -47,15 +47,14 @@ since not sorting makes our implementation a lot faster (although less paralleli
   In: Computer Graphics Forum 30.1 (2011), pages 99–112.
   [doi: 10.1111/J.1467-8659.2010.01832.X](https://doi.org/10.1111/J.1467-8659.2010.01832.X)
 """
-struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSearch
-    cell_list           :: CL
-    search_radius       :: ELTYPE
-    periodic_box        :: PB
-    n_cells             :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
-    cell_size           :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
-    cell_buffer         :: Array{NTuple{NDIMS, Int}, 2} # Multithreaded buffer for `update!`
-    cell_buffer_indices :: Vector{Int} # Store which entries of `cell_buffer` are initialized
-    threaded_update     :: Bool
+struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB, UB} <: AbstractNeighborhoodSearch
+    cell_list       :: CL
+    search_radius   :: ELTYPE
+    periodic_box    :: PB
+    n_cells         :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
+    cell_size       :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
+    update_buffer   :: UB # Multithreaded buffer for `update!`
+    threaded_update :: Bool
 
     function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                            periodic_box = nothing,
@@ -63,8 +62,10 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
         ELTYPE = typeof(search_radius)
         cell_list = DictionaryCellList{NDIMS}()
 
-        cell_buffer = Array{NTuple{NDIMS, Int}, 2}(undef, n_points, Threads.nthreads())
-        cell_buffer_indices = zeros(Int, Threads.nthreads())
+        # Create update buffer and initialize it with empty vectors
+        update_buffer = DynamicVectorOfVectors{NTuple{NDIMS, Int}}(max_outer_length = Threads.nthreads(),
+                                                                   max_inner_length = n_points)
+        push!(update_buffer, (NTuple{NDIMS, Int}[] for _ in 1:Threads.nthreads())...)
 
         if search_radius < eps() || isnothing(periodic_box)
             # No periodicity
@@ -86,37 +87,28 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB} <: AbstractNeighborhoodSear
             end
         end
 
-        new{NDIMS, ELTYPE, typeof(cell_list),
-            typeof(periodic_box)}(cell_list, search_radius, periodic_box, n_cells,
-                                  cell_size, cell_buffer, cell_buffer_indices,
-                                  threaded_update)
+        new{NDIMS, ELTYPE, typeof(cell_list), typeof(periodic_box),
+            typeof(update_buffer)}(cell_list, search_radius, periodic_box, n_cells,
+                                   cell_size, update_buffer, threaded_update)
     end
 end
 
 @inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
-
-@inline function npoints(neighborhood_search::GridNeighborhoodSearch)
-    return size(neighborhood_search.cell_buffer, 1)
-end
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
     initialize_grid!(neighborhood_search, y)
 end
 
-function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-                          y::AbstractMatrix) where {NDIMS}
-    initialize_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
-end
-
-function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix)
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
 
-    for point in 1:npoints(neighborhood_search)
+    for point in axes(y, 2)
         # Get cell index of the point's cell
-        cell = cell_coords(coords_fun(point), neighborhood_search)
+        point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
 
         # Add point to corresponding cell
         push_cell!(cell_list, cell, point)
@@ -143,20 +135,19 @@ end
 
 # Modify the existing hash table by moving points into their new cells
 function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
-    (; cell_list, cell_buffer, cell_buffer_indices, threaded_update) = neighborhood_search
+    (; cell_list, update_buffer, threaded_update) = neighborhood_search
 
-    # Reset `cell_buffer` by moving all pointers to the beginning
-    cell_buffer_indices .= 0
+    # Empty each thread's list
+    for i in eachindex(update_buffer)
+        emptyat!(update_buffer, i)
+    end
 
     # Find all cells containing points that now belong to another cell
-    mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
-                       Val(threaded_update))
+    mark_changed_cell!(neighborhood_search, cell_list, coords_fun, Val(threaded_update))
 
-    # Iterate over all marked cells and move the points into their new cells.
-    for thread in 1:Threads.nthreads()
-        # Only the entries `1:cell_buffer_indices[thread]` are initialized for `thread`.
-        for i in 1:cell_buffer_indices[thread]
-            cell = cell_buffer[i, thread]
+    # Iterate over all marked cells and move the points into their new cells
+    for j in eachindex(update_buffer)
+        for cell in update_buffer[j]
             points = cell_list[cell]
 
             # Find all points whose coordinates do not match this cell
@@ -201,16 +192,12 @@ end
 # Otherwise, `@threaded` does not work here with Julia ARM on macOS.
 # See https://github.com/JuliaSIMD/Polyester.jl/issues/88.
 @inline function mark_changed_cell!(neighborhood_search, cell, coords_fun)
-    (; cell_list, cell_buffer, cell_buffer_indices) = neighborhood_search
+    (; cell_list, update_buffer) = neighborhood_search
 
     for point in cell_list[cell]
         if cell_coords(coords_fun(point), neighborhood_search) != cell
             # Mark this cell and continue with the next one.
-            #
-            # `cell_buffer` is preallocated,
-            # but only the entries 1:i are used for this thread.
-            i = cell_buffer_indices[Threads.threadid()] += 1
-            cell_buffer[i, Threads.threadid()] = cell
+            pushat!(update_buffer, Threads.threadid(), cell)
             break
         end
     end
