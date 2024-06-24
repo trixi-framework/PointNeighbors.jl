@@ -39,21 +39,34 @@
             search_radius = 0.1
 
             neighborhood_searches = [
-                TrivialNeighborhoodSearch{NDIMS}(search_radius, 1:n_points,
+                TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_points,
                                                  periodic_box = periodic_boxes[i]),
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i]),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points,
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                                      periodic_box = periodic_boxes[i]),
             ]
-            neighborhood_searches_names = [
+
+            names = [
                 "`TrivialNeighborhoodSearch`",
                 "`GridNeighborhoodSearch`",
                 "`PrecomputedNeighborhoodSearch`",
             ]
 
+            # Also test copied templates
+            template_nhs = [
+                TrivialNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+            ]
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            append!(neighborhood_searches, copied_nhs)
+
+            names_copied = [name * " copied" for name in names]
+            append!(names, names_copied)
+
             # Run this for every neighborhood search
-            @testset "$(neighborhood_searches_names[j])" for j in eachindex(neighborhood_searches_names)
+            @testset "$(names[j])" for j in eachindex(names)
                 nhs = neighborhood_searches[j]
 
                 initialize!(nhs, coords, coords)
@@ -103,7 +116,8 @@
 
             # Compute expected neighbor lists by brute-force looping over all points
             # as potential neighbors (`TrivialNeighborhoodSearch`).
-            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(search_radius, axes(coords, 2))
+            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(; search_radius,
+                                                           eachpoint = axes(coords, 2))
 
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
@@ -114,16 +128,27 @@
             end
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_points),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
             ]
 
-            neighborhood_searches_names = [
+            names = [
                 "`GridNeighborhoodSearch`",
                 "`PrecomputedNeighborhoodSearch`",
             ]
 
-            @testset "$(neighborhood_searches_names[i])" for i in eachindex(neighborhood_searches_names)
+            # Also test copied templates
+            template_nhs = [
+                GridNeighborhoodSearch{NDIMS}(),
+                PrecomputedNeighborhoodSearch{NDIMS}(),
+            ]
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            append!(neighborhood_searches, copied_nhs)
+
+            names_copied = [name * " copied" for name in names]
+            append!(names, names_copied)
+
+            @testset "$(names[i])" for i in eachindex(names)
                 nhs = neighborhood_searches[i]
 
                 # Initialize with `seed = 1`

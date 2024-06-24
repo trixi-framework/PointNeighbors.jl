@@ -42,6 +42,37 @@ See also [`initialize!`](@ref).
 end
 
 """
+    copy_neighborhood_search(search::AbstractNeighborhoodSearch, search_radius, n_points;
+                             eachpoint = 1:n_points)
+
+Create a new **uninitialized** neighborhood search of the same type and with the same
+configuration options as `search`, but with a different search radius and number of points.
+
+The [`TrivialNeighborhoodSearch`](@ref) also requires an iterator `eachpoint`, which most
+of the time will be `1:n_points`. If the `TrivialNeighborhoodSearch` is never going to be
+used, the keyword argument `eachpoint` can be ignored.
+
+This is useful when a simulation code requires multiple neighborhood searches of the same
+kind. One can then just pass an empty neighborhood search as a template and use
+this function inside the simulation code to generate similar neighborhood searches with
+different search radii and different numbers of points.
+```jldoctest; filter = r"GridNeighborhoodSearch{2,.*"
+# Template
+nhs = GridNeighborhoodSearch{2}()
+
+# Inside the simulation code, generate similar neighborhood searches
+nhs1 = copy_neighborhood_search(nhs, 1.0, 100)
+
+# output
+GridNeighborhoodSearch{2, Float64, ...}(...)
+```
+"""
+@inline function copy_neighborhood_search(search::AbstractNeighborhoodSearch,
+                                          search_radius, n_points; eachpoint = 1:n_points)
+    return nothing
+end
+
+"""
     PeriodicBox(; min_corner, max_corner)
 
 Define a rectangular periodic domain.

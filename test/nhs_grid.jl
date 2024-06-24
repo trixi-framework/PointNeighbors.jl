@@ -19,13 +19,13 @@
         # from (x, y) = (-0.25, -0.25) to (x, y) = (0.35, 0.35).
         range = -0.25:0.1:0.35
         coordinates1 = hcat(collect.(Iterators.product(range, range))...)
-        npoints = size(coordinates1, 2)
+        n_points = size(coordinates1, 2)
 
         point_position1 = [0.05, 0.05]
-        radius = 0.1
+        search_radius = 0.1
 
         # Create neighborhood search
-        nhs1 = GridNeighborhoodSearch{2}(radius, npoints)
+        nhs1 = GridNeighborhoodSearch{2}(; search_radius, n_points)
 
         initialize_grid!(nhs1, coordinates1)
 
@@ -48,7 +48,8 @@
         neighbors3 = sort(collect(PointNeighbors.eachneighbor(point_position2, nhs1)))
 
         # Double search radius
-        nhs2 = GridNeighborhoodSearch{2}(2 * radius, size(coordinates1, 2))
+        nhs2 = GridNeighborhoodSearch{2}(search_radius = 2 * search_radius,
+                                         n_points = size(coordinates1, 2))
         initialize!(nhs2, coordinates1, coordinates1)
 
         # Get each neighbor in double search radius
@@ -83,13 +84,13 @@
         # from (x, y, z) = (-0.25, -0.25, -0.25) to (x, y, z) = (0.35, 0.35, 0.35).
         range = -0.25:0.1:0.35
         coordinates1 = hcat(collect.(Iterators.product(range, range, range))...)
-        npoints = size(coordinates1, 2)
+        n_points = size(coordinates1, 2)
 
         point_position1 = [0.05, 0.05, 0.05]
-        radius = 0.1
+        search_radius = 0.1
 
         # Create neighborhood search
-        nhs1 = GridNeighborhoodSearch{3}(radius, npoints)
+        nhs1 = GridNeighborhoodSearch{3}(; search_radius, n_points)
 
         coords_fun(i) = coordinates1[:, i]
         initialize_grid!(nhs1, coords_fun)
@@ -158,7 +159,8 @@
         @testset verbose=true "$(names[i])" for i in eachindex(names)
             coords = coordinates[i]
 
-            nhs = GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
+            nhs = GridNeighborhoodSearch{size(coords, 1)}(search_radius = 0.1,
+                                                          n_points = size(coords, 2),
                                                           periodic_box = periodic_boxes[i])
 
             initialize_grid!(nhs, coords)
@@ -187,7 +189,7 @@
                       0.0 0.0]
 
             # 5 x 1 cells
-            nhs = GridNeighborhoodSearch{2}(1.0, size(coords, 2),
+            nhs = GridNeighborhoodSearch{2}(search_radius = 1.0, n_points = size(coords, 2),
                                             periodic_box = PeriodicBox(min_corner = [
                                                                            -1.5,
                                                                            0.0,

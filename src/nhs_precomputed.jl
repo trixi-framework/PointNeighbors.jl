@@ -1,6 +1,6 @@
 @doc raw"""
-    PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points;
-                                         periodic_box = nothing)
+    PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
+                                         periodic_box = nothing, threaded_update = true)
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
 for each point during initialization and update.
@@ -11,23 +11,31 @@ A [`GridNeighborhoodSearch`](@ref) is used internally to compute the neighbor li
 initialization and update.
 
 # Arguments
-- `NDIMS`:          Number of dimensions.
-- `search_radius`:  The uniform search radius.
-- `n_points`:    Total number of points.
+- `NDIMS`: Number of dimensions.
 
 # Keywords
+- `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
+                            with [`copy_neighborhood_search`](@ref).
+- `n_points = 0`:           Total number of points. The default of `0` is useful together
+                            with [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
+- `threaded_update = true`: Can be used to deactivate thread parallelization in the
+                            neighborhood search update. This can be one of the largest
+                            sources of variations between simulations with different
+                            thread numbers due to neighbor ordering changes.
 """
 struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     neighborhood_search :: NHS
     neighbor_lists      :: NL
     periodic_box        :: PB
 
-    function PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_points;
-                                                  periodic_box = nothing) where {NDIMS}
-        nhs = GridNeighborhoodSearch{NDIMS}(search_radius, n_points,
-                                            periodic_box = periodic_box)
+    function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
+                                                  periodic_box = nothing,
+                                                  threaded_update = true) where {NDIMS}
+        nhs = GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                            periodic_box = periodic_box,
+                                            threaded_update = threaded_update)
 
         neighbor_lists = Vector{Vector{Int}}()
 
@@ -102,4 +110,12 @@ end
         # compared to not using `foreach_point_neighbor`.
         @inline f(point, neighbor, pos_diff, distance)
     end
+end
+
+function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
+                                  search_radius, n_points; eachpoint = 1:n_points)
+    threaded_update = nhs.neighborhood_search.threaded_update
+    return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
+                                                     periodic_box = nhs.periodic_box,
+                                                     threaded_update)
 end
