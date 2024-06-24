@@ -1,5 +1,7 @@
 abstract type AbstractNeighborhoodSearch end
 
+@inline search_radius(search::AbstractNeighborhoodSearch) = search.search_radius
+
 """
     initialize!(search::AbstractNeighborhoodSearch, x, y)
 
@@ -126,7 +128,7 @@ end
 
 @inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
                                   neighborhood_search, point;
-                                  search_radius = neighborhood_search.search_radius)
+                                  search_radius = search_radius(neighborhood_search))
     (; periodic_box) = neighborhood_search
 
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)

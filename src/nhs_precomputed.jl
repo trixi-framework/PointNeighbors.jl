@@ -45,8 +45,10 @@ struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
     end
 end
 
-@inline function Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS}
-    return NDIMS
+@inline Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
+
+@inline function search_radius(search::AbstractNeighborhoodSearch)
+    return search_radius(search.neighborhood_search)
 end
 
 function initialize!(search::PrecomputedNeighborhoodSearch,
