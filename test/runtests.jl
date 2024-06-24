@@ -4,4 +4,4 @@ include("test_util.jl")
     include("nhs_trivial.jl")
     include("nhs_grid.jl")
     include("neighborhood_search.jl")
-end
+end;
