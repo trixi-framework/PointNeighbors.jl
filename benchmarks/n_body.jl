@@ -21,8 +21,8 @@ function benchmark_n_body(neighborhood_search, coordinates; parallel = true)
     function compute_acceleration!(dv, coordinates, mass, G, neighborhood_search, parallel)
         dv .= 0.0
 
-        for_particle_neighbor(coordinates, coordinates, neighborhood_search,
-                              parallel = parallel) do i, j, pos_diff, distance
+        foreach_point_neighbor(coordinates, coordinates, neighborhood_search,
+                               parallel = parallel) do i, j, pos_diff, distance
             # Only consider particles with a distance > 0
             distance < sqrt(eps()) && return
 
