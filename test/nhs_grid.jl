@@ -15,54 +15,54 @@
 
     @testset "Rectangular Point Cloud 2D" begin
         #### Setup
-        # Rectangle of equidistantly spaced particles
+        # Rectangle of equidistantly spaced points
         # from (x, y) = (-0.25, -0.25) to (x, y) = (0.35, 0.35).
         range = -0.25:0.1:0.35
         coordinates1 = hcat(collect.(Iterators.product(range, range))...)
-        nparticles = size(coordinates1, 2)
+        n_points = size(coordinates1, 2)
 
-        particle_position1 = [0.05, 0.05]
-        particle_spacing = 0.1
-        radius = particle_spacing
+        point_position1 = [0.05, 0.05]
+        search_radius = 0.1
 
         # Create neighborhood search
-        nhs1 = GridNeighborhoodSearch{2}(radius, nparticles)
+        nhs1 = GridNeighborhoodSearch{2}(; search_radius, n_points)
 
         initialize_grid!(nhs1, coordinates1)
 
-        # Get each neighbor for `particle_position1`
-        neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs1)))
+        # Get each neighbor for `point_position1`
+        neighbors1 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs1)))
 
-        # Move particles
+        # Move points
         coordinates2 = coordinates1 .+ [1.4, -3.5]
 
         # Update neighborhood search
         update_grid!(nhs1, coordinates2)
 
         # Get each neighbor for updated NHS
-        neighbors2 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs1)))
+        neighbors2 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs1)))
 
         # Change position
-        particle_position2 = particle_position1 .+ [1.4, -3.5]
+        point_position2 = point_position1 .+ [1.4, -3.5]
 
-        # Get each neighbor for `particle_position2`
-        neighbors3 = sort(collect(PointNeighbors.eachneighbor(particle_position2, nhs1)))
+        # Get each neighbor for `point_position2`
+        neighbors3 = sort(collect(PointNeighbors.eachneighbor(point_position2, nhs1)))
 
         # Double search radius
-        nhs2 = GridNeighborhoodSearch{2}(2 * radius, size(coordinates1, 2))
+        nhs2 = GridNeighborhoodSearch{2}(search_radius = 2 * search_radius,
+                                         n_points = size(coordinates1, 2))
         initialize!(nhs2, coordinates1, coordinates1)
 
         # Get each neighbor in double search radius
-        neighbors4 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs2)))
+        neighbors4 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs2)))
 
-        # Move particles
+        # Move points
         coordinates2 = coordinates1 .+ [0.4, -0.4]
 
         # Update neighborhood search
         update!(nhs2, coordinates2, coordinates2)
 
         # Get each neighbor in double search radius
-        neighbors5 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs2)))
+        neighbors5 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs2)))
 
         #### Verification against lists of potential neighbors built by hand
         @test neighbors1 == [17, 18, 19, 24, 25, 26, 31, 32, 33]
@@ -80,26 +80,25 @@
 
     @testset "Rectangular Point Cloud 3D" begin
         #### Setup
-        # Rectangle of equidistantly spaced particles
+        # Rectangle of equidistantly spaced points
         # from (x, y, z) = (-0.25, -0.25, -0.25) to (x, y, z) = (0.35, 0.35, 0.35).
         range = -0.25:0.1:0.35
         coordinates1 = hcat(collect.(Iterators.product(range, range, range))...)
-        nparticles = size(coordinates1, 2)
+        n_points = size(coordinates1, 2)
 
-        particle_position1 = [0.05, 0.05, 0.05]
-        particle_spacing = 0.1
-        radius = particle_spacing
+        point_position1 = [0.05, 0.05, 0.05]
+        search_radius = 0.1
 
         # Create neighborhood search
-        nhs1 = GridNeighborhoodSearch{3}(radius, nparticles)
+        nhs1 = GridNeighborhoodSearch{3}(; search_radius, n_points)
 
         coords_fun(i) = coordinates1[:, i]
         initialize_grid!(nhs1, coords_fun)
 
-        # Get each neighbor for `particle_position1`
-        neighbors1 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs1)))
+        # Get each neighbor for `point_position1`
+        neighbors1 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs1)))
 
-        # Move particles
+        # Move points
         coordinates2 = coordinates1 .+ [1.4, -3.5, 0.8]
 
         # Update neighborhood search
@@ -107,13 +106,13 @@
         update_grid!(nhs1, coords_fun2)
 
         # Get each neighbor for updated NHS
-        neighbors2 = sort(collect(PointNeighbors.eachneighbor(particle_position1, nhs1)))
+        neighbors2 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs1)))
 
         # Change position
-        particle_position2 = particle_position1 .+ [1.4, -3.5, 0.8]
+        point_position2 = point_position1 .+ [1.4, -3.5, 0.8]
 
-        # Get each neighbor for `particle_position2`
-        neighbors3 = sort(collect(PointNeighbors.eachneighbor(particle_position2, nhs1)))
+        # Get each neighbor for `point_position2`
+        neighbors3 = sort(collect(PointNeighbors.eachneighbor(point_position2, nhs1)))
 
         #### Verification against lists of potential neighbors built by hand
         @test neighbors1 ==
@@ -129,8 +128,8 @@
 
     @testset verbose=true "Periodicity" begin
         # These setups are the same as in `test/neighborhood_search.jl`,
-        # but instead of testing the actual neighbors with `for_particle_neighbor`,
-        # we only test the potential neighbors (particles in neighboring cells) here.
+        # but instead of testing the actual neighbors with `foreach_point_neighbor`,
+        # we only test the potential neighbors (points in neighboring cells) here.
 
         # Names, coordinates and corresponding periodic boxes for each test
         names = [
@@ -150,19 +149,19 @@
         ]
 
         periodic_boxes = [
-            ([-0.1, -0.2], [0.2, 0.4]),
+            PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.2, 0.4]),
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
-            ([-0.1, -0.2], [0.205, 0.43]),
-            ([-0.1, -0.2, 0.05], [0.2, 0.4, 0.35]),
+            PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.205, 0.43]),
+            PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35]),
         ]
 
         @testset verbose=true "$(names[i])" for i in eachindex(names)
             coords = coordinates[i]
 
-            nhs = GridNeighborhoodSearch{size(coords, 1)}(0.1, size(coords, 2),
-                                                          periodic_box_min_corner = periodic_boxes[i][1],
-                                                          periodic_box_max_corner = periodic_boxes[i][2])
+            nhs = GridNeighborhoodSearch{size(coords, 1)}(search_radius = 0.1,
+                                                          n_points = size(coords, 2),
+                                                          periodic_box = periodic_boxes[i])
 
             initialize_grid!(nhs, coords)
 
@@ -180,8 +179,8 @@
         @testset "Offset Domain Triggering Split Cells" begin
             # This test used to trigger a "split cell bug", where the left and right
             # boundary cells were only partially contained in the domain.
-            # The left particle was placed inside a ghost cells, which caused it to not
-            # see the right particle, even though it was within the search distance.
+            # The left point was placed inside a ghost cells, which caused it to not
+            # see the right point, even though it was within the search distance.
             # The domain size is an integer multiple of the cell size, but the NHS did not
             # offset the grid based on the domain position.
             # See https://github.com/trixi-framework/TrixiParticles.jl/pull/211
@@ -190,14 +189,19 @@
                       0.0 0.0]
 
             # 5 x 1 cells
-            nhs = GridNeighborhoodSearch{2}(1.0, size(coords, 2),
-                                            periodic_box_min_corner = [-1.5, 0.0],
-                                            periodic_box_max_corner = [2.5, 3.0])
+            nhs = GridNeighborhoodSearch{2}(search_radius = 1.0, n_points = size(coords, 2),
+                                            periodic_box = PeriodicBox(min_corner = [
+                                                                           -1.5,
+                                                                           0.0,
+                                                                       ],
+                                                                       max_corner = [
+                                                                           2.5,
+                                                                           3.0,
+                                                                       ]))
 
             initialize_grid!(nhs, coords)
 
-            neighbors = [sort(unique(collect(PointNeighbors.eachneighbor(coords[:,
-                                                                                i],
+            neighbors = [sort(unique(collect(PointNeighbors.eachneighbor(coords[:, i],
                                                                          nhs))))
                          for i in 1:2]
 
