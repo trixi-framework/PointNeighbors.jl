@@ -34,7 +34,7 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          seed = 1, perturbation_factor_position = 1.0)
     neighborhood_searches_names = ["TrivialNeighborhoodSearch";;
                                    "GridNeighborhoodSearch";;
-                                   "ProcomputedNeighborhoodSearch"]
+                                   "PrecomputedNeighborhoodSearch"]
 
     # Multiply number of points in each iteration (roughly) by this factor
     scaling_factor = 4
