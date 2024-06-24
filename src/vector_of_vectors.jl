@@ -1,3 +1,5 @@
+# Data structure that behaves like a `Vector{Vector}`, but uses a contiguous memory layout.
+# Similar to `VectorOfVectors` of ArraysOfArrays.jl, but allows to resize the inner vectors.
 struct DynamicVectorOfVectors{T, ARRAY2D, ARRAY1D} <: AbstractVector{Array{T, 1}}
     backend::ARRAY2D # Array{T, 2}, where each column represents a vector
     length_::Base.RefValue{Int32} # Number of vectors
@@ -46,29 +48,7 @@ end
     push!(vov, vectors...)
 end
 
-# @inline function Base.setindex!(vov::DynamicVectorOfVectors, vector::AbstractVector, i)
-#     (; backend, lengths) = vov
-
-#     # This data structure only supports one-based indexing
-#     Base.require_one_based_indexing(vector)
-
-#     # Set size of column `i` of `backend`
-#     lengths[i] = length(vector)
-
-#     # Fill the new column
-#     for j in eachindex(vector)
-#         backend[j, i] = vector[j]
-#     end
-
-#     return vov
-# end
-
-# @inline function Base.resize!(vov::DynamicVectorOfVectors, new_length)
-#     vov.length_[] = new_length
-
-#     return vov
-# end
-
+# `push!(vov[i], value)`
 @inline function pushat!(vov::DynamicVectorOfVectors, i, value)
     (; backend, lengths) = vov
 
@@ -80,6 +60,7 @@ end
     return vov
 end
 
+# `deleteat!(vov[i], j)`
 @inline function deleteatat!(vov::DynamicVectorOfVectors, i, j)
     (; backend, lengths) = vov
 
@@ -106,6 +87,7 @@ end
     return vov
 end
 
+# `empty!(vov[i])`
 @inline function emptyat!(vov::DynamicVectorOfVectors, i)
     # Move length pointer to the beginning
     vov.lengths[i] = zero(Int32)
