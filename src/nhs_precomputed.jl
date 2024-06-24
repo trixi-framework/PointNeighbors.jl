@@ -47,7 +47,7 @@ end
 
 @inline Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
-@inline function search_radius(search::AbstractNeighborhoodSearch)
+@inline function search_radius(search::PrecomputedNeighborhoodSearch)
     return search_radius(search.neighborhood_search)
 end
 
