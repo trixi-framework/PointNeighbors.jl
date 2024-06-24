@@ -42,7 +42,8 @@ See also [`initialize!`](@ref).
 end
 
 """
-    copy_neighborhood_search(search::AbstractNeighborhoodSearch, search_radius, n_points)
+    copy_neighborhood_search(search::AbstractNeighborhoodSearch, search_radius, n_points;
+                             eachpoint = 1:n_points)
 
 Create a new **uninitialized** neighborhood search of the same type and with the same
 configuration options as `search`, but with a different search radius and number of points.
