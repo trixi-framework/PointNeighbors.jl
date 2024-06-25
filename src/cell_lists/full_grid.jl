@@ -5,8 +5,9 @@ A simple cell list implementation where each (empty or non-empty) cell of a rect
 domain is assigned a list of points.
 This cell list only works when all points are inside the specified domain at all times.
 
-Use the default arguments to create an empty "template" cell list that can be used to create
-an empty "template" neighborhood search.
+Only set `min_corner` and `max_corner` and use the default values for the other arguments
+to create an empty "template" cell list that can be used to create an empty "template"
+neighborhood search.
 See [`copy_neighborhood_search`](@ref) for more details.
 
 # Keywords

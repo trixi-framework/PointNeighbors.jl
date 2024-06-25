@@ -212,9 +212,9 @@ end
     for point in cell_list[cell_index]
         cell = cell_coords(coords_fun(point), neighborhood_search)
 
-        # `cell` is a tuple, `cell_index` is the linear index used internally be the
+        # `cell` is a tuple, `cell_index` is the linear index used internally by the
         # cell list to store cells inside `cell`.
-        # These can be identical (see `DictionaryCellList`)
+        # These can be identical (see `DictionaryCellList`).
         if !is_correct_cell(cell_list, cell, cell_index)
             # Mark this cell and continue with the next one.
             #
