@@ -75,7 +75,7 @@ end
 """
     PeriodicBox(; min_corner, max_corner)
 
-Define a rectangular periodic domain.
+Define a rectangular (axis-aligned) periodic domain.
 
 # Keywords
 - `min_corner`: Coordinates of the domain corner in negative coordinate directions.
@@ -95,13 +95,45 @@ struct PeriodicBox{NDIMS, ELTYPE}
     end
 end
 
-# The type annotation is to make Julia specialize on the type of the function.
-# Otherwise, unspecialized code will cause a lot of allocations
-# and heavily impact performance.
-# See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+"""
+    foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search;
+                           points = axes(system_coords, 2), parallel = true)
+
+Loop for each point in `system_coords` over all points in `neighbor_coords` whose distances
+to that point are smaller than the search radius and execute the function `f(i, j, x, y, d)`,
+where
+- `i` is the column index of the point in `system_coords`,
+- `j` the column index of the neighbor in `neighbor_coords`,
+- `x` an `SVector` of the coordinates of the point (`system_coords[:, i]`),
+- `y` an `SVector` of the coordinates of the neighbor (`neighbor_coords[:, j]`),
+- `d` the distance between `x` and `y`.
+
+The `neighborhood_search` must have been initialized or updated with `system_coords`
+as first coordinate array and `neighbor_coords` as second coordinate array.
+
+Note that `system_coords` and `neighbor_coords` can be identical.
+
+# Arguments
+- `f`: The function explained above.
+- `system_coords`: A matrix where the `i`-th column contains the coordinates of point `i`.
+- `neighbor_coords`: A matrix where the `j`-th column contains the coordinates of point `j`.
+- `neighborhood_search`: A neighborhood search initialized or updated with `system_coords`
+                         as first coordinate array and `neighbor_coords` as second
+                         coordinate array.
+
+# Keywords
+- `points`: Loop over these point indices. By default all columns of `system_coords`.
+- `parallel=true`: Run the outer loop over `points` thread-parallel.
+
+See also [`initialize!`](@ref), [`update!`](@ref).
+"""
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
                                 points = axes(system_coords, 2),
                                 parallel = true) where {T}
+    # The type annotation above is to make Julia specialize on the type of the function.
+    # Otherwise, unspecialized code will cause a lot of allocations
+    # and heavily impact performance.
+    # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
     foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search, points,
                            Val(parallel))
 end

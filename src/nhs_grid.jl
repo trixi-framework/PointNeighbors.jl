@@ -1,6 +1,8 @@
 @doc raw"""
     GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
-                                  periodic_box = nothing, threaded_update = true)
+                                  periodic_box = nothing,
+                                  cell_list = DictionaryCellList{NDIMS}(),
+                                  threaded_update = true)
 
 Simple grid-based neighborhood search with uniform search radius.
 The domain is divided into a regular grid.
@@ -32,6 +34,8 @@ since not sorting makes our implementation a lot faster (although less paralleli
                             with [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
+- `cell_list`:              The cell list that maps a cell index to a list of points inside
+                            the cell. By default, a [`DictionaryCellList`](@ref) is used.
 - `threaded_update = true`: Can be used to deactivate thread parallelization in the
                             neighborhood search update. This can be one of the largest
                             sources of variations between simulations with different
@@ -58,13 +62,13 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB, UB} <: AbstractNeighborhood
 
     function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                            periodic_box = nothing,
+                                           cell_list = DictionaryCellList{NDIMS}(),
                                            threaded_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
-        cell_list = DictionaryCellList{NDIMS}()
 
         # Create update buffer and initialize it with empty vectors
-        update_buffer = DynamicVectorOfVectors{NTuple{NDIMS, Int}}(max_outer_length = Threads.nthreads(),
-                                                                   max_inner_length = n_points)
+        update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = Threads.nthreads(),
+                                                                      max_inner_length = n_points)
         push!(update_buffer, (NTuple{NDIMS, Int}[] for _ in 1:Threads.nthreads())...)
 
         if search_radius < eps() || isnothing(periodic_box)
@@ -147,13 +151,15 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
 
     # Iterate over all marked cells and move the points into their new cells
     for j in eachindex(update_buffer)
-        for cell in update_buffer[j]
-            points = cell_list[cell]
+        for cell_index in update_buffer[j]
+            points = cell_list[cell_index]
 
             # Find all points whose coordinates do not match this cell
             moved_point_indices = (i for i in eachindex(points)
-                                   if cell_coords(coords_fun(points[i]),
-                                                  neighborhood_search) != cell)
+                                   if !is_correct_cell(cell_list,
+                                                       cell_coords(coords_fun(points[i]),
+                                                                   neighborhood_search),
+                                                       cell_index))
 
             # Add moved points to new cell
             for i in moved_point_indices
@@ -165,7 +171,7 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
             end
 
             # Remove moved points from this cell
-            deleteat_cell!(cell_list, cell, moved_point_indices)
+            deleteat_cell!(cell_list, cell_index, moved_point_indices)
         end
     end
 
@@ -175,15 +181,15 @@ end
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                                     threaded_update::Val{true})
     # `collect` the keyset to be able to loop over it with `@threaded`
-    @threaded for cell in collect(eachcell(cell_list))
-        mark_changed_cell!(neighborhood_search, cell, coords_fun)
+    @threaded for cell_index in each_cell_index_threadable(cell_list)
+        mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end
 
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                                     threaded_update::Val{false})
-    for cell in eachcell(cell_list)
-        mark_changed_cell!(neighborhood_search, cell, coords_fun)
+    for cell_index in each_cell_index(cell_list)
+        mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end
 
@@ -191,13 +197,18 @@ end
 # with `@batch` (`@threaded`).
 # Otherwise, `@threaded` does not work here with Julia ARM on macOS.
 # See https://github.com/JuliaSIMD/Polyester.jl/issues/88.
-@inline function mark_changed_cell!(neighborhood_search, cell, coords_fun)
+@inline function mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     (; cell_list, update_buffer) = neighborhood_search
 
-    for point in cell_list[cell]
-        if cell_coords(coords_fun(point), neighborhood_search) != cell
-            # Mark this cell and continue with the next one.
-            pushat!(update_buffer, Threads.threadid(), cell)
+    for point in cell_list[cell_index]
+        cell = cell_coords(coords_fun(point), neighborhood_search)
+
+        # `cell` is a tuple, `cell_index` is the linear index used internally by the
+        # cell list to store cells inside `cell`.
+        # These can be identical (see `DictionaryCellList`).
+        if !is_correct_cell(cell_list, cell, cell_index)
+            # Mark this cell and continue with the next one
+            pushat!(update_buffer, Threads.threadid(), cell_index)
             break
         end
     end
@@ -277,28 +288,12 @@ end
     return Tuple(floor_to_int.(offset_coords ./ cell_size))
 end
 
-# When points end up with coordinates so big that the cell coordinates
-# exceed the range of Int, then `floor(Int, i)` will fail with an InexactError.
-# In this case, we can just use typemax(Int), since we can assume that points
-# that far away will not interact with anything, anyway.
-# This usually indicates an instability, but we don't want the simulation to crash,
-# since adaptive time integration methods may detect the instability and reject the
-# time step.
-# If we threw an error here, we would prevent the time integration method from
-# retrying with a smaller time step, and we would thus crash perfectly fine simulations.
-@inline function floor_to_int(i)
-    if isnan(i) || i > typemax(Int)
-        return typemax(Int)
-    elseif i < typemin(Int)
-        return typemin(Int)
-    end
-
-    return floor(Int, i)
-end
-
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
-    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
-                                              periodic_box = nhs.periodic_box,
-                                              threaded_update = nhs.threaded_update)
+    (; periodic_box, threaded_update) = nhs
+
+    cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box)
+
+    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
+                                              cell_list, threaded_update)
 end

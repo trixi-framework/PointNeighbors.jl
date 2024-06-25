@@ -3,6 +3,25 @@
     return SVector(ntuple(@inline(dim->A[dim, i]), NDIMS))
 end
 
+# When particles end up with coordinates so big that the cell coordinates
+# exceed the range of Int, then `floor(Int, i)` will fail with an InexactError.
+# In this case, we can just use typemax(Int), since we can assume that particles
+# that far away will not interact with anything, anyway.
+# This usually indicates an instability, but we don't want the simulation to crash,
+# since adaptive time integration methods may detect the instability and reject the
+# time step.
+# If we threw an error here, we would prevent the time integration method from
+# retrying with a smaller time step, and we would thus crash perfectly fine simulations.
+@inline function floor_to_int(i)
+    if isnan(i) || i > typemax(Int)
+        return typemax(Int)
+    elseif i < typemin(Int)
+        return typemin(Int)
+    end
+
+    return floor(Int, i)
+end
+
 """
     @threaded for ... end
 

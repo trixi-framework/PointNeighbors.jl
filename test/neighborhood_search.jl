@@ -43,6 +43,13 @@
                                                  periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              periodic_box = periodic_boxes[i],
+                                              cell_list = FullGridCellList(;
+                                                                           min_corner = periodic_boxes[i].min_corner,
+                                                                           max_corner = periodic_boxes[i].max_corner,
+                                                                           search_radius,
+                                                                           periodicity = true)),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                                      periodic_box = periodic_boxes[i]),
             ]
@@ -50,6 +57,7 @@
             names = [
                 "`TrivialNeighborhoodSearch`",
                 "`GridNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `FullGridCellList",
                 "`PrecomputedNeighborhoodSearch`",
             ]
 
@@ -57,6 +65,9 @@
             template_nhs = [
                 TrivialNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
+                                              cell_list = FullGridCellList(min_corner = periodic_boxes[i].min_corner,
+                                                                           max_corner = periodic_boxes[i].max_corner)),
                 PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
@@ -127,19 +138,31 @@
                 append!(neighbors_expected[point], neighbor)
             end
 
+            min_corner = minimum(coords, dims = 2) .- search_radius
+            max_corner = maximum(coords, dims = 2) .+ search_radius
+
             neighborhood_searches = [
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                # Expand the domain by `search_radius`, as we need the neighboring cells of
+                # the minimum and maximum coordinates as well.
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius)),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
             ]
 
             names = [
                 "`GridNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `FullGridCellList`",
                 "`PrecomputedNeighborhoodSearch`",
             ]
 
             # Also test copied templates
             template_nhs = [
                 GridNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner)),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
