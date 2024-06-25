@@ -8,7 +8,8 @@ struct FullGridCellList{C, LI, MC}
     end
 end
 
-function FullGridCellList(min_corner, max_corner; search_radius = 0.0, periodicity = false)
+function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
+                          periodicity = false)
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
         cells = nothing
@@ -90,6 +91,6 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
     # Misuse `min_cell` to store min and max corner for copying
     min_corner, max_corner = cell_list.min_cell
 
-    return FullGridCellList(min_corner, max_corner; search_radius,
+    return FullGridCellList(; min_corner, max_corner, search_radius,
                             periodicity = !isnothing(periodic_box))
 end
