@@ -16,13 +16,13 @@ function Base.empty!(cell_list::DictionaryCellList)
     return cell_list
 end
 
-function push_cell!(cell_list::DictionaryCellList, cell, particle)
+function push_cell!(cell_list::DictionaryCellList, cell, point)
     (; hashtable) = cell_list
 
     if haskey(hashtable, cell)
-        append!(hashtable[cell], particle)
+        append!(hashtable[cell], point)
     else
-        hashtable[cell] = [particle]
+        hashtable[cell] = [point]
     end
 
     return cell_list

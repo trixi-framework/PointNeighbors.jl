@@ -24,58 +24,66 @@
         ]
 
         periodic_boxes = [
-            ([-0.1, -0.2], [0.2, 0.4]),
+            PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.2, 0.4]),
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
-            ([-0.1, -0.2], [0.205, 0.43]),
-            ([-0.1, -0.2, 0.05], [0.2, 0.4, 0.35]),
+            PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.205, 0.43]),
+            PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35]),
         ]
 
         @testset verbose=true "$(names[i])" for i in eachindex(names)
             coords = coordinates[i]
 
             NDIMS = size(coords, 1)
-            n_particles = size(coords, 2)
+            n_points = size(coords, 2)
             search_radius = 0.1
 
             neighborhood_searches = [
-                TrivialNeighborhoodSearch{NDIMS}(search_radius, 1:n_particles,
-                                                 periodic_box_min_corner = periodic_boxes[i][1],
-                                                 periodic_box_max_corner = periodic_boxes[i][2]),
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
-                                              periodic_box_min_corner = periodic_boxes[i][1],
-                                              periodic_box_max_corner = periodic_boxes[i][2]),
-                GridNeighborhoodSearch{NDIMS}(search_radius, n_particles,
-                                              periodic_box_min_corner = periodic_boxes[i][1],
-                                              periodic_box_max_corner = periodic_boxes[i][2],
+                TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_points,
+                                                 periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              periodic_box = periodic_boxes[i],
                                               cell_list = FullGridCellList(periodic_boxes[i][1],
                                                                            periodic_boxes[i][2],
                                                                            search_radius,
                                                                            periodicity = true)),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_particles,
-                                                     periodic_box_min_corner = periodic_boxes[i][1],
-                                                     periodic_box_max_corner = periodic_boxes[i][2]),
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                                     periodic_box = periodic_boxes[i]),
             ]
 
-            neighborhood_searches_names = [
+            names = [
                 "`TrivialNeighborhoodSearch`",
                 "`GridNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `FullGridCellList",
                 "`PrecomputedNeighborhoodSearch`",
             ]
 
+            # Also test copied templates
+            template_nhs = [
+                TrivialNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+            ]
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            append!(neighborhood_searches, copied_nhs)
+
+            names_copied = [name * " copied" for name in names]
+            append!(names, names_copied)
+
             # Run this for every neighborhood search
-            @testset "$(neighborhood_searches_names[j])" for j in eachindex(neighborhood_searches_names)
+            @testset "$(names[j])" for j in eachindex(names)
                 nhs = neighborhood_searches[j]
 
                 initialize!(nhs, coords, coords)
 
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
-                for_particle_neighbor(coords, coords, nhs,
-                                      particles = axes(coords, 2)) do particle, neighbor,
-                                                                      pos_diff, distance
-                    append!(neighbors[particle], neighbor)
+                foreach_point_neighbor(coords, coords, nhs,
+                                       points = axes(coords, 2)) do point, neighbor,
+                                                                    pos_diff, distance
+                    append!(neighbors[point], neighbor)
                 end
 
                 # All of these tests are designed to yield the same neighbor lists.
@@ -106,46 +114,58 @@
 
             coords = point_cloud(cloud_size, seed = seed)
             NDIMS = length(cloud_size)
-            n_particles = size(coords, 2)
+            n_points = size(coords, 2)
             search_radius = 2.5
 
             # Use different coordinates for `initialize!` and then `update!` with the
             # correct coordinates to make sure that `update!` is working as well.
             coords_initialize = point_cloud(cloud_size, seed = 1)
 
-            # Compute expected neighbor lists by brute-force looping over all particles
+            # Compute expected neighbor lists by brute-force looping over all points
             # as potential neighbors (`TrivialNeighborhoodSearch`).
-            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(search_radius, axes(coords, 2))
+            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(; search_radius,
+                                                           eachpoint = axes(coords, 2))
 
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
-            for_particle_neighbor(coords, coords, trivial_nhs,
-                                  parallel = false) do particle, neighbor,
-                                                       pos_diff, distance
-                append!(neighbors_expected[particle], neighbor)
+            foreach_point_neighbor(coords, coords, trivial_nhs,
+                                   parallel = false) do point, neighbor,
+                                                        pos_diff, distance
+                append!(neighbors_expected[point], neighbor)
             end
 
             min_corner = minimum(coords, dims = 2) .- search_radius
             max_corner = maximum(coords, dims = 2) .+ search_radius
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2)),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points),
                 # Expand the domain by `search_radius`, as we need the neighboring cells of
                 # the minimum and maximum coordinates as well.
-                GridNeighborhoodSearch{NDIMS}(search_radius, size(coords, 2),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(min_corner,
                                                                            max_corner,
                                                                            search_radius)),
-                PrecomputedNeighborhoodSearch{NDIMS}(search_radius, n_particles),
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
             ]
 
-            neighborhood_searches_names = [
+            names = [
                 "`GridNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `FullGridCellList`",
                 "`PrecomputedNeighborhoodSearch`",
             ]
 
-            @testset "$(neighborhood_searches_names[i])" for i in eachindex(neighborhood_searches_names)
+            # Also test copied templates
+            template_nhs = [
+                GridNeighborhoodSearch{NDIMS}(),
+                PrecomputedNeighborhoodSearch{NDIMS}(),
+            ]
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            append!(neighborhood_searches, copied_nhs)
+
+            names_copied = [name * " copied" for name in names]
+            append!(names, names_copied)
+
+            @testset "$(names[i])" for i in eachindex(names)
                 nhs = neighborhood_searches[i]
 
                 # Initialize with `seed = 1`
@@ -160,10 +180,10 @@
 
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
-                for_particle_neighbor(coords, coords, nhs,
-                                      parallel = false) do particle, neighbor,
-                                                           pos_diff, distance
-                    append!(neighbors[particle], neighbor)
+                foreach_point_neighbor(coords, coords, nhs,
+                                       parallel = false) do point, neighbor,
+                                                            pos_diff, distance
+                    append!(neighbors[point], neighbor)
                 end
 
                 @test sort.(neighbors) == neighbors_expected
