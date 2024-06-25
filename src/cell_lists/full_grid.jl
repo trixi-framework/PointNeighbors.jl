@@ -2,7 +2,7 @@
     FullGridCellList(; min_corner, max_corner, search_radius = 0.0, periodicity = false)
 
 A simple cell list implementation where each (empty or non-empty) cell of a rectangular
-domain is assigned a list of points.
+(axis-aligned) domain is assigned a list of points.
 This cell list only works when all points are inside the specified domain at all times.
 
 Use the default arguments to create an empty "template" cell list that can be used to create
