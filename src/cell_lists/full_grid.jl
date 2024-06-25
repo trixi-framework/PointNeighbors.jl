@@ -101,9 +101,9 @@ end
 end
 
 @inline function is_correct_cell(cell_list::FullGridCellList, cell_coords, cell_index)
-    (; cells, linear_indices, min_cell) = cell_list
+    (; linear_indices, min_cell) = cell_list
 
-    return cells[linear_indices[(cell_coords .- min_cell .+ 1)...]] == cell_index
+    return linear_indices[(cell_coords .- min_cell .+ 1)...] == cell_index
 end
 
 @inline index_type(::FullGridCellList) = Int32
