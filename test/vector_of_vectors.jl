@@ -8,6 +8,9 @@
         vov = PointNeighbors.DynamicVectorOfVectors{ELTYPE}(max_outer_length = 20,
                                                             max_inner_length = 10)
 
+        # Test internal size
+        @test size(vov.backend) == (10, 20)
+
         function verify(vov, vov_ref)
             @test length(vov) == length(vov_ref)
             @test eachindex(vov) == eachindex(vov_ref)
