@@ -1,4 +1,19 @@
-struct DictionaryCellList{NDIMS}
+"""
+    DictionaryCellList{NDIMS}()
+
+A simple cell list implementation where a cell index `(i, j)` or `(i, j, k)` is mapped to a
+`Vector{Int}` by a `Dict`.
+By using a dictionary, which only stores non-empty cells, the domain is
+potentially infinite.
+
+This implementation is very simple, but it neither uses an optimized hash function
+for integer tuples, nor does it use a contiguous memory layout.
+Consequently, this cell list is not GPU-compatible.
+
+# Arguments
+- `NDIMS`: Number of dimensions.
+"""
+struct DictionaryCellList{NDIMS} <: AbstractCellList
     hashtable    :: Dict{NTuple{NDIMS, Int}, Vector{Int}}
     empty_vector :: Vector{Int} # Just an empty vector (used in `eachneighbor`)
 
@@ -43,7 +58,13 @@ function delete_cell!(cell_list, cell)
     delete!(cell_list.hashtable, cell)
 end
 
-@inline eachcell(cell_list::DictionaryCellList) = keys(cell_list.hashtable)
+@inline each_cell_index(cell_list::DictionaryCellList) = keys(cell_list.hashtable)
+
+# For this cell list, this is a `KeySet`, which has to be `collect`ed first to be
+# able to be used in a threaded loop.
+@inline function each_cell_index_threadable(cell_list::DictionaryCellList)
+    return collect(each_cell_index(cell_list))
+end
 
 @inline function Base.getindex(cell_list::DictionaryCellList, cell)
     (; hashtable, empty_vector) = cell_list
@@ -51,4 +72,15 @@ end
     # Return an empty vector when `cell_index` is not a key of `hashtable` and
     # reuse the empty vector to avoid allocations.
     return get(hashtable, cell, empty_vector)
+end
+
+@inline function is_correct_cell(::DictionaryCellList, cell_coords, cell_index)
+    return cell_coords == cell_index
+end
+
+@inline index_type(::DictionaryCellList{NDIMS}) where {NDIMS} = NTuple{NDIMS, Int}
+
+function copy_cell_list(::DictionaryCellList{NDIMS}, search_radius,
+                        periodic_box) where {NDIMS}
+    return DictionaryCellList{NDIMS}()
 end
