@@ -63,7 +63,7 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, CB, PB} <: AbstractNeighborhood
                                            threaded_update = true) where {NDIMS}
         ELTYPE = typeof(search_radius)
 
-        cell_buffer = Array{NTuple{NDIMS, Int}, 2}(undef, n_points, Threads.nthreads())
+        cell_buffer = Array{index_type(cell_list), 2}(undef, n_points, Threads.nthreads())
         cell_buffer_indices = zeros(Int, Threads.nthreads())
 
         if search_radius < eps() || isnothing(periodic_box)
@@ -299,8 +299,10 @@ end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
-    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
-                                              periodic_box = nhs.periodic_box,
-                                              cell_list = copy(nhs.cell_list),
-                                              threaded_update = nhs.threaded_update)
+    (; periodic_box, threaded_update) = nhs
+
+    cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box)
+
+    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
+                                              cell_list, threaded_update)
 end
