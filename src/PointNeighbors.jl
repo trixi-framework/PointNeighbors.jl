@@ -15,6 +15,7 @@ include("nhs_precomputed.jl")
 
 export foreach_point_neighbor, foreach_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
+export DictionaryCellList, FullGridCellList
 export initialize!, update!, initialize_grid!, update_grid!
 export PeriodicBox, copy_neighborhood_search
 
