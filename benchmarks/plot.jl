@@ -42,7 +42,7 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
     sizes = [round.(Int, n_points_per_dimension .* per_dimension_factor^(iter - 1))
              for iter in 1:iterations]
 
-    n_particles = prod.(sizes)
+    n_particles_vec = prod.(sizes)
     times = zeros(iterations, length(neighborhood_searches_names))
 
     for iter in 1:iterations
@@ -50,14 +50,13 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                                   perturbation_factor_position = perturbation_factor_position)
 
         search_radius = 3.0
+        NDIMS = size(coordinates, 1)
+        n_particles = size(coordinates, 2)
 
         neighborhood_searches = [
-            TrivialNeighborhoodSearch{size(coordinates, 1)}(; search_radius,
-                                                            eachpoint = 1:n_particles),
-            GridNeighborhoodSearch{size(coordinates, 1)}(; search_radius,
-                                                         n_points = n_particles),
-            PrecomputedNeighborhoodSearch{size(coordinates, 1)}(; search_radius,
-                                                                n_points = n_particles),
+            TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_particles),
+            GridNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles),
+            PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles),
         ]
 
         for i in eachindex(neighborhood_searches)
@@ -72,9 +71,9 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
         end
     end
 
-    plot(n_particles, times,
+    plot(n_particles_vec, times,
          xaxis = :log, yaxis = :log,
-         xticks = (n_particles, n_particles),
+         xticks = (n_particles_vec, n_particles_vec),
          xlabel = "#particles", ylabel = "Runtime [s]",
          legend = :outerright, size = (750, 400), dpi = 200,
          label = neighborhood_searches_names, title = title)
