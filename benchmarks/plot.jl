@@ -9,7 +9,7 @@ include("../test/point_cloud.jl")
                     seed = 1, perturbation_factor_position = 1.0,
                     parallel = true, title = "")
 
-Run a benchmark for with several neighborhood searches multiple times for increasing numbers
+Run a benchmark with several neighborhood searches multiple times for increasing numbers
 of points and plot the results.
 
 # Arguments
@@ -28,10 +28,16 @@ of points and plot the results.
 - `perturbation_factor_position = 1.0`: Perturb point positions by this factor. A factor of
                                         `1.0` corresponds to points being moved by
                                         a maximum distance of `0.5` along each axis.
+
+# Example
+
+also an example?
 """
 function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          parallel = true, title = "",
                          seed = 1, perturbation_factor_position = 1.0)
+    # Is there a reason why this is hard coded? Why not passing custom nhs like `custom_nhs...`?
+    # And then `nameof(typeof(nhs))`
     neighborhood_searches_names = ["TrivialNeighborhoodSearch";;
                                    "GridNeighborhoodSearch";;
                                    "PrecomputedNeighborhoodSearch"]

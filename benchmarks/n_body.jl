@@ -11,6 +11,15 @@ This is a more realistic benchmark for particle-based simulations than
 [`benchmark_count_neighbors`](@ref).
 However, due to the higher computational cost, differences between neighborhood search
 implementations are less pronounced.
+
+# Example
+```julia
+    nhs_trivial = TrivialNeighborhoodSearch .......
+
+    ...
+
+    nhs_grid = GridNeighborhoodSearch ....
+```
 """
 function benchmark_n_body(neighborhood_search, coordinates; parallel = true)
     mass = 1e10 * (rand(size(coordinates, 2)) .+ 1)

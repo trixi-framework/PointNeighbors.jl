@@ -11,6 +11,15 @@ Due to the minimal computational cost, differences between neighborhood search
 implementations are highlighted. On the other hand, this is the least realistic benchmark.
 
 For a computationally heavier benchmark, see [`benchmark_n_body`](@ref).
+
+# Example
+```julia
+    nhs_trivial = TrivialNeighborhoodSearch .......
+
+    ...
+
+    nhs_grid = GridNeighborhoodSearch ....
+```
 """
 function benchmark_count_neighbors(neighborhood_search, coordinates; parallel = true)
     n_neighbors = zeros(Int, size(coordinates, 2))
