@@ -190,7 +190,7 @@ end
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                                     threaded_update::Val{true})
     # `collect` the keyset to be able to loop over it with `@threaded`
-    @threaded for cell_index in collect(each_cell_index(cell_list))
+    @threaded for cell_index in each_cell_index_threadable(cell_list)
         mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end

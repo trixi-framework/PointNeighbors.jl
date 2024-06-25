@@ -19,7 +19,7 @@ See [`copy_neighborhood_search`](@ref) for more details.
                          this option can be ignored an will be set automatically depending
                          on the periodicity of the neighborhood search.
 """
-struct FullGridCellList{C, LI, MC}
+struct FullGridCellList{C, LI, MC} <: AbstractCellList
     cells          :: C
     linear_indices :: LI
     min_cell       :: MC
