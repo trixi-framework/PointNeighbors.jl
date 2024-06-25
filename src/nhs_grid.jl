@@ -1,6 +1,8 @@
 @doc raw"""
     GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
-                                  periodic_box = nothing, threaded_update = true)
+                                  periodic_box = nothing,
+                                  cell_list = DictionaryCellList{NDIMS}(),
+                                  threaded_update = true)
 
 Simple grid-based neighborhood search with uniform search radius.
 The domain is divided into a regular grid.
@@ -32,6 +34,8 @@ since not sorting makes our implementation a lot faster (although less paralleli
                             with [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
+- `cell_list`:              The cell list that maps a cell index to a list of points inside
+                            the cell. By default, a [`DictionaryCellList`](@ref) is used.
 - `threaded_update = true`: Can be used to deactivate thread parallelization in the
                             neighborhood search update. This can be one of the largest
                             sources of variations between simulations with different
