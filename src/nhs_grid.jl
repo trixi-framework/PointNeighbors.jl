@@ -190,15 +190,15 @@ end
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                                     threaded_update::Val{true})
     # `collect` the keyset to be able to loop over it with `@threaded`
-    @threaded for cell in collect(each_cell_index(cell_list))
-        mark_changed_cell!(neighborhood_search, cell, coords_fun)
+    @threaded for cell_index in collect(each_cell_index(cell_list))
+        mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end
 
 @inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
                                     threaded_update::Val{false})
-    for cell in each_cell_index(cell_list)
-        mark_changed_cell!(neighborhood_search, cell, coords_fun)
+    for cell_index in each_cell_index(cell_list)
+        mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end
 
@@ -209,8 +209,8 @@ end
 @inline function mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     (; cell_list, cell_buffer, cell_buffer_indices) = neighborhood_search
 
-    for cell in cell_list[cell_index]
-        cell = cell_coords(coords_fun(cell), neighborhood_search)
+    for point in cell_list[cell_index]
+        cell = cell_coords(coords_fun(point), neighborhood_search)
 
         # `cell` is a tuple, `cell_index` is the linear index used internally be the
         # cell list to store cells inside `cell`.
