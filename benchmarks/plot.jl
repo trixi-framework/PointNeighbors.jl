@@ -53,11 +53,11 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
 
         neighborhood_searches = [
             TrivialNeighborhoodSearch{size(coordinates, 1)}(; search_radius,
-                                                            eachpoint = axes(coordinates, 2)),
+                                                            eachpoint = 1:n_particles),
             GridNeighborhoodSearch{size(coordinates, 1)}(; search_radius,
-                                                         n_points = size(coordinates, 2)),
+                                                         n_points = n_particles),
             PrecomputedNeighborhoodSearch{size(coordinates, 1)}(; search_radius,
-                                                                n_points = size(coordinates, 2)),
+                                                                n_points = n_particles),
         ]
 
         for i in eachindex(neighborhood_searches)
