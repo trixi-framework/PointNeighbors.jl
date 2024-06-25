@@ -1,3 +1,24 @@
+"""
+    FullGridCellList(; min_corner, max_corner, search_radius = 0.0, periodicity = false)
+
+A simple cell list implementation where each (empty or non-empty) cell of a rectangular
+domain is assigned a list of points.
+This cell list only works when all points are inside the specified domain at all times.
+
+Use the default arguments to create an empty "template" cell list that can be used to create
+an empty "template" neighborhood search.
+See [`copy_neighborhood_search`](@ref) for more details.
+
+# Keywords
+- `min_corner`: Coordinates of the domain corner in negative coordinate directions.
+- `max_corner`: Coordinates of the domain corner in positive coordinate directions.
+- `search_radius = 0.0`: Search radius of the neighborhood search, which will determine the
+                         cell size. Use the default of `0.0` to create a template (see above).
+- `periodicity = false`: Set to `true` when using a [`PeriodicBox`](@ref) with the
+                         neighborhood search. When using [`copy_neighborhood_search`](@ref),
+                         this option can be ignored an will be set automatically depending
+                         on the periodicity of the neighborhood search.
+"""
 struct FullGridCellList{C, LI, MC}
     cells          :: C
     linear_indices :: LI
