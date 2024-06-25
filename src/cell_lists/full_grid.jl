@@ -2,7 +2,7 @@
     FullGridCellList(; min_corner, max_corner, search_radius = 0.0, periodicity = false)
 
 A simple cell list implementation where each (empty or non-empty) cell of a rectangular
-domain is assigned a list of points.
+(axis-aligned) domain is assigned a list of points.
 This cell list only works when all points are inside the specified domain at all times.
 
 Only set `min_corner` and `max_corner` and use the default values for the other arguments
@@ -20,7 +20,7 @@ See [`copy_neighborhood_search`](@ref) for more details.
                          this option can be ignored an will be set automatically depending
                          on the periodicity of the neighborhood search.
 """
-struct FullGridCellList{C, LI, MC}
+struct FullGridCellList{C, LI, MC} <: AbstractCellList
     cells          :: C
     linear_indices :: LI
     min_cell       :: MC
