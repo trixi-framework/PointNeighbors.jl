@@ -39,6 +39,12 @@ struct FullGridCellList{C, LI, MC} <: AbstractCellList
     end
 end
 
+function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
+    (:parallel, :semi_parallel, :serial)
+end
+
+supported_update_strategies(::FullGridCellList) = (:semi_parallel, :serial)
+
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
                           periodicity = false, backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
@@ -111,6 +117,17 @@ end
 function push_cell!(cell_list::FullGridCellList{Nothing}, cell, particle)
     # This is an empty "template" cell list to be used with `copy_cell_list`
     throw(UndefRefError("`search_radius` is not defined for this cell list"))
+end
+
+@inline function push_cell_atomic!(cell_list::FullGridCellList, cell, particle)
+    (; cells) = cell_list
+
+    # `push!(cell_list[cell], particle)`, but for all backends.
+    # The atomic version of `pushat!` uses atomics to avoid race conditions when `pushat!`
+    # is used in a parallel loop.
+    pushat_atomic!(cells, cell_index(cell_list, cell), particle)
+
+    return cell_list
 end
 
 function deleteat_cell!(cell_list::FullGridCellList, cell, i)

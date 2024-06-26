@@ -2,6 +2,7 @@ module PointNeighbors
 
 using Reexport: @reexport
 
+using Atomix: Atomix
 using LinearAlgebra: dot
 using Polyester: @batch
 @reexport using StaticArrays: SVector

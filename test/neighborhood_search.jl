@@ -160,9 +160,16 @@
             neighborhood_searches = [
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              update_strategy = :serial),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            search_radius)),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius),
+                                              update_strategy = :semi_parallel),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
@@ -173,7 +180,9 @@
 
             names = [
                 "`GridNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `:serial` update",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `:semi_parallel` update",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
             ]
@@ -181,8 +190,12 @@
             # Also test copied templates
             template_nhs = [
                 GridNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(update_strategy = :serial),
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner)),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner),
+                                              update_strategy = :semi_parallel),
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),

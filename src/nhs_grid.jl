@@ -2,7 +2,7 @@
     GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                   periodic_box = nothing,
                                   cell_list = DictionaryCellList{NDIMS}(),
-                                  threaded_update = true)
+                                  update_strategy = nothing)
 
 Simple grid-based neighborhood search with uniform search radius.
 The domain is divided into a regular grid.
@@ -36,10 +36,20 @@ since not sorting makes our implementation a lot faster (although less paralleli
                             [`PeriodicBox`](@ref).
 - `cell_list`:              The cell list that maps a cell index to a list of points inside
                             the cell. By default, a [`DictionaryCellList`](@ref) is used.
-- `threaded_update = true`: Can be used to deactivate thread parallelization in the
-                            neighborhood search update. This can be one of the largest
-                            sources of variations between simulations with different
-                            thread numbers due to neighbor ordering changes.
+- `update_strategy = nothing`: Strategy to parallelize `update!`. Available options are:
+    - `nothing`:        Automatically choose the best available option.
+    - `:parallel`:      Fully parallel update by using atomic operations to avoid race
+                        conditions when adding points into the same cell. This is not
+                        available for all cell list implementations, but is the default when
+                        available.
+    - `:semi-parallel`: Loop over all cells in parallel to mark cells with points that now
+                        belong to a different cell. Then, move points of affected cells
+                        serially. This is available for all cell list implementations and is
+                        the default when `:parallel` is not available.
+    - `:serial`:        Deactivate parallelization in the neighborhood search update.
+                        Parallel update can be one of the largest sources of variations
+                        between simulations with different thread numbers due to neighbor
+                        ordering changes.
 
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
@@ -51,25 +61,39 @@ since not sorting makes our implementation a lot faster (although less paralleli
   In: Computer Graphics Forum 30.1 (2011), pages 99–112.
   [doi: 10.1111/J.1467-8659.2010.01832.X](https://doi.org/10.1111/J.1467-8659.2010.01832.X)
 """
-struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB, UB} <: AbstractNeighborhoodSearch
-    cell_list       :: CL
-    search_radius   :: ELTYPE
-    periodic_box    :: PB
-    n_cells         :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
-    cell_size       :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
-    update_buffer   :: UB # Multithreaded buffer for `update!`
-    threaded_update :: Bool
+struct GridNeighborhoodSearch{NDIMS, update_strategy,
+                              ELTYPE, CL, PB, UB} <: AbstractNeighborhoodSearch
+    # Store `update_strategy` as type parameter to dispatch `update!`
+    cell_list     :: CL
+    search_radius :: ELTYPE
+    periodic_box  :: PB
+    n_cells       :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
+    cell_size     :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
+    update_buffer :: UB                    # Multithreaded buffer for `update!`
 
     function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                            periodic_box = nothing,
                                            cell_list = DictionaryCellList{NDIMS}(),
-                                           threaded_update = true) where {NDIMS}
+                                           update_strategy = nothing) where {NDIMS}
         ELTYPE = typeof(search_radius)
 
-        # Create update buffer and initialize it with empty vectors
-        update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = Threads.nthreads(),
-                                                                      max_inner_length = n_points)
-        push!(update_buffer, (NTuple{NDIMS, Int}[] for _ in 1:Threads.nthreads())...)
+        if isnothing(update_strategy)
+            update_strategy = first(supported_update_strategies(cell_list))
+        elseif !(update_strategy in supported_update_strategies(cell_list))
+            throw(ArgumentError("$update_strategy is not a valid update strategy for " *
+                                "this cell list. Available options are " *
+                                "$(supported_update_strategies(cell_list))"))
+        end
+
+        if update_strategy in (:semi_parallel, :serial)
+            # Create update buffer and initialize it with empty vectors
+            update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = Threads.nthreads(),
+                                                                          max_inner_length = n_points)
+            push!(update_buffer, (NTuple{NDIMS, Int}[] for _ in 1:Threads.nthreads())...)
+        else
+            # No update buffer needed for fully parallel update
+            update_buffer = nothing
+        end
 
         if search_radius < eps() || isnothing(periodic_box)
             # No periodicity
@@ -91,13 +115,15 @@ struct GridNeighborhoodSearch{NDIMS, ELTYPE, CL, PB, UB} <: AbstractNeighborhood
             end
         end
 
-        new{NDIMS, ELTYPE, typeof(cell_list), typeof(periodic_box),
+        new{NDIMS, update_strategy, ELTYPE,
+            typeof(cell_list), typeof(periodic_box),
             typeof(update_buffer)}(cell_list, search_radius, periodic_box, n_cells,
-                                   cell_size, update_buffer, threaded_update)
+                                   cell_size, update_buffer)
     end
 end
 
 @inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
+@inline update_strategy(::GridNeighborhoodSearch{<:Any, strategy}) where {strategy} = strategy
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
@@ -137,19 +163,24 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
     update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
 end
 
-# Modify the existing cell lists by moving points into their new cells
-function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
-    (; cell_list, update_buffer, threaded_update) = neighborhood_search
+# Serial and semi-parallel update
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any, :serial},
+                                                 GridNeighborhoodSearch{<:Any,
+                                                                        :semi_parallel}},
+                      coords_fun::Function)
+    (; cell_list, update_buffer) = neighborhood_search
 
     # Empty each thread's list
     @threaded for i in eachindex(update_buffer)
         emptyat!(update_buffer, i)
     end
 
-    # Find all cells containing points that now belong to another cell
-    mark_changed_cell!(neighborhood_search, cell_list, coords_fun, Val(threaded_update))
+    # Find all cells containing points that now belong to another cell.
+    # This loop is threaded for `update_strategy == :semi_parallel`.
+    mark_changed_cells!(neighborhood_search, coords_fun)
 
-    # Iterate over all marked cells and move the points into their new cells
+    # Iterate over all marked cells and move the points into their new cells.
+    # This is always a serial loop (hence "semi-parallel").
     for j in eachindex(update_buffer)
         for cell_index in update_buffer[j]
             points = cell_list[cell_index]
@@ -182,26 +213,24 @@ end
 # The type annotation is to make Julia specialize on the type of the function.
 # Otherwise, unspecialized code will cause a lot of allocations and heavily impact performance.
 # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
-@inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun::T,
-                                    threaded_update::Val{true}) where {T}
+@inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                 :semi_parallel},
+                                     coords_fun::T) where {T}
     # `each_cell_index(cell_list)` might return a `KeySet`, which has to be `collect`ed
     # first to be able to be used in a threaded loop. This function takes care of that.
-    @threaded for cell_index in each_cell_index_threadable(cell_list)
+    @threaded for cell_index in each_cell_index_threadable(neighborhood_search.cell_list)
         mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end
 
-@inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun::T,
-                                    threaded_update::Val{false}) where {T}
-    for cell_index in each_cell_index(cell_list)
+@inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                 :serial},
+                                     coords_fun::T) where {T}
+    for cell_index in each_cell_index(neighborhood_search.cell_list)
         mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end
 
-# Use this function barrier and unpack inside to avoid passing closures to Polyester.jl
-# with `@batch` (`@threaded`).
-# Otherwise, `@threaded` does not work here with Julia ARM on macOS.
-# See https://github.com/JuliaSIMD/Polyester.jl/issues/88.
 @inline function mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     (; cell_list, update_buffer) = neighborhood_search
 
@@ -217,6 +246,50 @@ end
             break
         end
     end
+end
+
+# Fully parallel update with atomic push
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, :parallel},
+                      coords_fun::Function)
+    (; cell_list) = neighborhood_search
+
+    # Note that we need two separate loops for adding and removing points.
+    # `push_cell_atomic!` only guarantees thread-safety when different threads push at the
+    # simultaneously, but it does not work when `deleteat_cell!` is called at the same time.
+
+    # Add points to new cells
+    @threaded for cell_index in each_cell_index_threadable(cell_list)
+        for point in cell_list[cell_index]
+            cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+
+            if !is_correct_cell(cell_list, cell_coords_, cell_index)
+                new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
+
+                # Add point to new cell or create cell if it does not exist
+                push_cell_atomic!(cell_list, new_cell_coords, point)
+            end
+        end
+    end
+
+    # Remove points from old cells
+    @threaded for cell_index in each_cell_index_threadable(cell_list)
+        points = cell_list[cell_index]
+
+        # WARNING!!!
+        # The `DynamicVectorOfVectors` requires this loop to be **in descending order**.
+        # `deleteat_cell!(..., i)` will change the order of points that come after `i`.
+        for i in reverse(eachindex(points))
+            point = points[i]
+            cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+
+            if !is_correct_cell(cell_list, cell_coords_, cell_index)
+                # Remove moved point from this cell
+                deleteat_cell!(cell_list, cell_index, i)
+            end
+        end
+    end
+
+    return neighborhood_search
 end
 
 # 1D
@@ -295,10 +368,11 @@ end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
-    (; periodic_box, threaded_update) = nhs
+    (; periodic_box) = nhs
 
     cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box)
 
     return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
-                                              cell_list, threaded_update)
+                                              cell_list,
+                                              update_strategy = update_strategy(nhs))
 end
