@@ -77,7 +77,12 @@ struct GridNeighborhoodSearch{NDIMS, update_strategy,
                                            update_strategy = nothing) where {NDIMS}
         ELTYPE = typeof(search_radius)
 
-        if isnothing(update_strategy)
+        if isnothing(update_strategy) && Threads.nthreads == 1
+            # Use serial update on one thread to avoid a second loop over all particles
+            # when `:parallel` is picked.
+            update_strategy = :serial
+        elseif isnothing(update_strategy)
+            # Automatically choose best available update option for this cell list
             update_strategy = first(supported_update_strategies(cell_list))
         elseif !(update_strategy in supported_update_strategies(cell_list))
             throw(ArgumentError("$update_strategy is not a valid update strategy for " *

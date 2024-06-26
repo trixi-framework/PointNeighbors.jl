@@ -158,13 +158,19 @@
             max_corner = maximum(coords, dims = 2) .+ search_radius
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              # Note that `:semi_parallel` is only the
+                                              # default on multiple threads.
+                                              update_strategy = :semi_parallel),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               update_strategy = :serial),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
-                                                                           search_radius)),
+                                                                           search_radius),
+                                              # Note that `:parallel` is only the
+                                              # default on multiple threads.
+                                              update_strategy = :parallel),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
@@ -179,9 +185,9 @@
             ]
 
             names = [
-                "`GridNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `:semi_parallel` update",
                 "`GridNeighborhoodSearch` with `:serial` update",
-                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `:parallel` update",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `:semi_parallel` update",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
