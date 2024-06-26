@@ -1,6 +1,6 @@
 # All `using` calls are in this file, so that one can run any test file
 # after running only this file.
-using Test: @test, @testset
+using Test: @test, @testset, @test_throws
 using PointNeighbors
 
 """
