@@ -91,9 +91,7 @@
 
         # Create neighborhood search
         nhs1 = GridNeighborhoodSearch{3}(; search_radius, n_points)
-
-        coords_fun(i) = coordinates1[:, i]
-        initialize_grid!(nhs1, coords_fun)
+        initialize_grid!(nhs1, coordinates1)
 
         # Get each neighbor for `point_position1`
         neighbors1 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs1)))
