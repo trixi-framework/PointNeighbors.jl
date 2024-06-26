@@ -19,6 +19,13 @@ See [`copy_neighborhood_search`](@ref) for more details.
                          neighborhood search. When using [`copy_neighborhood_search`](@ref),
                          this option can be ignored an will be set automatically depending
                          on the periodicity of the neighborhood search.
+- `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the actual
+    cell lists. Can be
+    - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
+    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits.
+- `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
+                               allocate the `DynamicVectorOfVectors`. It is not used with
+                               the `Vector{Vector{Int32}}` backend.
 """
 struct FullGridCellList{C, LI, MC} <: AbstractCellList
     cells          :: C
@@ -31,9 +38,8 @@ struct FullGridCellList{C, LI, MC} <: AbstractCellList
 end
 
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
-                          periodicity = false,
-                          backend = DynamicVectorOfVectors{Int32}(max_outer_length = 0,
-                                                                  max_inner_length = 100))
+                          periodicity = false, backend = DynamicVectorOfVectors{Int32},
+                          max_points_per_cell = 100)
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
         cells = nothing
@@ -55,22 +61,22 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
         min_cell = Tuple(floor_to_int.(min_corner ./ search_radius))
 
-        cells = construct_backend(backend, n_cells_per_dimension)
+        cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
     end
 
     return FullGridCellList{typeof(cells), typeof(linear_indices),
                             typeof(min_cell)}(cells, linear_indices, min_cell)
 end
 
-function construct_backend(::Vector{Vector{T}}, size) where {T}
+function construct_backend(::Vector{Vector{T}}, size, max_points_per_cell) where {T}
     return [T[] for _ in 1:prod(size)]
 end
 
-function construct_backend(cells::DynamicVectorOfVectors{T}, size_) where {T}
-    # Create new `DynamicVectorOfVectors` with the same `max_inner_length`
-    max_inner_length = size(cells.backend, 1)
-    cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size_); max_inner_length)
-    resize!(cells, prod(size_))
+function construct_backend(cells::DynamicVectorOfVectors{T}, size,
+                           max_points_per_cell) where {T}
+    cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size),
+                                      max_inner_length = max_points_per_cell)
+    resize!(cells, prod(size))
 
     return cells
 end
