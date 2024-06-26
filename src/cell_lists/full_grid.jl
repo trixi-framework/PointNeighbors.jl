@@ -68,11 +68,11 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
                             typeof(min_cell)}(cells, linear_indices, min_cell)
 end
 
-function construct_backend(::Vector{Vector{T}}, size, max_points_per_cell) where {T}
+function construct_backend(::Type{Vector{Vector{T}}}, size, max_points_per_cell) where {T}
     return [T[] for _ in 1:prod(size)]
 end
 
-function construct_backend(cells::DynamicVectorOfVectors{T}, size,
+function construct_backend(cells::Type{DynamicVectorOfVectors{T}}, size,
                            max_points_per_cell) where {T}
     cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size),
                                       max_inner_length = max_points_per_cell)
