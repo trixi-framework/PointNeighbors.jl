@@ -7,6 +7,7 @@ using Polyester: @batch
 @reexport using StaticArrays: SVector
 
 include("util.jl")
+include("vector_of_vectors.jl")
 include("neighborhood_search.jl")
 include("nhs_trivial.jl")
 include("cell_lists/cell_lists.jl")
