@@ -13,5 +13,13 @@
         @testset verbose=true "`benchmark_n_body`" begin
             @test_nowarn_mod plot_benchmarks(benchmark_n_body, size, 2)
         end
+
+        @testset verbose=true "`benchmark_initialize`" begin
+            @test_nowarn_mod plot_benchmarks(benchmark_initialize, size, 2)
+        end
+
+        @testset verbose=true "`benchmark_update_alternating`" begin
+            @test_nowarn_mod plot_benchmarks(benchmark_update_alternating, size, 2)
+        end
     end
 end;
