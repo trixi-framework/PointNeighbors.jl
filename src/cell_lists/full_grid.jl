@@ -31,7 +31,9 @@ struct FullGridCellList{C, LI, MC} <: AbstractCellList
 end
 
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
-                          periodicity = false)
+                          periodicity = false,
+                          backend = DynamicVectorOfVectors{Int32}(max_outer_length = 0,
+                                                                  max_inner_length = 100))
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
         cells = nothing
@@ -53,15 +55,33 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
         min_cell = Tuple(floor_to_int.(min_corner ./ search_radius))
 
-        cells = [Int32[] for _ in 1:prod(n_cells_per_dimension)]
+        cells = construct_backend(backend, n_cells_per_dimension)
     end
 
     return FullGridCellList{typeof(cells), typeof(linear_indices),
                             typeof(min_cell)}(cells, linear_indices, min_cell)
 end
 
+function construct_backend(::Vector{Vector{T}}, size) where {T}
+    return [T[] for _ in 1:prod(size)]
+end
+
+function construct_backend(cells::DynamicVectorOfVectors{T}, size_) where {T}
+    # Create new `DynamicVectorOfVectors` with the same `max_inner_length`
+    max_inner_length = size(cells.backend, 1)
+    cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size_); max_inner_length)
+    resize!(cells, prod(size_))
+
+    return cells
+end
+
 function Base.empty!(cell_list::FullGridCellList)
-    Base.empty!.(cell_list.cells)
+    (; cells) = cell_list
+
+    # `Base.empty!.(cells)`, but for all backends
+    for i in eachindex(cells)
+        emptyat!(cells, i)
+    end
 
     return cell_list
 end
@@ -72,7 +92,12 @@ function Base.empty!(cell_list::FullGridCellList{Nothing})
 end
 
 function push_cell!(cell_list::FullGridCellList, cell, particle)
-    push!(cell_list[cell], particle)
+    (; cells) = cell_list
+
+    # `push!(cell_list[cell], particle)`, but for all backends
+    pushat!(cells, cell_index(cell_list, cell), particle)
+
+    return cell_list
 end
 
 function push_cell!(cell_list::FullGridCellList{Nothing}, cell, particle)
@@ -81,7 +106,10 @@ function push_cell!(cell_list::FullGridCellList{Nothing}, cell, particle)
 end
 
 function deleteat_cell!(cell_list::FullGridCellList, cell, i)
-    deleteat!(cell_list[cell], i)
+    (; cells) = cell_list
+
+    # `deleteat!(cell_list[cell], i)`, but for all backends
+    deleteatat!(cells, cell_index(cell_list, cell), i)
 end
 
 @inline each_cell_index(cell_list::FullGridCellList) = eachindex(cell_list.cells)
@@ -91,20 +119,22 @@ function each_cell_index(cell_list::FullGridCellList{Nothing})
     throw(UndefRefError("`search_radius` is not defined for this cell list"))
 end
 
-@inline function Base.getindex(cell_list::FullGridCellList, cell::Tuple)
-    (; cells, linear_indices, min_cell) = cell_list
-
-    return cells[linear_indices[(cell .- min_cell .+ 1)...]]
-end
-
-@inline function Base.getindex(cell_list::FullGridCellList, i::Integer)
-    return cell_list.cells[i]
-end
-
-@inline function is_correct_cell(cell_list::FullGridCellList, cell_coords, cell_index)
+@inline function cell_index(cell_list::FullGridCellList, cell::Tuple)
     (; linear_indices, min_cell) = cell_list
 
-    return linear_indices[(cell_coords .- min_cell .+ 1)...] == cell_index
+    return linear_indices[(cell .- min_cell .+ 1)...]
+end
+
+@inline cell_index(::FullGridCellList, cell::Integer) = cell
+
+@inline function Base.getindex(cell_list::FullGridCellList, cell)
+    (; cells) = cell_list
+
+    return cells[cell_index(cell_list, cell)]
+end
+
+@inline function is_correct_cell(cell_list::FullGridCellList, cell_coords, cell_index_)
+    return cell_index(cell_list, cell_coords) == cell_index_
 end
 
 @inline index_type(::FullGridCellList) = Int32

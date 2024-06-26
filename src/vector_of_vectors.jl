@@ -60,6 +60,12 @@ end
     return vov
 end
 
+@inline function pushat!(vov::Vector{<:Vector{<:Any}}, i, value)
+    push!(vov[i], value)
+
+    return vov
+end
+
 # `deleteat!(vov[i], j)`
 @inline function deleteatat!(vov::DynamicVectorOfVectors, i, j)
     (; backend, lengths) = vov
@@ -79,6 +85,12 @@ end
     return vov
 end
 
+@inline function deleteatat!(vov::Vector{<:Vector{<:Any}}, i, j)
+    deleteat!(vov[i], j)
+
+    return vov
+end
+
 @inline function Base.empty!(vov::DynamicVectorOfVectors)
     # Move all pointers to the beginning
     vov.lengths .= zero(Int32)
@@ -91,6 +103,18 @@ end
 @inline function emptyat!(vov::DynamicVectorOfVectors, i)
     # Move length pointer to the beginning
     vov.lengths[i] = zero(Int32)
+
+    return vov
+end
+
+@inline function emptyat!(vov::Vector{<:Vector{<:Any}}, i)
+    Base.empty!(vov[i])
+end
+
+@inline function Base.resize!(vov::DynamicVectorOfVectors, n)
+    # Make sure that all newly added vectors are empty
+    vov.lengths[(length(vov) + 1):n] .= zero(Int32)
+    vov.length_[] = n
 
     return vov
 end
