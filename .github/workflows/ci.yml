@@ -67,12 +67,14 @@ jobs:
       - uses: julia-actions/cache@v2
       - name: Build package
         uses: julia-actions/julia-buildpkg@v1
-      - name: Run tests
+      - name: Run unit tests
         uses: julia-actions/julia-runtest@v1
         with:
           annotate: true
           # Only run coverage in one Job (Ubuntu and latest Julia version)
           coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '1' }}
+        env:
+          POINTNEIGHBORS_TEST: unit
       - name: Process coverage results
         # Only run coverage in one Job (Ubuntu and latest Julia version)
         if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
@@ -89,3 +91,11 @@ jobs:
           flags: unit
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Run benchmark tests
+        uses: julia-actions/julia-runtest@v1
+        with:
+          annotate: true
+          coverage: false
+        env:
+          POINTNEIGHBORS_TEST: benchmarks
+
