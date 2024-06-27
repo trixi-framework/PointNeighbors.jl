@@ -62,51 +62,49 @@ struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighbor
     cell_size       :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
     update_buffer   :: UB                    # Multithreaded buffer for `update!`
     update_strategy :: US
+end
 
-    function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
-                                           periodic_box = nothing,
-                                           cell_list = DictionaryCellList{NDIMS}(),
-                                           update_strategy = nothing) where {NDIMS}
-        if isnothing(update_strategy) && Threads.nthreads == 1
-            # Use serial update on one thread to avoid a second loop over all particles
-            # when `ParallelUpdate` is picked.
-            update_strategy = SerialUpdate()
-        elseif isnothing(update_strategy)
-            # Automatically choose best available update option for this cell list
-            update_strategy = first(supported_update_strategies(cell_list))()
-        elseif !(typeof(update_strategy) in supported_update_strategies(cell_list))
-            throw(ArgumentError("$update_strategy is not a valid update strategy for " *
-                                "this cell list. Available options are " *
-                                "$(supported_update_strategies(cell_list))"))
-        end
-
-        update_buffer = create_update_buffer(update_strategy, cell_list, n_points)
-
-        if search_radius < eps() || isnothing(periodic_box)
-            # No periodicity
-            n_cells = ntuple(_ -> -1, Val(NDIMS))
-            cell_size = ntuple(_ -> search_radius, Val(NDIMS))
-        else
-            # Round up search radius so that the grid fits exactly into the domain without
-            # splitting any cells. This might impact performance slightly, since larger
-            # cells mean that more potential neighbors are considered than necessary.
-            # Allow small tolerance to avoid inefficient larger cells due to machine
-            # rounding errors.
-            n_cells = Tuple(floor.(Int, (periodic_box.size .+ 10eps()) / search_radius))
-            cell_size = Tuple(periodic_box.size ./ n_cells)
-
-            if any(i -> i < 3, n_cells)
-                throw(ArgumentError("the `GridNeighborhoodSearch` needs at least 3 cells " *
-                                    "in each dimension when used with periodicity. " *
-                                    "Please use no NHS for very small problems."))
-            end
-        end
-
-        new{NDIMS, typeof(update_strategy), typeof(cell_list),
-            typeof(search_radius), typeof(periodic_box),
-            typeof(update_buffer)}(cell_list, search_radius, periodic_box, n_cells,
-                                   cell_size, update_buffer, update_strategy)
+function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
+                                        periodic_box = nothing,
+                                        cell_list = DictionaryCellList{NDIMS}(),
+                                        update_strategy = nothing) where {NDIMS}
+    if isnothing(update_strategy) && Threads.nthreads == 1
+        # Use serial update on one thread to avoid a second loop over all particles
+        # when `ParallelUpdate` is picked.
+        update_strategy = SerialUpdate()
+    elseif isnothing(update_strategy)
+        # Automatically choose best available update option for this cell list
+        update_strategy = first(supported_update_strategies(cell_list))()
+    elseif !(typeof(update_strategy) in supported_update_strategies(cell_list))
+        throw(ArgumentError("$update_strategy is not a valid update strategy for " *
+                            "this cell list. Available options are " *
+                            "$(supported_update_strategies(cell_list))"))
     end
+
+    update_buffer = create_update_buffer(update_strategy, cell_list, n_points)
+
+    if search_radius < eps() || isnothing(periodic_box)
+        # No periodicity
+        n_cells = ntuple(_ -> -1, Val(NDIMS))
+        cell_size = ntuple(_ -> search_radius, Val(NDIMS))
+    else
+        # Round up search radius so that the grid fits exactly into the domain without
+        # splitting any cells. This might impact performance slightly, since larger
+        # cells mean that more potential neighbors are considered than necessary.
+        # Allow small tolerance to avoid inefficient larger cells due to machine
+        # rounding errors.
+        n_cells = Tuple(floor.(Int, (periodic_box.size .+ 10eps()) / search_radius))
+        cell_size = Tuple(periodic_box.size ./ n_cells)
+
+        if any(i -> i < 3, n_cells)
+            throw(ArgumentError("the `GridNeighborhoodSearch` needs at least 3 cells " *
+                                "in each dimension when used with periodicity. " *
+                                "Please use no NHS for very small problems."))
+        end
+    end
+
+    return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
+                                  cell_size, update_buffer, update_strategy)
 end
 
 """

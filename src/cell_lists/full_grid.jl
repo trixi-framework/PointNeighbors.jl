@@ -33,10 +33,6 @@ struct FullGridCellList{C, LI, MC} <: AbstractCellList
     cells          :: C
     linear_indices :: LI
     min_cell       :: MC
-
-    function FullGridCellList{C, LI, MC}(cells, linear_indices, min_cell) where {C, LI, MC}
-        new{C, LI, MC}(cells, linear_indices, min_cell)
-    end
 end
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
