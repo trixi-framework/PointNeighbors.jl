@@ -65,9 +65,9 @@ struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighbor
 end
 
 function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
-                                        periodic_box = nothing,
-                                        cell_list = DictionaryCellList{NDIMS}(),
-                                        update_strategy = nothing) where {NDIMS}
+                                       periodic_box = nothing,
+                                       cell_list = DictionaryCellList{NDIMS}(),
+                                       update_strategy = nothing) where {NDIMS}
     if isnothing(update_strategy) && Threads.nthreads == 1
         # Use serial update on one thread to avoid a second loop over all particles
         # when `ParallelUpdate` is picked.
