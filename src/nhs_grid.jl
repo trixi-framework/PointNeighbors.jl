@@ -137,12 +137,12 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
     update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i))
 end
 
-# Modify the existing hash table by moving points into their new cells
+# Modify the existing cell lists by moving points into their new cells
 function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
     (; cell_list, update_buffer, threaded_update) = neighborhood_search
 
     # Empty each thread's list
-    for i in eachindex(update_buffer)
+    @threaded for i in eachindex(update_buffer)
         emptyat!(update_buffer, i)
     end
 
@@ -154,40 +154,45 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch, coords_fun)
         for cell_index in update_buffer[j]
             points = cell_list[cell_index]
 
-            # Find all points whose coordinates do not match this cell
-            moved_point_indices = (i for i in eachindex(points)
-                                   if !is_correct_cell(cell_list,
-                                                       cell_coords(coords_fun(points[i]),
-                                                                   neighborhood_search),
-                                                       cell_index))
-
-            # Add moved points to new cell
-            for i in moved_point_indices
+            # Find all points whose coordinates do not match this cell.
+            #
+            # WARNING!!!
+            # The `DynamicVectorOfVectors` requires this loop to be **in descending order**.
+            # `deleteat_cell!(..., i)` will change the order of points that come after `i`.
+            for i in reverse(eachindex(points))
                 point = points[i]
-                new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
+                cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
 
-                # Add point to corresponding cell or create cell if it does not exist
-                push_cell!(cell_list, new_cell_coords, point)
+                if !is_correct_cell(cell_list, cell_coords_, cell_index)
+                    new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
+
+                    # Add point to new cell or create cell if it does not exist
+                    push_cell!(cell_list, new_cell_coords, point)
+
+                    # Remove moved point from this cell
+                    deleteat_cell!(cell_list, cell_index, i)
+                end
             end
-
-            # Remove moved points from this cell
-            deleteat_cell!(cell_list, cell_index, moved_point_indices)
         end
     end
 
     return neighborhood_search
 end
 
-@inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
-                                    threaded_update::Val{true})
-    # `collect` the keyset to be able to loop over it with `@threaded`
+# The type annotation is to make Julia specialize on the type of the function.
+# Otherwise, unspecialized code will cause a lot of allocations and heavily impact performance.
+# See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+@inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun::T,
+                                    threaded_update::Val{true}) where {T}
+    # `each_cell_index(cell_list)` might return a `KeySet`, which has to be `collect`ed
+    # first to be able to be used in a threaded loop. This function takes care of that.
     @threaded for cell_index in each_cell_index_threadable(cell_list)
         mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
 end
 
-@inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun,
-                                    threaded_update::Val{false})
+@inline function mark_changed_cell!(neighborhood_search, cell_list, coords_fun::T,
+                                    threaded_update::Val{false}) where {T}
     for cell_index in each_cell_index(cell_list)
         mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
     end
