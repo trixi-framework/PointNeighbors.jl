@@ -23,15 +23,12 @@ function Adapt.adapt_structure(to::typeof(Array), range::UnitRange)
     return range
 end
 
-function Adapt.adapt_structure(to,
-                               nhs::GridNeighborhoodSearch{<:Any, update_strategy}) where {
-                                                                                           update_strategy
-                                                                                           }
+function Adapt.adapt_structure(to, nhs::GridNeighborhoodSearch)
     (; search_radius, periodic_box, n_cells, cell_size) = nhs
 
     cell_list = Adapt.adapt_structure(to, nhs.cell_list)
     update_buffer = Adapt.adapt_structure(to, nhs.update_buffer)
 
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
-                                  cell_size, update_buffer, update_strategy)
+                                  cell_size, update_buffer, update_strategy(nhs))
 end
