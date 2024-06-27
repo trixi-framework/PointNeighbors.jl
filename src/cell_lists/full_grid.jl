@@ -1,5 +1,7 @@
 """
-    FullGridCellList(; min_corner, max_corner, search_radius = 0.0, periodicity = false)
+    FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
+                     periodicity = false, backend = DynamicVectorOfVectors{Int32},
+                     max_points_per_cell = 100)
 
 A simple cell list implementation where each (empty or non-empty) cell of a rectangular
 (axis-aligned) domain is assigned a list of points.

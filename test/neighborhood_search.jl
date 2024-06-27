@@ -38,6 +38,9 @@
             n_points = size(coords, 2)
             search_radius = 0.1
 
+            min_corner = periodic_boxes[i].min_corner
+            max_corner = max_corner = periodic_boxes[i].max_corner
+
             neighborhood_searches = [
                 TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_points,
                                                  periodic_box = periodic_boxes[i]),
@@ -45,16 +48,14 @@
                                               periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i],
-                                              cell_list = FullGridCellList(;
-                                                                           min_corner = periodic_boxes[i].min_corner,
-                                                                           max_corner = periodic_boxes[i].max_corner,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
                                                                            search_radius,
                                                                            periodicity = true)),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i],
-                                              cell_list = FullGridCellList(;
-                                                                           min_corner = periodic_boxes[i].min_corner,
-                                                                           max_corner = periodic_boxes[i].max_corner,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int32}},
                                                                            periodicity = true)),
