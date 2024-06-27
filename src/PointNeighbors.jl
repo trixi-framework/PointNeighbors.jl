@@ -4,8 +4,10 @@ using Reexport: @reexport
 
 using Adapt: Adapt
 using Atomix: Atomix
+using GPUArrays: AbstractGPUArray
+using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
-using Polyester: @batch
+using Polyester: Polyester
 @reexport using StaticArrays: SVector
 
 include("util.jl")

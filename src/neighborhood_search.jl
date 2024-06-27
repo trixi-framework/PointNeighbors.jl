@@ -131,18 +131,44 @@ See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
                                 points = axes(system_coords, 2),
-                                parallel = true) where {T}
+                                parallel::Union{Bool, KernelAbstractions.Backend} = true) where {
+                                                                                                 T
+                                                                                                 }
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
     # and heavily impact performance.
     # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+    if parallel isa Bool
+        # When `false` is passed, run serially. When `true` is passed, run either a
+        # threaded loop with `Polyester.@batch`, or, when `system_coords` is a GPU array,
+        # launch the loop as a kernel on the GPU.
+        parallel_ = Val(parallel)
+    elseif parallel isa KernelAbstractions.Backend
+        # WARNING! Undocumented, experimental feature:
+        # When a `KernelAbstractions.Backend` is passed, launch the loop as a GPU kernel
+        # on this backend. This is useful to test the GPU code on the CPU by passing
+        # `parallel = KernelAbstractions.CPU()`, even though `system_coords isa Array`.
+        parallel_ = parallel
+    end
+
     foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search, points,
-                           Val(parallel))
+                           parallel_)
 end
 
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points, parallel::Val{true})
-    @threaded for point in points
+    @threaded system_coords for point in points
+        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+    end
+
+    return nothing
+end
+
+# When a `KernelAbstractions.Backend` is passed, launch a GPU kernel on this backend
+@inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
+                                        neighborhood_search, points,
+                                        backend::KernelAbstractions.Backend)
+    @threaded backend for point in points
         foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
     end
 
