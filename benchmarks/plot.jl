@@ -9,7 +9,7 @@ include("../test/point_cloud.jl")
                     seed = 1, perturbation_factor_position = 1.0,
                     parallel = true, title = "")
 
-Run a benchmark for with several neighborhood searches multiple times for increasing numbers
+Run a benchmark with several neighborhood searches multiple times for increasing numbers
 of points and plot the results.
 
 # Arguments
@@ -28,6 +28,12 @@ of points and plot the results.
 - `perturbation_factor_position = 1.0`: Perturb point positions by this factor. A factor of
                                         `1.0` corresponds to points being moved by
                                         a maximum distance of `0.5` along each axis.
+
+# Examples
+```julia
+include("benchmarks/benchmarks.jl")
+
+plot_benchmarks(benchmark_count_neighbors, (10, 10), 3)
 """
 function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          parallel = true, title = "",
