@@ -46,7 +46,7 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
                           max_points_per_cell = 100)
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
-        cells = nothing
+        cells = construct_backend(backend, 0, 0)
         linear_indices = nothing
 
         # Misuse `min_cell` to store min and max corner for copying
@@ -76,13 +76,19 @@ function construct_backend(::Type{Vector{Vector{T}}}, size, max_points_per_cell)
     return [T[] for _ in 1:prod(size)]
 end
 
-function construct_backend(cells::Type{DynamicVectorOfVectors{T}}, size,
+function construct_backend(::Type{DynamicVectorOfVectors{T}}, size,
                            max_points_per_cell) where {T}
     cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size),
                                       max_inner_length = max_points_per_cell)
     resize!(cells, prod(size))
 
     return cells
+end
+
+# When `typeof(cell_list.cells)` is passed
+function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3}}, size,
+                           max_points_per_cell) where {T1, T2, T3}
+    return construct_backend(DynamicVectorOfVectors{T1}, size, max_points_per_cell)
 end
 
 function Base.empty!(cell_list::FullGridCellList)
@@ -165,5 +171,6 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
     min_corner, max_corner = cell_list.min_cell
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
-                            periodicity = !isnothing(periodic_box))
+                            periodicity = !isnothing(periodic_box),
+                            backend = typeof(cell_list.cells))
 end

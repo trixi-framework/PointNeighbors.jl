@@ -12,6 +12,43 @@
         @test nhs2.update_strategy == nhs.update_strategy
     end
 
+    @testset "`copy_neighborhood_search" begin
+        # Basic copy
+        nhs = GridNeighborhoodSearch{2}()
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test ndims(copy) == 2
+        @test PointNeighbors.search_radius(copy) == 1.0
+        @test copy.cell_list isa DictionaryCellList{2}
+        @test PointNeighbors.update_strategy(copy) == :semi_parallel
+
+        # Full grid cell list
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(min_corner = (0.0, 0.0),
+                                                                     max_corner = (1.0, 1.0)))
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test copy.cell_list isa FullGridCellList
+        @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
+        @test PointNeighbors.update_strategy(copy) == :parallel
+
+        # Full grid cell list with `Vector{Vector}` backend
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(min_corner = (0.0, 0.0),
+                                                                     max_corner = (1.0, 1.0),
+                                                                     backend = Vector{Vector{Int32}}))
+        copy = copy_neighborhood_search(nhs, 0.5, 27)
+
+        @test copy.cell_list.cells isa Vector
+        @test PointNeighbors.update_strategy(copy) == :semi_parallel
+
+        # Check that the update strategy is preserved
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(min_corner = (0.0, 0.0),
+                                                                     max_corner = (1.0, 1.0)),
+                                        update_strategy = :serial)
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test PointNeighbors.update_strategy(copy) == :serial
+    end
+
     @testset "Cells at Coordinate Limits" begin
         # Test the threshold for very large and very small coordinates
         coords1 = [Inf, -Inf]
