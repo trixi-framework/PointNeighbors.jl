@@ -1,4 +1,12 @@
 @testset verbose=true "GridNeighborhoodSearch" begin
+    @testset "Constructor" begin
+        error_str = "is not a valid update strategy"
+        @test_throws "test $error_str" GridNeighborhoodSearch{2}(update_strategy = :test)
+
+        # Default cell list doesn't support fully parallel update
+        @test_throws "ParallelUpdate() $error_str" GridNeighborhoodSearch{2}(update_strategy = ParallelUpdate())
+    end
+
     @testset "Cells at Coordinate Limits" begin
         # Test the threshold for very large and very small coordinates
         coords1 = [Inf, -Inf]

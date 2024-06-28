@@ -158,11 +158,24 @@
             max_corner = maximum(coords, dims = 2) .+ search_radius
 
             neighborhood_searches = [
-                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              # Note that `SemiParallelUpdate` is only the
+                                              # default on multiple threads.
+                                              update_strategy = SemiParallelUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              update_strategy = SerialUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
-                                                                           search_radius)),
+                                                                           search_radius),
+                                              # Note that `ParallelUpdate` is only the
+                                              # default on multiple threads.
+                                              update_strategy = ParallelUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius),
+                                              update_strategy = SemiParallelUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
@@ -172,8 +185,10 @@
             ]
 
             names = [
-                "`GridNeighborhoodSearch`",
-                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
+                "`GridNeighborhoodSearch` with `SemiParallelUpdate`",
+                "`GridNeighborhoodSearch` with `SerialUpdate`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelUpdate`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
             ]
@@ -181,8 +196,12 @@
             # Also test copied templates
             template_nhs = [
                 GridNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(update_strategy = SerialUpdate()),
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner)),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner),
+                                              update_strategy = SemiParallelUpdate()),
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),

@@ -66,6 +66,23 @@ end
     return vov
 end
 
+@inline function pushat_atomic!(vov::DynamicVectorOfVectors, i, value)
+    (; backend, lengths) = vov
+
+    @boundscheck checkbounds(vov, i)
+
+    # Increment the column length with an atomic add to avoid race conditions.
+    # Store the new value since it might be changed immediately afterwards by another
+    # thread.
+    new_length = Atomix.@atomic lengths[i] += 1
+
+    # We can write here without race conditions, since the atomic add guarantees
+    # that `new_length` is different for each thread.
+    backend[new_length, i] = value
+
+    return vov
+end
+
 # `deleteat!(vov[i], j)`
 @inline function deleteatat!(vov::DynamicVectorOfVectors, i, j)
     (; backend, lengths) = vov
