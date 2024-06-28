@@ -30,5 +30,5 @@ function Adapt.adapt_structure(to, nhs::GridNeighborhoodSearch)
     update_buffer = Adapt.adapt_structure(to, nhs.update_buffer)
 
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
-                                  cell_size, update_buffer, update_strategy(nhs))
+                                  cell_size, update_buffer, nhs.update_strategy)
 end
