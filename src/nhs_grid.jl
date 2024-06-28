@@ -202,7 +202,8 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
 end
 
 # Serial and semi-parallel update
-function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any, SerialUpdate},
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
+                                                                        SerialUpdate},
                                                  GridNeighborhoodSearch{<:Any,
                                                                         SemiParallelUpdate}},
                       coords_fun::Function)
