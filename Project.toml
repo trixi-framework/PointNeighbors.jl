@@ -1,7 +1,7 @@
 name = "PointNeighbors"
 uuid = "1c4d5385-0a27-49de-8e2c-43b175c8985c"
 authors = ["Erik Faulhaber <erik.faulhaber@uni-koeln.de>"]
-version = "0.3.2-dev"
+version = "0.4"
 
 [deps]
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
