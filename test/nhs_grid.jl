@@ -4,7 +4,7 @@
         @test_throws "test $error_str" GridNeighborhoodSearch{2}(update_strategy = :test)
 
         # Default cell list doesn't support fully parallel update
-        @test_throws "parallel $error_str" GridNeighborhoodSearch{2}(update_strategy = :parallel)
+        @test_throws "parallel $error_str" GridNeighborhoodSearch{2}(update_strategy = ParallelUpdate())
     end
 
     @testset "Cells at Coordinate Limits" begin

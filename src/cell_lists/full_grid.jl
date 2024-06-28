@@ -40,10 +40,10 @@ struct FullGridCellList{C, LI, MC} <: AbstractCellList
 end
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
-    (:parallel, :semi_parallel, :serial)
+    return (ParallelUpdate, SemiParallelUpdate, SerialUpdate)
 end
 
-supported_update_strategies(::FullGridCellList) = (:semi_parallel, :serial)
+supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpdate)
 
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
                           periodicity = false, backend = DynamicVectorOfVectors{Int32},

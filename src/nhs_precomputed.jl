@@ -114,7 +114,7 @@ end
 
 function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                   search_radius, n_points; eachpoint = 1:n_points)
-    update_strategy_ = update_strategy(nhs.neighborhood_search)
+    update_strategy_ = nhs.neighborhood_search.update_strategy
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                                      periodic_box = nhs.periodic_box,
                                                      update_strategy = update_strategy_)

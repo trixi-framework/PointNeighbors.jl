@@ -37,19 +37,12 @@ since not sorting makes our implementation a lot faster (although less paralleli
 - `cell_list`:              The cell list that maps a cell index to a list of points inside
                             the cell. By default, a [`DictionaryCellList`](@ref) is used.
 - `update_strategy = nothing`: Strategy to parallelize `update!`. Available options are:
-    - `nothing`:        Automatically choose the best available option.
-    - `:parallel`:      Fully parallel update by using atomic operations to avoid race
-                        conditions when adding points into the same cell. This is not
-                        available for all cell list implementations, but is the default when
-                        available.
-    - `:semi-parallel`: Loop over all cells in parallel to mark cells with points that now
-                        belong to a different cell. Then, move points of affected cells
-                        serially. This is available for all cell list implementations and is
-                        the default when `:parallel` is not available.
-    - `:serial`:        Deactivate parallelization in the neighborhood search update.
-                        Parallel update can be one of the largest sources of variations
-                        between simulations with different thread numbers due to neighbor
-                        ordering changes.
+    - `nothing`: Automatically choose the best available option.
+    - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations,
+        but is the default when available.
+    - [`SemiParallelUpdate()`](@ref): This is available for all cell list implementations
+        and is the default when [`ParallelUpdate`](@ref) is not available.
+    - [`SerialUpdate()`](@ref)
 
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
@@ -61,44 +54,33 @@ since not sorting makes our implementation a lot faster (although less paralleli
   In: Computer Graphics Forum 30.1 (2011), pages 99–112.
   [doi: 10.1111/J.1467-8659.2010.01832.X](https://doi.org/10.1111/J.1467-8659.2010.01832.X)
 """
-struct GridNeighborhoodSearch{NDIMS, update_strategy,
-                              ELTYPE, CL, PB, UB} <: AbstractNeighborhoodSearch
-    # Store `update_strategy` as type parameter to dispatch `update!`
-    cell_list     :: CL
-    search_radius :: ELTYPE
-    periodic_box  :: PB
-    n_cells       :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
-    cell_size     :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
-    update_buffer :: UB                    # Multithreaded buffer for `update!`
+struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighborhoodSearch
+    cell_list       :: CL
+    search_radius   :: ELTYPE
+    periodic_box    :: PB
+    n_cells         :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
+    cell_size       :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
+    update_buffer   :: UB                    # Multithreaded buffer for `update!`
+    update_strategy :: US
 
     function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                            periodic_box = nothing,
                                            cell_list = DictionaryCellList{NDIMS}(),
                                            update_strategy = nothing) where {NDIMS}
-        ELTYPE = typeof(search_radius)
-
         if isnothing(update_strategy) && Threads.nthreads == 1
             # Use serial update on one thread to avoid a second loop over all particles
-            # when `:parallel` is picked.
-            update_strategy = :serial
+            # when `ParallelUpdate` is picked.
+            update_strategy = SerialUpdate()
         elseif isnothing(update_strategy)
             # Automatically choose best available update option for this cell list
-            update_strategy = first(supported_update_strategies(cell_list))
-        elseif !(update_strategy in supported_update_strategies(cell_list))
+            update_strategy = first(supported_update_strategies(cell_list))()
+        elseif !(typeof(update_strategy) in supported_update_strategies(cell_list))
             throw(ArgumentError("$update_strategy is not a valid update strategy for " *
                                 "this cell list. Available options are " *
                                 "$(supported_update_strategies(cell_list))"))
         end
 
-        if update_strategy in (:semi_parallel, :serial)
-            # Create update buffer and initialize it with empty vectors
-            update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = Threads.nthreads(),
-                                                                          max_inner_length = n_points)
-            push!(update_buffer, (NTuple{NDIMS, Int}[] for _ in 1:Threads.nthreads())...)
-        else
-            # No update buffer needed for fully parallel update
-            update_buffer = nothing
-        end
+        update_buffer = create_update_buffer(update_strategy, cell_list, n_points)
 
         if search_radius < eps() || isnothing(periodic_box)
             # No periodicity
@@ -120,15 +102,66 @@ struct GridNeighborhoodSearch{NDIMS, update_strategy,
             end
         end
 
-        new{NDIMS, update_strategy, ELTYPE,
-            typeof(cell_list), typeof(periodic_box),
+        new{NDIMS, typeof(update_strategy), typeof(cell_list),
+            typeof(search_radius), typeof(periodic_box),
             typeof(update_buffer)}(cell_list, search_radius, periodic_box, n_cells,
-                                   cell_size, update_buffer)
+                                   cell_size, update_buffer, update_strategy)
     end
 end
 
+"""
+    ParallelUpdate()
+
+Fully parallel update by using atomic operations to avoid race conditions when adding points
+into the same cell.
+This is not available for all cell list implementations, but is the default when available.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct ParallelUpdate end
+
+"""
+    SemiParallelUpdate()
+
+Loop over all cells in parallel to mark cells with points that now belong to a different
+cell. Then, move points of affected cells serially to avoid race conditions.
+This is available for all cell list implementations and is the default when
+[`ParallelUpdate`](@ref) is not available.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct SemiParallelUpdate end
+
+"""
+    SerialUpdate()
+
+Deactivate parallelization in the neighborhood search update.
+Parallel neighborhood search update can be one of the largest sources of error variations
+between simulations with different thread numbers due to neighbor ordering changes.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct SerialUpdate end
+
+# No update buffer needed for fully parallel update
+@inline create_update_buffer(::ParallelUpdate, _, _) = nothing
+
+@inline function create_update_buffer(::SemiParallelUpdate, cell_list, n_points)
+    # Create update buffer and initialize it with empty vectors
+    update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = Threads.nthreads(),
+                                                                  max_inner_length = n_points)
+    push!(update_buffer, (index_type(cell_list)[] for _ in 1:Threads.nthreads())...)
+end
+
+@inline function create_update_buffer(::SerialUpdate, cell_list, n_points)
+    # Create update buffer and initialize it with empty vectors.
+    # Only one thread is used here, so we only need one element in the buffer.
+    update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = 1,
+                                                                  max_inner_length = n_points)
+    push!(update_buffer, index_type(cell_list)[])
+end
+
 @inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
-@inline update_strategy(::GridNeighborhoodSearch{<:Any, strategy}) where {strategy} = strategy
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
@@ -169,9 +202,9 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
 end
 
 # Serial and semi-parallel update
-function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any, :serial},
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any, SerialUpdate},
                                                  GridNeighborhoodSearch{<:Any,
-                                                                        :semi_parallel}},
+                                                                        SemiParallelUpdate}},
                       coords_fun::Function)
     (; cell_list, update_buffer) = neighborhood_search
 
@@ -181,7 +214,7 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any, :
     end
 
     # Find all cells containing points that now belong to another cell.
-    # This loop is threaded for `update_strategy == :semi_parallel`.
+    # This loop is threaded for `update_strategy == SemiParallelUpdate`.
     mark_changed_cells!(neighborhood_search, coords_fun)
 
     # Iterate over all marked cells and move the points into their new cells.
@@ -219,7 +252,7 @@ end
 # Otherwise, unspecialized code will cause a lot of allocations and heavily impact performance.
 # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
-                                                                                 :semi_parallel},
+                                                                                 SemiParallelUpdate},
                                      coords_fun::T) where {T}
     # `each_cell_index(cell_list)` might return a `KeySet`, which has to be `collect`ed
     # first to be able to be used in a threaded loop. This function takes care of that.
@@ -229,7 +262,7 @@ end
 end
 
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
-                                                                                 :serial},
+                                                                                 SerialUpdate},
                                      coords_fun::T) where {T}
     for cell_index in each_cell_index(neighborhood_search.cell_list)
         mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
@@ -254,12 +287,12 @@ end
 end
 
 # Fully parallel update with atomic push
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, :parallel},
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
                       coords_fun::Function)
     (; cell_list) = neighborhood_search
 
     # Note that we need two separate loops for adding and removing points.
-    # `push_cell_atomic!` only guarantees thread-safety when different threads push at the
+    # `push_cell_atomic!` only guarantees thread-safety when different threads push
     # simultaneously, but it does not work when `deleteat_cell!` is called at the same time.
 
     # Add points to new cells
@@ -379,5 +412,5 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_
 
     return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
                                               cell_list,
-                                              update_strategy = update_strategy(nhs))
+                                              update_strategy = nhs.update_strategy)
 end
