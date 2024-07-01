@@ -20,7 +20,7 @@
         @test ndims(copy) == 2
         @test PointNeighbors.search_radius(copy) == 1.0
         @test copy.cell_list isa DictionaryCellList{2}
-        @test PointNeighbors.update_strategy(copy) == :semi_parallel
+        @test copy.update_strategy == SemiParallelUpdate()
 
         # Full grid cell list
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(min_corner = (0.0,
@@ -31,7 +31,7 @@
 
         @test copy.cell_list isa FullGridCellList
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
-        @test PointNeighbors.update_strategy(copy) == :parallel
+        @test copy.update_strategy == ParallelUpdate()
 
         # Full grid cell list with `Vector{Vector}` backend
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(min_corner = (0.0,
@@ -42,17 +42,17 @@
         copy = copy_neighborhood_search(nhs, 0.5, 27)
 
         @test copy.cell_list.cells isa Vector
-        @test PointNeighbors.update_strategy(copy) == :semi_parallel
+        @test copy.update_strategy == SemiParallelUpdate()
 
         # Check that the update strategy is preserved
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(min_corner = (0.0,
                                                                                    0.0),
                                                                      max_corner = (1.0,
                                                                                    1.0)),
-                                        update_strategy = :serial)
+                                        update_strategy = SerialUpdate())
         copy = copy_neighborhood_search(nhs, 1.0, 10)
 
-        @test PointNeighbors.update_strategy(copy) == :serial
+        @test copy.update_strategy == SerialUpdate()
     end
 
     @testset "Cells at Coordinate Limits" begin
