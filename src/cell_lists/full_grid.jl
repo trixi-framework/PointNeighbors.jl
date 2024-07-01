@@ -86,8 +86,8 @@ function construct_backend(::Type{DynamicVectorOfVectors{T}}, size,
 end
 
 # When `typeof(cell_list.cells)` is passed
-function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3}}, size,
-                           max_points_per_cell) where {T1, T2, T3}
+function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, size,
+                           max_points_per_cell) where {T1, T2, T3, T4}
     return construct_backend(DynamicVectorOfVectors{T1}, size, max_points_per_cell)
 end
 
