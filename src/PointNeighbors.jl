@@ -2,6 +2,7 @@ module PointNeighbors
 
 using Reexport: @reexport
 
+using Adapt: Adapt
 using Atomix: Atomix
 using LinearAlgebra: dot
 using Polyester: @batch
@@ -14,6 +15,7 @@ include("nhs_trivial.jl")
 include("cell_lists/cell_lists.jl")
 include("nhs_grid.jl")
 include("nhs_precomputed.jl")
+include("gpu.jl")
 
 export foreach_point_neighbor, foreach_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch

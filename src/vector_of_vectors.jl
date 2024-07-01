@@ -1,9 +1,16 @@
 # Data structure that behaves like a `Vector{Vector}`, but uses a contiguous memory layout.
 # Similar to `VectorOfVectors` of ArraysOfArrays.jl, but allows to resize the inner vectors.
-struct DynamicVectorOfVectors{T, ARRAY2D, ARRAY1D} <: AbstractVector{Array{T, 1}}
+struct DynamicVectorOfVectors{T, ARRAY2D, ARRAY1D, L} <: AbstractVector{Array{T, 1}}
     backend::ARRAY2D # Array{T, 2}, where each column represents a vector
-    length_::Base.RefValue{Int32} # Number of vectors
+    length_::L # Ref{Int32}: Number of vectors
     lengths::ARRAY1D # Array{Int32, 1} storing the lengths of the vectors
+
+    # This constructor is necessary for Adapt.jl to work with this struct.
+    # See the comments in gpu.jl for more details.
+    function DynamicVectorOfVectors(backend, length_, lengths)
+        new{eltype(backend), typeof(backend),
+            typeof(lengths), typeof(length_)}(backend, length_, lengths)
+    end
 end
 
 function DynamicVectorOfVectors{T}(; max_outer_length, max_inner_length) where {T}
@@ -11,8 +18,7 @@ function DynamicVectorOfVectors{T}(; max_outer_length, max_inner_length) where {
     length_ = Ref(zero(Int32))
     lengths = zeros(Int32, max_outer_length)
 
-    return DynamicVectorOfVectors{T, typeof(backend), typeof(lengths)}(backend, length_,
-                                                                       lengths)
+    return DynamicVectorOfVectors(backend, length_, lengths)
 end
 
 @inline Base.size(vov::DynamicVectorOfVectors) = (vov.length_[],)
