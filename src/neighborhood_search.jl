@@ -130,10 +130,8 @@ Note that `system_coords` and `neighbor_coords` can be identical.
 See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
-                                points = axes(system_coords, 2),
-                                parallel::Union{Bool, KernelAbstractions.Backend} = true) where {
-                                                                                                 T
-                                                                                                 }
+                                parallel::Union{Bool, KernelAbstractions.Backend} = true,
+                                points = axes(system_coords, 2)) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
     # and heavily impact performance.

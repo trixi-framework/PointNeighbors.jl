@@ -51,7 +51,7 @@ macro threaded(system, expr)
     i = expr.args[1].args[1]
     inner_loop = expr.args[2]
 
-    # Assemble the for loop again as a call to `parallel_foreach`, using `$i` to use the
+    # Assemble the `for` loop again as a call to `parallel_foreach`, using `$i` to use the
     # same loop variable as used in the for loop.
     return esc(quote
                    PointNeighbors.parallel_foreach($iterator, $system) do $i
