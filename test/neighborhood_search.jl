@@ -159,8 +159,6 @@
 
             neighborhood_searches = [
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
-                                              # Note that `SemiParallelUpdate` is only the
-                                              # default on multiple threads.
                                               update_strategy = SemiParallelUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               update_strategy = SerialUpdate()),
@@ -168,8 +166,6 @@
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            search_radius),
-                                              # Note that `ParallelUpdate` is only the
-                                              # default on multiple threads.
                                               update_strategy = ParallelUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
