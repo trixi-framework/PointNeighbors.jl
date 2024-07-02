@@ -12,6 +12,45 @@
         @test nhs2.update_strategy == nhs.update_strategy
     end
 
+    @testset "`copy_neighborhood_search" begin
+        # Basic copy
+        nhs = GridNeighborhoodSearch{2}()
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test ndims(copy) == 2
+        @test PointNeighbors.search_radius(copy) == 1.0
+        @test copy.cell_list isa DictionaryCellList{2}
+        @test copy.update_strategy == SemiParallelUpdate()
+
+        # Full grid cell list
+        min_corner = (0.0, 0.0)
+        max_corner = (1.0, 1.0)
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
+                                                                     max_corner))
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test copy.cell_list isa FullGridCellList
+        @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
+        @test copy.update_strategy == ParallelUpdate()
+
+        # Full grid cell list with `Vector{Vector}` backend
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
+                                                                     max_corner,
+                                                                     backend = Vector{Vector{Int32}}))
+        copy = copy_neighborhood_search(nhs, 0.5, 27)
+
+        @test copy.cell_list.cells isa Vector
+        @test copy.update_strategy == SemiParallelUpdate()
+
+        # Check that the update strategy is preserved
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
+                                                                     max_corner),
+                                        update_strategy = SerialUpdate())
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test copy.update_strategy == SerialUpdate()
+    end
+
     @testset "Cells at Coordinate Limits" begin
         # Test the threshold for very large and very small coordinates
         coords1 = [Inf, -Inf]
