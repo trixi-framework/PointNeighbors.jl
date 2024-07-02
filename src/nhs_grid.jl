@@ -337,6 +337,40 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     return neighborhood_search
 end
 
+@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                  neighborhood_search::GridNeighborhoodSearch, point;
+                                  search_radius = search_radius(neighborhood_search))
+    (; periodic_box) = neighborhood_search
+
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+    cell = cell_coords(point_coords, neighborhood_search)
+    neighbor_offsets = CartesianIndices(ntuple(_ -> -1:1, ndims(neighborhood_search)))
+
+    # `offset` is in {-1, 0, 1}^n
+    for offset in neighbor_offsets
+        neighbor_cell = cell .+ Tuple(offset)
+
+        for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
+            neighbor_coords = extract_svector(neighbor_system_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+
+            pos_diff = point_coords - neighbor_coords
+            distance2 = dot(pos_diff, pos_diff)
+
+            pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                                            periodic_box)
+
+            if distance2 <= search_radius^2
+                distance = sqrt(distance2)
+
+                # Inline to avoid loss of performance
+                # compared to not using `foreach_point_neighbor`.
+                @inline f(point, neighbor, pos_diff, distance)
+            end
+        end
+    end
+end
+
 # 1D
 @inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch{1})
     cell = cell_coords(coords, neighborhood_search)
