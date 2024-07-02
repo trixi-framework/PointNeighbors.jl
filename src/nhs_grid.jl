@@ -352,12 +352,13 @@ end
 
         for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
             neighbor_coords = extract_svector(neighbor_system_coords,
-                                            Val(ndims(neighborhood_search)), neighbor)
+                                              Val(ndims(neighborhood_search)), neighbor)
 
             pos_diff = point_coords - neighbor_coords
             distance2 = dot(pos_diff, pos_diff)
 
-            pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
+            pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
+                                                            search_radius,
                                                             periodic_box)
 
             if distance2 <= search_radius^2
