@@ -68,11 +68,7 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                        periodic_box = nothing,
                                        cell_list = DictionaryCellList{NDIMS}(),
                                        update_strategy = nothing) where {NDIMS}
-    if isnothing(update_strategy) && Threads.nthreads == 1
-        # Use serial update on one thread to avoid a second loop over all particles
-        # when `ParallelUpdate` is picked.
-        update_strategy = SerialUpdate()
-    elseif isnothing(update_strategy)
+    if isnothing(update_strategy)
         # Automatically choose best available update option for this cell list
         update_strategy = first(supported_update_strategies(cell_list))()
     elseif !(typeof(update_strategy) in supported_update_strategies(cell_list))

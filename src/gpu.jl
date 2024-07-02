@@ -7,7 +7,6 @@
 # neighborhood search `nhs` to the GPU array type `T` (e.g. `CuArray`).
 #
 # `Adapt.@adapt_structure` automatically generates the `adapt` function for our custom types.
-Adapt.@adapt_structure GridNeighborhoodSearch
 Adapt.@adapt_structure FullGridCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
 
