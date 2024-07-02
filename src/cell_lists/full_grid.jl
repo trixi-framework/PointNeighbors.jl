@@ -85,7 +85,10 @@ function construct_backend(::Type{DynamicVectorOfVectors{T}}, size,
     return cells
 end
 
-# When `typeof(cell_list.cells)` is passed
+# When `typeof(cell_list.cells)` is passed, we don't pass the type
+# `DynamicVectorOfVectors{T}`, but a type `DynamicVectorOfVectors{T1, T2, T3, T4}`.
+# While `A{T} <: A{T1, T2}`, this doesn't hold for the types.
+# `Type{A{T}} <: Type{A{T1, T2}}` is NOT true.
 function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, size,
                            max_points_per_cell) where {T1, T2, T3, T4}
     return construct_backend(DynamicVectorOfVectors{T1}, size, max_points_per_cell)
