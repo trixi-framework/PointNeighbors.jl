@@ -32,7 +32,7 @@ See [`copy_neighborhood_search`](@ref) for more details.
 struct FullGridCellList{C, LI, MC} <: AbstractCellList
     cells          :: C
     linear_indices :: LI
-    min_cell       :: MC
+    min_corner     :: MC
 end
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
@@ -44,6 +44,12 @@ supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpd
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
                           periodicity = false, backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
+    # Pad domain to avoid 0 in cell indices due to rounding errors.
+    # We can't just use `eps()`, as one might use lower precision types.
+    # This padding is safe, and will give us one more layer of cells in the worst case.
+    min_corner = SVector(Tuple(min_corner .- 1e-3 * search_radius))
+    max_corner = SVector(Tuple(max_corner .+ 1e-3 * search_radius))
+
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
         cells = construct_backend(backend, 0, 0)
@@ -68,8 +74,7 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
         cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
     end
 
-    return FullGridCellList{typeof(cells), typeof(linear_indices),
-                            typeof(min_cell)}(cells, linear_indices, min_cell)
+    return FullGridCellList(cells, linear_indices, min_corner)
 end
 
 function construct_backend(::Type{Vector{Vector{T}}}, size, max_points_per_cell) where {T}
@@ -94,6 +99,17 @@ function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, size,
     return construct_backend(DynamicVectorOfVectors{T1}, size, max_points_per_cell)
 end
 
+@inline function cell_coords(coords, periodic_box::Nothing, cell_list::FullGridCellList,
+                             cell_size)
+    (; min_corner) = cell_list
+
+    # Subtract `min_corner` to offset coordinates so that the min corner of the grid
+    # corresponds to the (1, 1) cell.
+    # Note that `min_corner == periodic_box.min_corner`, so we don't have to handle
+    # periodic boxes differently.
+    return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
+end
+
 function Base.empty!(cell_list::FullGridCellList)
     (; cells) = cell_list
 
@@ -107,7 +123,7 @@ end
 
 function Base.empty!(cell_list::FullGridCellList{Nothing})
     # This is an empty "template" cell list to be used with `copy_cell_list`
-    throw(UndefRefError("`search_radius` is not defined for this cell list"))
+    error("`search_radius` is not defined for this cell list")
 end
 
 function push_cell!(cell_list::FullGridCellList, cell, particle)
@@ -121,7 +137,7 @@ end
 
 function push_cell!(cell_list::FullGridCellList{Nothing}, cell, particle)
     # This is an empty "template" cell list to be used with `copy_cell_list`
-    throw(UndefRefError("`search_radius` is not defined for this cell list"))
+    error("`search_radius` is not defined for this cell list")
 end
 
 @inline function push_cell_atomic!(cell_list::FullGridCellList, cell, particle)
@@ -146,13 +162,13 @@ end
 
 function each_cell_index(cell_list::FullGridCellList{Nothing})
     # This is an empty "template" cell list to be used with `copy_cell_list`
-    throw(UndefRefError("`search_radius` is not defined for this cell list"))
+    error("`search_radius` is not defined for this cell list")
 end
 
 @inline function cell_index(cell_list::FullGridCellList, cell::Tuple)
-    (; linear_indices, min_cell) = cell_list
+    (; linear_indices) = cell_list
 
-    return linear_indices[(cell .- min_cell .+ 1)...]
+    return linear_indices[cell...]
 end
 
 @inline cell_index(::FullGridCellList, cell::Integer) = cell

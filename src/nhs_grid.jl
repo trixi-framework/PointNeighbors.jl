@@ -405,16 +405,16 @@ end
 end
 
 @inline function cell_coords(coords, neighborhood_search)
-    (; periodic_box, cell_size) = neighborhood_search
+    (; periodic_box, cell_list, cell_size) = neighborhood_search
 
-    return cell_coords(coords, periodic_box, cell_size)
+    return cell_coords(coords, periodic_box, cell_list, cell_size)
 end
 
-@inline function cell_coords(coords, periodic_box::Nothing, cell_size)
+@inline function cell_coords(coords, periodic_box::Nothing, cell_list, cell_size)
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
 
-@inline function cell_coords(coords, periodic_box, cell_size)
+@inline function cell_coords(coords, periodic_box, cell_list, cell_size)
     # Subtract `min_corner` to offset coordinates so that the min corner of the periodic
     # box corresponds to the (0, 0) cell of the NHS.
     # This way, there are no partial cells in the domain if the domain size is an integer
