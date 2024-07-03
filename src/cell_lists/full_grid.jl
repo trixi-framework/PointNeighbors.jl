@@ -55,21 +55,14 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
         cells = construct_backend(backend, 0, 0)
         linear_indices = nothing
 
-        # Misuse `min_cell` to store min and max corner for copying
-        min_cell = (min_corner, max_corner)
+        # Misuse `min_corner` to store min and max corner for copying
+        min_corner = (min_corner, max_corner)
     else
-        if periodicity
-            # Subtract `min_corner` because that's how the grid NHS works with periodicity
-            max_corner = max_corner .- min_corner
-            min_corner = min_corner .- min_corner
-        end
-
         # Note that we don't shift everything so that the first cell starts at `min_corner`.
         # The first cell is the cell containing `min_corner`, so we need to add one layer
         # in order for `max_corner` to be inside a cell.
         n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius) .+ 1
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
-        min_cell = Tuple(floor_to_int.(min_corner ./ search_radius))
 
         cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
     end
@@ -187,7 +180,7 @@ end
 
 function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box)
     # Misuse `min_cell` to store min and max corner for copying
-    min_corner, max_corner = cell_list.min_cell
+    min_corner, max_corner = cell_list.min_corner
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
                             periodicity = !isnothing(periodic_box),
