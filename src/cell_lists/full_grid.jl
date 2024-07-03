@@ -97,9 +97,9 @@ end
     (; min_corner) = cell_list
 
     # Subtract `min_corner` to offset coordinates so that the min corner of the grid
-    # corresponds to the (1, 1) cell.
-    # Note that `min_corner == periodic_box.min_corner`, so we don't have to handle
-    # periodic boxes differently.
+    # corresponds to the (1, 1, 1) cell.
+    # Note that we use `min_corner == periodic_box.min_corner`, so we don't have to handle
+    # periodic boxes differently, as they also use 1-based indexing.
     return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
 end
 

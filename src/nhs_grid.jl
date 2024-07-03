@@ -400,8 +400,9 @@ end
 
 @inline periodic_cell_index(cell_index, ::Nothing, n_cells) = cell_index
 
-@inline function periodic_cell_index(cell_index, periodic_box, n_cells)
-    return rem.(cell_index, n_cells, RoundDown)
+@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells)
+    # 1-based modulo
+    return rem.(cell_index .- 1, n_cells, RoundDown) .+ 1
 end
 
 @inline function cell_coords(coords, neighborhood_search)
@@ -414,14 +415,15 @@ end
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
 
-@inline function cell_coords(coords, periodic_box, cell_list, cell_size)
+@inline function cell_coords(coords, periodic_box::PeriodicBox, cell_list, cell_size)
     # Subtract `min_corner` to offset coordinates so that the min corner of the periodic
-    # box corresponds to the (0, 0) cell of the NHS.
+    # box corresponds to the (0, 0, 0) cell of the NHS.
     # This way, there are no partial cells in the domain if the domain size is an integer
     # multiple of the cell size (which is required, see the constructor).
     offset_coords = periodic_coords(coords, periodic_box) .- periodic_box.min_corner
 
-    return Tuple(floor_to_int.(offset_coords ./ cell_size))
+    # Add one for 1-based indexing. The min corner will be the (1, 1, 1)-cell.
+    return Tuple(floor_to_int.(offset_coords ./ cell_size)) .+ 1
 end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
