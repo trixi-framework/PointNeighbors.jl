@@ -347,7 +347,7 @@ end
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
-        
+
         for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
@@ -378,40 +378,12 @@ end
     return CartesianIndices(ntuple(i -> (cell[i] - 1):(cell[i] + 1), NDIMS))
 end
 
-# 1D
-@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch{1})
+@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch)
     cell = cell_coords(coords, neighborhood_search)
-    x = cell[1]
-    # Generator of all neighboring cells to consider
-    neighboring_cells = ((x + i) for i in -1:1)
 
     # Merge all lists of points in the neighboring cells into one iterator
-    Iterators.flatten(points_in_cell(cell, neighborhood_search)
-                      for cell in neighboring_cells)
-end
-
-# 2D
-@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch{2})
-    cell = cell_coords(coords, neighborhood_search)
-    x, y = cell
-    # Generator of all neighboring cells to consider
-    neighboring_cells = ((x + i, y + j) for i in -1:1, j in -1:1)
-
-    # Merge all lists of points in the neighboring cells into one iterator
-    Iterators.flatten(points_in_cell(cell, neighborhood_search)
-                      for cell in neighboring_cells)
-end
-
-# 3D
-@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch{3})
-    cell = cell_coords(coords, neighborhood_search)
-    x, y, z = cell
-    # Generator of all neighboring cells to consider
-    neighboring_cells = ((x + i, y + j, z + k) for i in -1:1, j in -1:1, k in -1:1)
-
-    # Merge all lists of points in the neighboring cells into one iterator
-    Iterators.flatten(points_in_cell(cell, neighborhood_search)
-                      for cell in neighboring_cells)
+    Iterators.flatten(points_in_cell(Tuple(cell), neighborhood_search)
+                      for cell in neighboring_cells(cell, neighborhood_search))
 end
 
 @inline function points_in_cell(cell_index, neighborhood_search)
