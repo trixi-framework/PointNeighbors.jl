@@ -337,40 +337,53 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     return neighborhood_search
 end
 
-# 1D
-@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch{1})
-    cell = cell_coords(coords, neighborhood_search)
-    x = cell[1]
-    # Generator of all neighboring cells to consider
-    neighboring_cells = ((x + i) for i in -1:1)
+@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                  neighborhood_search::GridNeighborhoodSearch, point;
+                                  search_radius = search_radius(neighborhood_search))
+    (; periodic_box) = neighborhood_search
 
-    # Merge all lists of points in the neighboring cells into one iterator
-    Iterators.flatten(points_in_cell(cell, neighborhood_search)
-                      for cell in neighboring_cells)
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+    cell = cell_coords(point_coords, neighborhood_search)
+
+    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+        neighbor_cell = Tuple(neighbor_cell_)
+
+        for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
+            neighbor_coords = extract_svector(neighbor_system_coords,
+                                              Val(ndims(neighborhood_search)), neighbor)
+
+            pos_diff = point_coords - neighbor_coords
+            distance2 = dot(pos_diff, pos_diff)
+
+            pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
+                                                            search_radius,
+                                                            periodic_box)
+
+            if distance2 <= search_radius^2
+                distance = sqrt(distance2)
+
+                # Inline to avoid loss of performance
+                # compared to not using `foreach_point_neighbor`.
+                @inline f(point, neighbor, pos_diff, distance)
+            end
+        end
+    end
 end
 
-# 2D
-@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch{2})
-    cell = cell_coords(coords, neighborhood_search)
-    x, y = cell
-    # Generator of all neighboring cells to consider
-    neighboring_cells = ((x + i, y + j) for i in -1:1, j in -1:1)
+@inline function neighboring_cells(cell, neighborhood_search)
+    NDIMS = ndims(neighborhood_search)
 
-    # Merge all lists of points in the neighboring cells into one iterator
-    Iterators.flatten(points_in_cell(cell, neighborhood_search)
-                      for cell in neighboring_cells)
+    # For `cell = (x, y, z)`, this returns Cartesian indices
+    # {x-1, x, x+1} × {y-1, y, y+1} × {z-1, z, z+1}.
+    return CartesianIndices(ntuple(i -> (cell[i] - 1):(cell[i] + 1), NDIMS))
 end
 
-# 3D
-@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch{3})
+@inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch)
     cell = cell_coords(coords, neighborhood_search)
-    x, y, z = cell
-    # Generator of all neighboring cells to consider
-    neighboring_cells = ((x + i, y + j, z + k) for i in -1:1, j in -1:1, k in -1:1)
 
     # Merge all lists of points in the neighboring cells into one iterator
-    Iterators.flatten(points_in_cell(cell, neighborhood_search)
-                      for cell in neighboring_cells)
+    Iterators.flatten(points_in_cell(Tuple(cell), neighborhood_search)
+                      for cell in neighboring_cells(cell, neighborhood_search))
 end
 
 @inline function points_in_cell(cell_index, neighborhood_search)
