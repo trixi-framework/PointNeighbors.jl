@@ -236,3 +236,5 @@ end
 @inline function periodic_coords(coords, periodic_box::Nothing)
     return coords
 end
+
+CellListMapNeighborhoodSearch() = error("CellListMap.jl has to be imported to use this")
