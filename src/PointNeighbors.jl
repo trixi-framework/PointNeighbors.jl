@@ -2,19 +2,30 @@ module PointNeighbors
 
 using Reexport: @reexport
 
+using Adapt: Adapt
+using Atomix: Atomix
 using CellListMap: CellListMap
+using GPUArraysCore: AbstractGPUArray
+using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
-using Polyester: @batch
+using Polyester: Polyester
 @reexport using StaticArrays: SVector
 
 include("util.jl")
+include("vector_of_vectors.jl")
 include("neighborhood_search.jl")
-include("trivial_nhs.jl")
-include("grid_nhs.jl")
+include("nhs_trivial.jl")
+include("cell_lists/cell_lists.jl")
+include("nhs_grid.jl")
+include("nhs_precomputed.jl")
 include("celllistmap_nhs.jl")
+include("gpu.jl")
 
-export for_particle_neighbor
-export TrivialNeighborhoodSearch, GridNeighborhoodSearch
+export foreach_point_neighbor, foreach_neighbor
+export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
+export DictionaryCellList, FullGridCellList
+export ParallelUpdate, SemiParallelUpdate, SerialUpdate
 export initialize!, update!, initialize_grid!, update_grid!
+export PeriodicBox, copy_neighborhood_search
 
 end # module PointNeighbors
