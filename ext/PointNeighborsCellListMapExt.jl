@@ -17,6 +17,14 @@ mutable struct CellListMapNeighborhoodSearch{CL, B}
     end
 end
 
+function PointNeighbors.search_radius(neighborhood_search::CellListMapNeighborhoodSearch)
+    return neighborhood_search.box.cutoff
+end
+
+function Base.ndims(neighborhood_search::CellListMapNeighborhoodSearch)
+    return length(neighborhood_search.box.cell_size)
+end
+
 function PointNeighbors.initialize!(neighborhood_search::CellListMapNeighborhoodSearch,
                                     x::AbstractMatrix, y::AbstractMatrix)
     PointNeighbors.update!(neighborhood_search, x, y)
@@ -70,9 +78,7 @@ end
 function PointNeighbors.copy_neighborhood_search(nhs::CellListMapNeighborhoodSearch,
                                                  search_radius, n_points;
                                                  eachpoint = 1:n_points)
-    NDIMS = length(nhs.box.cell_size)
-
-    return PointNeighbors.CellListMapNeighborhoodSearch(NDIMS, search_radius)
+    return PointNeighbors.CellListMapNeighborhoodSearch(ndims(nhs), search_radius)
 end
 
 end
