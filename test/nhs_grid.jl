@@ -57,12 +57,25 @@
         coords2 = [NaN, 0]
         coords3 = [typemax(Int) + 1.0, -typemax(Int) - 1.0]
 
-        @test PointNeighbors.cell_coords(coords1, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords1, nothing, nothing, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int))
-        @test PointNeighbors.cell_coords(coords2, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords2, nothing, nothing, (1.0, 1.0)) ==
               (typemax(Int), 0)
-        @test PointNeighbors.cell_coords(coords3, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords3, nothing, nothing, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int))
+
+        # The full grid cell list adds one to the coordinates to avoid zero-indexing.
+        # This corner case is not relevant, as `typemax` coordinates will always be out of
+        # bounds for the finite domain of the full grid cell list.
+        cell_list = FullGridCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                     search_radius = 1.0)
+
+        @test PointNeighbors.cell_coords(coords1, nothing, cell_list, (1.0, 1.0)) ==
+              (typemax(Int), typemin(Int)) .+ 1
+        @test PointNeighbors.cell_coords(coords2, nothing, cell_list, (1.0, 1.0)) ==
+              (typemax(Int), 0) .+ 1
+        @test PointNeighbors.cell_coords(coords3, nothing, cell_list, (1.0, 1.0)) ==
+              (typemax(Int), typemin(Int)) .+ 1
     end
 
     @testset "Rectangular Point Cloud 2D" begin
