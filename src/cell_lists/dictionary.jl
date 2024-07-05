@@ -1,8 +1,8 @@
 """
-    DictionaryCellList{NDIMS}()
+    DictionaryCellList{T, NDIMS}()
 
 A simple cell list implementation where a cell index `(i, j)` or `(i, j, k)` is mapped to a
-`Vector{Int}` by a `Dict`.
+`Vector{T}` by a `Dict`.
 By using a dictionary, which only stores non-empty cells, the domain is
 potentially infinite.
 
@@ -11,17 +11,19 @@ for integer tuples, nor does it use a contiguous memory layout.
 Consequently, this cell list is not GPU-compatible.
 
 # Arguments
+- `T`: Either an `Integer` type, or `PointWithCoordinates{NDIMS, ELTYPE}`.
+       See [`PointWithCoordinates`](@ref) for more details.
 - `NDIMS`: Number of dimensions.
 """
-struct DictionaryCellList{NDIMS} <: AbstractCellList
-    hashtable    :: Dict{NTuple{NDIMS, Int}, Vector{Int}}
-    empty_vector :: Vector{Int} # Just an empty vector (used in `eachneighbor`)
+struct DictionaryCellList{T, NDIMS} <: AbstractCellList{T}
+    hashtable    :: Dict{NTuple{NDIMS, Int}, Vector{T}}
+    empty_vector :: Vector{T} # Just an empty vector (used in `getindex`)
 
-    function DictionaryCellList{NDIMS}() where {NDIMS}
-        hashtable = Dict{NTuple{NDIMS, Int}, Vector{Int}}()
-        empty_vector = Int[]
+    function DictionaryCellList{T, NDIMS}() where {T, NDIMS}
+        hashtable = Dict{NTuple{NDIMS, Int}, Vector{T}}()
+        empty_vector = T[]
 
-        new{NDIMS}(hashtable, empty_vector)
+        new{T, NDIMS}(hashtable, empty_vector)
     end
 end
 
@@ -80,9 +82,9 @@ end
     return cell_coords == cell_index
 end
 
-@inline index_type(::DictionaryCellList{NDIMS}) where {NDIMS} = NTuple{NDIMS, Int}
+@inline index_type(::DictionaryCellList{<:Any, NDIMS}) where {NDIMS} = NTuple{NDIMS, Int}
 
-function copy_cell_list(::DictionaryCellList{NDIMS}, search_radius,
-                        periodic_box) where {NDIMS}
-    return DictionaryCellList{NDIMS}()
+function copy_cell_list(::DictionaryCellList{T, NDIMS}, search_radius,
+                        periodic_box) where {T, NDIMS}
+    return DictionaryCellList{T, NDIMS}()
 end

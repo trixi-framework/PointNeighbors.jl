@@ -17,33 +17,43 @@ See [`copy_neighborhood_search`](@ref) for more details.
 - `max_corner`: Coordinates of the domain corner in positive coordinate directions.
 - `search_radius = 0.0`: Search radius of the neighborhood search, which will determine the
                          cell size. Use the default of `0.0` to create a template (see above).
-- `periodicity = false`: Set to `true` when using a [`PeriodicBox`](@ref) with the
-                         neighborhood search. When using [`copy_neighborhood_search`](@ref),
-                         this option can be ignored an will be set automatically depending
-                         on the periodicity of the neighborhood search.
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the actual
     cell lists. Can be
-    - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
-    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits.
+    - `Vector{Vector{T}}`: Scattered memory, but very memory-efficient.
+    - `DynamicVectorOfVectors{T}`: Contiguous memory, optimizing cache-hits.
+    `T` can be either an `Integer` type, or `PointWithCoordinates{NDIMS, ELTYPE}`.
+    See [`PointWithCoordinates`](@ref) for more details.
 - `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
                                allocate the `DynamicVectorOfVectors`. It is not used with
-                               the `Vector{Vector{Int32}}` backend.
+                               the `Vector{Vector{T}}` backend.
 """
-struct FullGridCellList{C, LI, MINC, MAXC} <: AbstractCellList
+struct FullGridCellList{T, C, LI, MINC, MAXC} <: AbstractCellList{T}
     cells          :: C
     linear_indices :: LI
     min_corner     :: MINC
     max_corner     :: MAXC
+
+    function FullGridCellList(cells::Vector{Vector{T}}, linear_indices,
+                              min_corner, max_corner) where {T}
+        new{T, typeof(cells), typeof(linear_indices), typeof(min_corner),
+            typeof(max_corner)}(cells, linear_indices, min_corner, max_corner)
+    end
+
+    function FullGridCellList(cells::DynamicVectorOfVectors{T}, linear_indices,
+                              min_corner, max_corner) where {T}
+        new{T, typeof(cells), typeof(linear_indices), typeof(min_corner),
+            typeof(max_corner)}(cells, linear_indices, min_corner, max_corner)
+    end
 end
 
-function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
+function supported_update_strategies(::FullGridCellList{<:Any, <:DynamicVectorOfVectors})
     return (ParallelUpdate, SemiParallelUpdate, SerialUpdate)
 end
 
 supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpdate)
 
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
-                          periodicity = false, backend = DynamicVectorOfVectors{Int32},
+                          backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
     # Pad domain to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
@@ -112,7 +122,7 @@ function Base.empty!(cell_list::FullGridCellList)
     return cell_list
 end
 
-function Base.empty!(cell_list::FullGridCellList{Nothing})
+function Base.empty!(::FullGridCellList{<:Any, Nothing})
     # This is an empty "template" cell list to be used with `copy_cell_list`
     error("`search_radius` is not defined for this cell list")
 end
@@ -126,7 +136,7 @@ function push_cell!(cell_list::FullGridCellList, cell, particle)
     return cell_list
 end
 
-function push_cell!(cell_list::FullGridCellList{Nothing}, cell, particle)
+function push_cell!(::FullGridCellList{<:Any, Nothing}, cell, particle)
     # This is an empty "template" cell list to be used with `copy_cell_list`
     error("`search_radius` is not defined for this cell list")
 end
@@ -151,7 +161,7 @@ end
 
 @inline each_cell_index(cell_list::FullGridCellList) = eachindex(cell_list.cells)
 
-function each_cell_index(cell_list::FullGridCellList{Nothing})
+function each_cell_index(::FullGridCellList{<:Any, Nothing})
     # This is an empty "template" cell list to be used with `copy_cell_list`
     error("`search_radius` is not defined for this cell list")
 end
