@@ -29,10 +29,11 @@ See [`copy_neighborhood_search`](@ref) for more details.
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.
 """
-struct FullGridCellList{C, LI, MC} <: AbstractCellList
+struct FullGridCellList{C, LI, MINC, MAXC} <: AbstractCellList
     cells          :: C
     linear_indices :: LI
-    min_corner     :: MC
+    min_corner     :: MINC
+    max_corner     :: MAXC
 end
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
@@ -54,9 +55,6 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
         # Create an empty "template" cell list to be used with `copy_cell_list`
         cells = construct_backend(backend, 0, 0)
         linear_indices = nothing
-
-        # Misuse `min_corner` to store min and max corner for copying
-        min_corner = (min_corner, max_corner)
     else
         # Note that we don't shift everything so that the first cell starts at `min_corner`.
         # The first cell is the cell containing `min_corner`, so we need to add one layer
@@ -67,7 +65,7 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
         cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
     end
 
-    return FullGridCellList(cells, linear_indices, min_corner)
+    return FullGridCellList(cells, linear_indices, min_corner, max_corner)
 end
 
 function construct_backend(::Type{Vector{Vector{T}}}, size, max_points_per_cell) where {T}
@@ -179,8 +177,7 @@ end
 @inline index_type(::FullGridCellList) = Int32
 
 function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box)
-    # Misuse `min_cell` to store min and max corner for copying
-    min_corner, max_corner = cell_list.min_corner
+    (; min_corner, max_corner) = cell_list
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
                             periodicity = !isnothing(periodic_box),
