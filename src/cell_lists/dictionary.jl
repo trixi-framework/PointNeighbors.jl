@@ -39,7 +39,7 @@ function push_cell!(cell_list::DictionaryCellList, cell, point)
     (; hashtable) = cell_list
 
     if haskey(hashtable, cell)
-        append!(hashtable[cell], point)
+        push!(hashtable[cell], point)
     else
         hashtable[cell] = [point]
     end
