@@ -14,7 +14,7 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
-Adapt = "4"
+Adapt = "3, 4"
 Atomix = "0.1"
 GPUArraysCore = "0.1"
 KernelAbstractions = "0.9"
