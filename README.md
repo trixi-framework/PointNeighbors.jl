@@ -41,7 +41,6 @@ Benchmarking an incremental update similar to a WCSPH simulation (note the log s
 ![update](https://github.com/trixi-framework/PointNeighbors.jl/assets/44124897/71eac5c9-6aa5-4267-bc0b-4057c89f8b12)
 
 
-
 ## Packages using PointNeighbors.jl
 
 - [TrixiParticles.jl](https://github.com/trixi-framework/TrixiParticles.jl)
@@ -49,3 +48,19 @@ Benchmarking an incremental update similar to a WCSPH simulation (note the log s
 
 If you're using PointNeighbors.jl in your package, please feel free to open a PR adding it
 to this list.
+
+
+## Cite Us
+
+If you use PointNeighbors.jl in your own research or write a paper using results obtained
+with the help of PointNeighbors.jl, please cite it as
+```bibtex
+@misc{pointneighbors,
+  title={{P}oint{N}eighbors.jl: {N}eighborhood search with fixed search radius in {J}ulia},
+  author={Erik Faulhaber and Niklas Neher and Sven Berger and
+          Michael Schlottke-Lakemper and Gregor Gassner},
+  year={2024},
+  howpublished={\url{https://github.com/trixi-framework/PointNeighbors.jl}},
+  doi={10.5281/zenodo.12702157}
+}
+```
