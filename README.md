@@ -34,11 +34,14 @@
 
 The following benchmarks were conducted on an AMD Ryzen Threadripper 3990X using 128 threads.
 
-Benchmarking a single force computation step of a Weakly Compressible SPH (WCSPH) simulation:
+Benchmark of a single force computation step of a Weakly Compressible SPH (WCSPH) simulation:
 ![wcsph](https://github.com/trixi-framework/PointNeighbors.jl/assets/44124897/ad5c378b-9ce2-4e6f-91dc-1e0da379b91f)
 
-Benchmarking an incremental update similar to a WCSPH simulation (note the log scale):
+Benchmark of an incremental update similar to a WCSPH simulation (note the log scale):
 ![update](https://github.com/trixi-framework/PointNeighbors.jl/assets/44124897/71eac5c9-6aa5-4267-bc0b-4057c89f8b12)
+
+Benchmark of a full right-hand side evaluation of a WCSPH simulation (note the log scale):
+![rhs](https://github.com/trixi-framework/PointNeighbors.jl/assets/44124897/ac328a96-1b9f-4319-a785-dce9d862fd70)
 
 
 ## Packages using PointNeighbors.jl
