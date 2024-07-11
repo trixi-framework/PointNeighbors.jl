@@ -180,6 +180,5 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
     (; min_corner, max_corner) = cell_list
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
-                            periodicity = !isnothing(periodic_box),
                             backend = typeof(cell_list.cells))
 end
