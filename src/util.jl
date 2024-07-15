@@ -22,6 +22,38 @@ end
     return floor(Int, i)
 end
 
+abstract type AbstractUserBackend end
+
+"""
+    PolyesterBackend()
+
+A type to specify the parallelization backend when using [`@threaded`](@ref). If this type
+is specified, the @threaded macro will use `Polyester.@batch` for the multithreaded `for`
+loop.
+"""
+struct PolyesterBackend <: AbstractUserBackend end
+
+"""
+    ThreadsDynamicBackend()
+
+A type to specify the parallelization backend when using [`@threaded`](@ref). If this type
+is specified, the @threaded macro will use `Threads.@threads :dynamic` for the multithreaded
+`for` loop.
+"""
+struct ThreadsDynamicBackend <: AbstractUserBackend end
+
+"""
+    ThreadsStaticBackend()
+
+
+A type to specify the parallelization backend when using [`@threaded`](@ref). If this type
+is specified, the @threaded macro will use `Threads.@threads :static` for the multithreaded
+`for` loop.
+"""
+struct ThreadsStaticBackend <: AbstractUserBackend end
+
+const ParallelizationBackend = Union{AbstractUserBackend, KernelAbstractions.Backend}
+
 """
     @threaded x for ... end
 
@@ -30,15 +62,21 @@ Semantically the same as `Threads.@threads` when iterating over a `AbstractUnitR
 but without guarantee that the underlying implementation uses `Threads.@threads`
 or works for more general `for` loops.
 
-The first argument must either be a `KernelAbstractions.Backend` or an array from which the
+The first argument must either be a parallelization backend or an array from which the
 backend can be derived to determine if the loop must be run threaded on the CPU
 or launched as a kernel on the GPU. Passing `KernelAbstractions.CPU()` will run the GPU
 kernel on the CPU.
 
+Possible parallelization backends are:
+- [`PolyesterBackend`](@ref) to use `Polyester.@batch`
+- [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
+- [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
+- [`KernelAbstractions.Backend`](@ref) to execute the loop inside a GPU kernel
+
 In particular, the underlying threading capabilities might be provided by other packages
 such as [Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl).
 
-!!! warn
+!!! warning "Not suited for general loops"
     This macro does not necessarily work for general `for` loops. For example,
     it does not necessarily support general iterables such as `eachline(filename)`.
 """
@@ -63,6 +101,20 @@ end
 # Use `Polyester.@batch` for low-overhead threading
 @inline function parallel_foreach(f, iterator, x)
     Polyester.@batch for i in iterator
+        @inline f(i)
+    end
+end
+
+# Use `Threads.@threads :dynamic`
+@inline function parallel_foreach(f, iterator, x::ThreadsDynamicBackend)
+    Threads.@threads :dynamic for i in iterator
+        @inline f(i)
+    end
+end
+
+# Use `Threads.@threads :static`
+@inline function parallel_foreach(f, iterator, x::ThreadsStaticBackend)
+    Threads.@threads :static for i in iterator
         @inline f(i)
     end
 end

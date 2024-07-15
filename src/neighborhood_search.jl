@@ -36,6 +36,16 @@ in this case to avoid unnecessary updates.
 The first flag in `points_moving` indicates if points in `x` are moving.
 The second flag indicates if points in `y` are moving.
 
+!!! warning "Experimental feature: Backend specification"
+    The keyword argument `parallelization_backend` allows users to specify the
+    multithreading backend. This feature is currently considered experimental!
+
+    Possible parallelization backends are:
+    - [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
+    - [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
+    - [`PolyesterBackend`](@ref) to use `Polyester.@batch`
+    - [`KernelAbstractions.Backend`](@ref) to execute the update inside a GPU kernel
+
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
@@ -130,7 +140,7 @@ Note that `system_coords` and `neighbor_coords` can be identical.
 See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
-                                parallel::Union{Bool, KernelAbstractions.Backend} = true,
+                                parallel::Union{Bool, ParallelizationBackend} = true,
                                 points = axes(system_coords, 2)) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
@@ -141,7 +151,7 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
         # threaded loop with `Polyester.@batch`, or, when `system_coords` is a GPU array,
         # launch the loop as a kernel on the GPU.
         parallel_ = Val(parallel)
-    elseif parallel isa KernelAbstractions.Backend
+    elseif parallel isa ParallelizationBackend
         # WARNING! Undocumented, experimental feature:
         # When a `KernelAbstractions.Backend` is passed, launch the loop as a GPU kernel
         # on this backend. This is useful to test the GPU code on the CPU by passing
@@ -165,7 +175,7 @@ end
 # When a `KernelAbstractions.Backend` is passed, launch a GPU kernel on this backend
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points,
-                                        backend::KernelAbstractions.Backend)
+                                        backend::ParallelizationBackend)
     @threaded backend for point in points
         foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
     end
