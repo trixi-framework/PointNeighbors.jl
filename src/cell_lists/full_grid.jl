@@ -43,7 +43,7 @@ end
 supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpdate)
 
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
-                          periodicity = false, backend = DynamicVectorOfVectors{Int32},
+                          backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
     # Pad domain to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
@@ -180,6 +180,5 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
     (; min_corner, max_corner) = cell_list
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
-                            periodicity = !isnothing(periodic_box),
                             backend = typeof(cell_list.cells))
 end
