@@ -71,7 +71,7 @@ Possible parallelization backends are:
 - [`PolyesterBackend`](@ref) to use `Polyester.@batch`
 - [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
 - [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
-- [`KernelAbstractions.Backend`](@ref) to execute the loop inside a GPU kernel
+- `KernelAbstractions.Backend` to execute the loop inside a GPU kernel
 
 In particular, the underlying threading capabilities might be provided by other packages
 such as [Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl).

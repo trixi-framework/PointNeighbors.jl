@@ -44,7 +44,7 @@ The second flag indicates if points in `y` are moving.
     - [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
     - [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
     - [`PolyesterBackend`](@ref) to use `Polyester.@batch`
-    - [`KernelAbstractions.Backend`](@ref) to execute the update inside a GPU kernel
+    - `KernelAbstractions.Backend` to execute the update inside a GPU kernel
 
 See also [`initialize!`](@ref).
 """
