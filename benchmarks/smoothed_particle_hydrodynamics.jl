@@ -2,10 +2,6 @@ using PointNeighbors
 using TrixiParticles
 using BenchmarkTools
 
-const TrivialNeighborhoodSearch = PointNeighbors.TrivialNeighborhoodSearch
-const GridNeighborhoodSearch = PointNeighbors.GridNeighborhoodSearch
-const PrecomputedNeighborhoodSearch = PointNeighbors.PrecomputedNeighborhoodSearch
-
 """
     benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
 
@@ -18,11 +14,7 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
     fluid = InitialCondition(; coordinates, density, mass = 0.1)
 
     # Compact support == smoothing length for the Wendland kernel
-    if neighborhood_search isa PrecomputedNeighborhoodSearch
-        smoothing_length = neighborhood_search.neighborhood_search.search_radius
-    else
-        smoothing_length = neighborhood_search.search_radius
-    end
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
     smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
 
     sound_speed = 10.0
@@ -42,6 +34,10 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
     u = copy(fluid.coordinates)
     dv = zero(v)
 
+    # Initialize the system
+    TrixiParticles.initialize!(fluid_system, neighborhood_search)
+    TrixiParticles.compute_pressure!(fluid_system, v)
+
     return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $neighborhood_search,
                                               $fluid_system, $fluid_system)
 end
@@ -58,11 +54,7 @@ function benchmark_tlsph(neighborhood_search, coordinates; parallel = true)
     solid = InitialCondition(; coordinates, density = material.density, mass = 0.1)
 
     # Compact support == smoothing length for the Wendland kernel
-    if neighborhood_search isa PrecomputedNeighborhoodSearch
-        smoothing_length = neighborhood_search.neighborhood_search.search_radius
-    else
-        smoothing_length = neighborhood_search.search_radius
-    end
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
     smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
 
     solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
@@ -71,6 +63,9 @@ function benchmark_tlsph(neighborhood_search, coordinates; parallel = true)
     v = copy(solid.velocity)
     u = copy(solid.coordinates)
     dv = zero(v)
+
+    # Initialize the system
+    TrixiParticles.initialize!(solid_system, neighborhood_search)
 
     return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $neighborhood_search,
                                               $solid_system, $solid_system)
