@@ -25,6 +25,8 @@ struct DictionaryCellList{NDIMS} <: AbstractCellList
     end
 end
 
+supported_update_strategies(::DictionaryCellList) = (SemiParallelUpdate, SerialUpdate)
+
 function Base.empty!(cell_list::DictionaryCellList)
     Base.empty!(cell_list.hashtable)
 

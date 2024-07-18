@@ -1,16 +1,81 @@
 @testset verbose=true "GridNeighborhoodSearch" begin
+    @testset "Constructor" begin
+        error_str = "is not a valid update strategy"
+        @test_throws "test $error_str" GridNeighborhoodSearch{2}(update_strategy = :test)
+
+        # Default cell list doesn't support fully parallel update
+        @test_throws "ParallelUpdate() $error_str" GridNeighborhoodSearch{2}(update_strategy = ParallelUpdate())
+
+        nhs = GridNeighborhoodSearch{3}(update_strategy = SerialUpdate())
+        nhs2 = @test_nowarn_mod PointNeighbors.Adapt.adapt_structure(Array, nhs)
+
+        @test nhs2.update_strategy == nhs.update_strategy
+    end
+
+    @testset "`copy_neighborhood_search" begin
+        # Basic copy
+        nhs = GridNeighborhoodSearch{2}()
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test ndims(copy) == 2
+        @test PointNeighbors.search_radius(copy) == 1.0
+        @test copy.cell_list isa DictionaryCellList{2}
+        @test copy.update_strategy == SemiParallelUpdate()
+
+        # Full grid cell list
+        min_corner = (0.0, 0.0)
+        max_corner = (1.0, 1.0)
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
+                                                                     max_corner))
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test copy.cell_list isa FullGridCellList
+        @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
+        @test copy.update_strategy == ParallelUpdate()
+
+        # Full grid cell list with `Vector{Vector}` backend
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
+                                                                     max_corner,
+                                                                     backend = Vector{Vector{Int32}}))
+        copy = copy_neighborhood_search(nhs, 0.5, 27)
+
+        @test copy.cell_list.cells isa Vector
+        @test copy.update_strategy == SemiParallelUpdate()
+
+        # Check that the update strategy is preserved
+        nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
+                                                                     max_corner),
+                                        update_strategy = SerialUpdate())
+        copy = copy_neighborhood_search(nhs, 1.0, 10)
+
+        @test copy.update_strategy == SerialUpdate()
+    end
+
     @testset "Cells at Coordinate Limits" begin
         # Test the threshold for very large and very small coordinates
         coords1 = [Inf, -Inf]
         coords2 = [NaN, 0]
         coords3 = [typemax(Int) + 1.0, -typemax(Int) - 1.0]
 
-        @test PointNeighbors.cell_coords(coords1, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords1, nothing, nothing, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int))
-        @test PointNeighbors.cell_coords(coords2, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords2, nothing, nothing, (1.0, 1.0)) ==
               (typemax(Int), 0)
-        @test PointNeighbors.cell_coords(coords3, nothing, (1.0, 1.0)) ==
+        @test PointNeighbors.cell_coords(coords3, nothing, nothing, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int))
+
+        # The full grid cell list adds one to the coordinates to avoid zero-indexing.
+        # This corner case is not relevant, as `typemax` coordinates will always be out of
+        # bounds for the finite domain of the full grid cell list.
+        cell_list = FullGridCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                     search_radius = 1.0)
+
+        @test PointNeighbors.cell_coords(coords1, nothing, cell_list, (1.0, 1.0)) ==
+              (typemax(Int), typemin(Int)) .+ 1
+        @test PointNeighbors.cell_coords(coords2, nothing, cell_list, (1.0, 1.0)) ==
+              (typemax(Int), 0) .+ 1
+        @test PointNeighbors.cell_coords(coords3, nothing, cell_list, (1.0, 1.0)) ==
+              (typemax(Int), typemin(Int)) .+ 1
     end
 
     @testset "Rectangular Point Cloud 2D" begin
