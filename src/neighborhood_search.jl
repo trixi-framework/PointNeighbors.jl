@@ -36,7 +36,7 @@ in this case to avoid unnecessary updates.
 The first flag in `points_moving` indicates if points in `x` are moving.
 The second flag indicates if points in `y` are moving.
 
-!!! warning "Experimental feature: Backend specification"
+!!! warning "Experimental Feature: Backend Specification"
     The keyword argument `parallelization_backend` allows users to specify the
     multithreading backend. This feature is currently considered experimental!
 
@@ -44,7 +44,7 @@ The second flag indicates if points in `y` are moving.
     - [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
     - [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
     - [`PolyesterBackend`](@ref) to use `Polyester.@batch`
-    - `KernelAbstractions.Backend` to execute the update inside a GPU kernel
+    - `KernelAbstractions.Backend` to launch a GPU kernel
 
 See also [`initialize!`](@ref).
 """
@@ -152,7 +152,6 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
         # launch the loop as a kernel on the GPU.
         parallel_ = Val(parallel)
     elseif parallel isa ParallelizationBackend
-        # WARNING! Undocumented, experimental feature:
         # When a `KernelAbstractions.Backend` is passed, launch the loop as a GPU kernel
         # on this backend. This is useful to test the GPU code on the CPU by passing
         # `parallel = KernelAbstractions.CPU()`, even though `system_coords isa Array`.
