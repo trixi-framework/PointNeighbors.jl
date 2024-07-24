@@ -66,7 +66,7 @@ end
 
 function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                        periodic_box = nothing,
-                                       cell_list = DictionaryCellList{NDIMS}(),
+                                       cell_list = DictionaryCellList{Int, NDIMS}(),
                                        update_strategy = nothing) where {NDIMS}
     if isnothing(update_strategy)
         # Automatically choose best available update option for this cell list
@@ -102,6 +102,29 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
                                   cell_size, update_buffer, update_strategy)
 end
+
+struct PointWithCoordinates{NDIMS, ELTYPE}
+    index       :: Int32
+    coordinates :: SVector{NDIMS, ELTYPE}
+end
+
+@inline coordinates(point::Integer, coords_fun::Function) = coords_fun(point)
+
+@inline function coordinates(point::Integer, x::AbstractMatrix, nhs::GridNeighborhoodSearch)
+    return coordinates(point, x, Val(ndims(nhs)))
+end
+
+@inline function coordinates(point::Integer, x::AbstractMatrix, ::Val{NDIMS}) where {NDIMS}
+    return extract_svector(x, Val(NDIMS), point)
+end
+
+@inline coordinates(point::PointWithCoordinates, args...) = point.coordinates
+
+@inline assemble_point(::Type{<:Integer}, point_index, coordinates) = point_index
+@inline assemble_point(type, point_index, coordinates) = type(point_index, coordinates)
+
+@inline index(i::Integer) = i
+@inline index(point::PointWithCoordinates) = point.index
 
 """
     ParallelUpdate()
@@ -167,10 +190,13 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
     empty!(cell_list)
 
-    for point in axes(y, 2)
+    for point_index in axes(y, 2)
         # Get cell index of the point's cell
-        point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+        point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point_index)
         cell = cell_coords(point_coords, neighborhood_search)
+
+        # Get either point index or store point together with its coordinates
+        point = assemble_point(eltype(cell_list), point_index, point_coords)
 
         # Add point to corresponding cell
         push_cell!(cell_list, cell, point)
@@ -232,11 +258,10 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
             # `deleteat_cell!(..., i)` will change the order of points that come after `i`.
             for i in reverse(eachindex(points))
                 point = points[i]
-                cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+                new_cell_coords = cell_coords(coordinates(point, coords_fun),
+                                              neighborhood_search)
 
-                if !is_correct_cell(cell_list, cell_coords_, cell_index)
-                    new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
-
+                if !is_correct_cell(cell_list, new_cell_coords, cell_index)
                     # Add point to new cell or create cell if it does not exist
                     push_cell!(cell_list, new_cell_coords, point)
 
@@ -279,7 +304,7 @@ end
     (; cell_list, update_buffer) = neighborhood_search
 
     for point in cell_list[cell_index]
-        cell = cell_coords(coords_fun(point), neighborhood_search)
+        cell = cell_coords(coordinates(point, coords_fun), neighborhood_search)
 
         # `cell` is a tuple, `cell_index` is the linear index used internally by the
         # cell list to store cells inside `cell`.
@@ -305,11 +330,10 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     # Add points to new cells
     @threaded parallelization_backend for cell_index in each_cell_index_threadable(cell_list)
         for point in cell_list[cell_index]
-            cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+            new_cell_coords = cell_coords(coordinates(point, coords_fun),
+                                          neighborhood_search)
 
-            if !is_correct_cell(cell_list, cell_coords_, cell_index)
-                new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
-
+            if !is_correct_cell(cell_list, new_cell_coords, cell_index)
                 # Add point to new cell or create cell if it does not exist
                 push_cell_atomic!(cell_list, new_cell_coords, point)
             end
@@ -325,9 +349,10 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
         # `deleteat_cell!(..., i)` will change the order of points that come after `i`.
         for i in reverse(eachindex(points))
             point = points[i]
-            cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+            new_cell_coords = cell_coords(coordinates(point, coords_fun),
+                                          neighborhood_search)
 
-            if !is_correct_cell(cell_list, cell_coords_, cell_index)
+            if !is_correct_cell(cell_list, new_cell_coords, cell_index)
                 # Remove moved point from this cell
                 deleteat_cell!(cell_list, cell_index, i)
             end
@@ -338,19 +363,20 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
 end
 
 @inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                  neighborhood_search::GridNeighborhoodSearch, point;
+                                  neighborhood_search::GridNeighborhoodSearch, point_index;
                                   search_radius = search_radius(neighborhood_search))
     (; periodic_box) = neighborhood_search
 
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)),
+                                   point_index)
     cell = cell_coords(point_coords, neighborhood_search)
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
 
         for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
-            neighbor_coords = extract_svector(neighbor_system_coords,
-                                              Val(ndims(neighborhood_search)), neighbor)
+            neighbor_coords = coordinates(neighbor, neighbor_system_coords,
+                                          neighborhood_search)
 
             pos_diff = point_coords - neighbor_coords
             distance2 = dot(pos_diff, pos_diff)
@@ -364,7 +390,7 @@ end
 
                 # Inline to avoid loss of performance
                 # compared to not using `foreach_point_neighbor`.
-                @inline f(point, neighbor, pos_diff, distance)
+                @inline f(point_index, index(neighbor), pos_diff, distance)
             end
         end
     end
