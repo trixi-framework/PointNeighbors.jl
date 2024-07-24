@@ -24,6 +24,7 @@ export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoo
 export DictionaryCellList, FullGridCellList
 export ParallelUpdate, SemiParallelUpdate, SerialUpdate
 export initialize!, update!, initialize_grid!, update_grid!
+export PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend
 export PeriodicBox, copy_neighborhood_search
 
 end # module PointNeighbors
