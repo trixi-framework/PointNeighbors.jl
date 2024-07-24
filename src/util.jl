@@ -35,9 +35,8 @@ struct PolyesterBackend <: AbstractThreadingBackend end
 """
     ThreadsDynamicBackend()
 
-A type to specify the parallelization backend when using [`@threaded`](@ref). If this type
-is specified, the @threaded macro will use `Threads.@threads :dynamic` for the multithreaded
-`for` loop.
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Threads.@threads :dynamic`.
 """
 struct ThreadsDynamicBackend <: AbstractThreadingBackend end
 
@@ -45,9 +44,8 @@ struct ThreadsDynamicBackend <: AbstractThreadingBackend end
     ThreadsStaticBackend()
 
 
-A type to specify the parallelization backend when using [`@threaded`](@ref). If this type
-is specified, the @threaded macro will use `Threads.@threads :static` for the multithreaded
-`for` loop.
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Threads.@threads :static`.
 """
 struct ThreadsStaticBackend <: AbstractThreadingBackend end
 
