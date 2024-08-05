@@ -22,6 +22,35 @@ end
     return floor(Int, i)
 end
 
+abstract type AbstractThreadingBackend end
+
+"""
+    PolyesterBackend()
+
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Polyester.@batch`.
+"""
+struct PolyesterBackend <: AbstractThreadingBackend end
+
+"""
+    ThreadsDynamicBackend()
+
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Threads.@threads :dynamic`.
+"""
+struct ThreadsDynamicBackend <: AbstractThreadingBackend end
+
+"""
+    ThreadsStaticBackend()
+
+
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Threads.@threads :static`.
+"""
+struct ThreadsStaticBackend <: AbstractThreadingBackend end
+
+const ParallelizationBackend = Union{AbstractThreadingBackend, KernelAbstractions.Backend}
+
 """
     @threaded x for ... end
 
@@ -30,15 +59,21 @@ Semantically the same as `Threads.@threads` when iterating over a `AbstractUnitR
 but without guarantee that the underlying implementation uses `Threads.@threads`
 or works for more general `for` loops.
 
-The first argument must either be a `KernelAbstractions.Backend` or an array from which the
-backend can be derived to determine if the loop must be run threaded on the CPU
+The first argument must either be a parallelization backend (see below) or an array from
+which the backend can be derived to determine if the loop must be run threaded on the CPU
 or launched as a kernel on the GPU. Passing `KernelAbstractions.CPU()` will run the GPU
 kernel on the CPU.
+
+Possible parallelization backends are:
+- [`PolyesterBackend`](@ref) to use `Polyester.@batch`
+- [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
+- [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
+- `KernelAbstractions.Backend` to execute the loop as a GPU kernel
 
 In particular, the underlying threading capabilities might be provided by other packages
 such as [Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl).
 
-!!! warn
+!!! warning "Warning"
     This macro does not necessarily work for general `for` loops. For example,
     it does not necessarily support general iterables such as `eachline(filename)`.
 """
@@ -61,8 +96,23 @@ macro threaded(system, expr)
 end
 
 # Use `Polyester.@batch` for low-overhead threading
+# This is currently the default when x::Array
 @inline function parallel_foreach(f, iterator, x)
     Polyester.@batch for i in iterator
+        @inline f(i)
+    end
+end
+
+# Use `Threads.@threads :dynamic`
+@inline function parallel_foreach(f, iterator, x::ThreadsDynamicBackend)
+    Threads.@threads :dynamic for i in iterator
+        @inline f(i)
+    end
+end
+
+# Use `Threads.@threads :static`
+@inline function parallel_foreach(f, iterator, x::ThreadsStaticBackend)
+    Threads.@threads :static for i in iterator
         @inline f(i)
     end
 end
