@@ -15,7 +15,11 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
 
     # Compact support == smoothing length for the Wendland kernel
     smoothing_length = PointNeighbors.search_radius(neighborhood_search)
-    smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
+    if ndims(neighborhood_search) == 1
+        smoothing_kernel = SchoenbergCubicSplineKernel{1}()
+    else
+        smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
+    end
 
     sound_speed = 10.0
     state_equation = StateEquationCole(; sound_speed, reference_density = density,
@@ -55,7 +59,11 @@ function benchmark_tlsph(neighborhood_search, coordinates; parallel = true)
 
     # Compact support == smoothing length for the Wendland kernel
     smoothing_length = PointNeighbors.search_radius(neighborhood_search)
-    smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
+    if ndims(neighborhood_search) == 1
+        smoothing_kernel = SchoenbergCubicSplineKernel{1}()
+    else
+        smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
+    end
 
     solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
                                             material.E, material.nu)
