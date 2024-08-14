@@ -176,6 +176,7 @@
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                CellListMapNeighborhoodSearch(NDIMS, search_radius),
             ]
 
             names = [
@@ -185,6 +186,7 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
+                "`CellListMapNeighborhoodSearch`",
             ]
 
             # Also test copied templates
@@ -200,6 +202,7 @@
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
+                CellListMapNeighborhoodSearch(NDIMS, 1.0),
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
