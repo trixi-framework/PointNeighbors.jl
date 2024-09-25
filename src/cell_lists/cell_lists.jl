@@ -1,4 +1,6 @@
-abstract type AbstractCellList end
+abstract type AbstractCellList{T} end
+
+Base.eltype(::AbstractCellList{T}) where {T} = T
 
 # For the `DictionaryCellList`, this is a `KeySet`, which has to be `collect`ed first to be
 # able to be used in a threaded loop.
