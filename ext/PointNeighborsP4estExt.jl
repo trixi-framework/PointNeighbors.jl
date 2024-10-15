@@ -129,8 +129,10 @@ function find_neighbors_iter_corner(::Type{T}) where {T}
         n = info.sides.elem_count[]
 
         user_data = (unsafe_pointer_to_objref(user_data_ptr)::Base.RefValue{T})[]
-        (; neighbors, buffer) = user_data
+        (; neighbors, neighbors_mpi, buffer, buffer_ghost, proc_offsets) = user_data
 
+        n_local = 0
+        n_ghost = 0
         for i in 1:n
             side = load_pointerwrapper_sc(P4estTypes.p4est_iter_corner_side_t,
                                           info.sides, i)
@@ -140,16 +142,34 @@ function find_neighbors_iter_corner(::Type{T}) where {T}
             local_quad_id = side.quadid[]
             cell_id = offset + local_quad_id + 1
 
-            buffer[i] = cell_id
+            if side.is_ghost[] == 0
+                n_local += 1
+                buffer[n_local] = cell_id
+            else
+                n_ghost += 1
+                ghost_id = local_quad_id
+
+                # MPI ranks are 0-based
+                rank = searchsortedlast(proc_offsets, ghost_id) - 1
+                local_id = side.quad.p.piggy3.local_num[] + 1
+                buffer_ghost[n_ghost] = (rank, local_id)
+            end
         end
 
         # Add to neighbor lists
-        for i in 1:n
+        for i in 1:n_local
             cell = buffer[i]
-            for j in 1:n
+            for j in 1:n_local
                 neighbor = buffer[j]
                 if !(neighbor in neighbors[cell])
                     pushat!(neighbors, cell, neighbor)
+                end
+            end
+
+            for j in 1:n_ghost
+                neighbor = buffer_ghost[j]
+                if !(neighbor in neighbors_mpi[cell])
+                    pushat!(neighbors_mpi, cell, neighbor)
                 end
             end
         end
@@ -169,23 +189,33 @@ end
 end
 
 function find_neighbors(p4est)
-    neighbors = DynamicVectorOfVectors{Int32}(max_outer_length = length(p4est),
-                                              max_inner_length = length(p4est))
-    resize!(neighbors, length(p4est))
+    n_cells = P4estTypes.lengthoflocalquadrants(p4est)
+    neighbors = DynamicVectorOfVectors{Int32}(max_outer_length = n_cells,
+                                              max_inner_length = 3^2)
+    mpi_neighbors = DynamicVectorOfVectors{Tuple{Int32, Int32}}(max_outer_length = n_cells,
+                                                                max_inner_length = 3^2)
 
     # Buffer to store the (at most) 8 cells adjacent to a corner
     buffer = zeros(Int32, 8)
+    buffer_ghost = fill((0, 0), 8)
 
-    find_neighbors!(neighbors, p4est, buffer)
+    find_neighbors!(neighbors, mpi_neighbors, p4est, buffer, buffer_ghost)
 
-    return neighbors
+    return neighbors, mpi_neighbors
 end
 
-@inline function find_neighbors!(neighbors, p4est, buffer)
-    empty!(neighbors)
-    resize!(neighbors, length(p4est))
+@inline function find_neighbors!(neighbors, neighbors_mpi, p4est, buffer, buffer_ghost)
+    n_cells = P4estTypes.lengthoflocalquadrants(p4est)
 
-    user_data = (; neighbors, buffer)
+    empty!(neighbors)
+    resize!(neighbors, n_cells)
+    empty!(neighbors_mpi)
+    resize!(neighbors_mpi, n_cells)
+
+    ghost_layer = P4estTypes.ghostlayer(p4est, connection=P4estTypes.CONNECT_CORNER(Val(4)))
+    proc_offsets = P4estTypes.unsafe_proc_offsets(ghost_layer)
+
+    user_data = (; neighbors, neighbors_mpi, buffer, buffer_ghost, proc_offsets)
 
     # Let `p4est` iterate over all corner and call find_neighbors_iter_corner
     iter_corner_c = cfunction(find_neighbors_iter_corner, Val(2), user_data)
@@ -193,7 +223,7 @@ end
     # Compute the neighbors of each cell
     GC.@preserve user_data begin
         P4estTypes.p4est_iterate(p4est,
-                      C_NULL, # ghost_layer
+                      ghost_layer, # ghost_layer
                       pointer_from_objref(Ref(user_data)), # user_data
                       C_NULL, # iter_volume
                       C_NULL, # iter_face
