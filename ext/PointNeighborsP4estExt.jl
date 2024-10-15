@@ -2,7 +2,7 @@ module PointNeighborsP4estExt
 
 using PointNeighbors: PointNeighbors, SVector, DynamicVectorOfVectors,
                       ParallelUpdate, SemiParallelUpdate, SerialUpdate,
-                      AbstractCellList, pushat!, pushat_atomic!, emptyat!, deleteatat!
+                      pushat!, pushat_atomic!, emptyat!, deleteatat!
 using P4estTypes: P4estTypes
 
 """
@@ -36,7 +36,7 @@ See [`copy_neighborhood_search`](@ref) for more details.
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.
 """
-struct P4estCellList{C, CI, P, NC, MINC, MAXC} <: AbstractCellList
+struct P4estCellList{C, CI, P, NC, MINC, MAXC} <: PointNeighbors.AbstractCellList
     cells          :: C
     cell_indices   :: CI
     neighbor_cells :: NC
@@ -106,13 +106,38 @@ function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, size,
     return construct_backend(DynamicVectorOfVectors{T1}, size, max_points_per_cell)
 end
 
-function find_cell_indices(p4est, n_cells_per_dimension)
+function find_cell_indices_global(p4est, n_cells_per_dimension)
     vertices = P4estTypes.unsafe_vertices(p4est.connectivity)
     cartesian_indices = CartesianIndices((n_cells_per_dimension..., 1))
     vertex_indices = map(i -> findfirst(==(Tuple(i) .- 1), vertices),
                          collect(cartesian_indices))
     trees_to_first_vertex = first.(P4estTypes.unsafe_trees(p4est.connectivity)) .+ 1
     cell_indices = map(i -> findfirst(==(i), trees_to_first_vertex), vertex_indices)
+
+    return cell_indices
+end
+
+function find_cell_indices(p4est, n_cells_per_dimension)
+    # TODO is there a better way?
+    # Get the global cell indices
+    cell_indices = find_cell_indices_global(p4est, n_cells_per_dimension)
+
+    # Find the global indices of non-empty trees
+    local_trees = findall(i -> length(p4est[i]) > 0, 1:length(p4est))
+
+    # Initialize an array to store the local indices
+    global_to_local_map = fill(-1, length(p4est))
+
+    # Assign local indices to global indices
+    for (local_index, global_index) in enumerate(local_trees)
+        global_to_local_map[global_index] = local_index
+    end
+
+    # Update cell_indices to use local indices and set others to -1
+    for i in eachindex(cell_indices)
+        global_index = cell_indices[i]
+        cell_indices[i] = global_to_local_map[global_index]
+    end
 
     return cell_indices
 end
@@ -233,8 +258,11 @@ end
     return neighbors
 end
 
-@inline function PointNeighbors.neighboring_cells(cell, neighborhood_search::P4estCellList)
-    return neighborhood_search.neighbor_cells[neighborhood_search.cell_indices[cell...]]
+@inline function PointNeighbors.neighboring_cells(cell, nhs, cell_list::P4estCellList)
+    (; cell_indices, neighbor_cells) = cell_list
+    neighbors, _ = neighbor_cells
+
+    return neighbors[cell_indices[cell...]]
 end
 
 @inline function PointNeighbors.cell_coords(coords, periodic_box::Nothing, cell_list::P4estCellList,
@@ -267,8 +295,13 @@ end
 function PointNeighbors.push_cell!(cell_list::P4estCellList, cell, particle)
     (; cells) = cell_list
 
+    index = PointNeighbors.cell_index(cell_list, cell)
+    if index <= 0
+        return cell_list
+    end
+
     # `push!(cell_list[cell], particle)`, but for all backends
-    pushat!(cells, PointNeighbors.cell_index(cell_list, cell), particle)
+    pushat!(cells, index, particle)
 
     return cell_list
 end
