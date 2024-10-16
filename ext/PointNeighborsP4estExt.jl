@@ -53,7 +53,7 @@ PointNeighbors.supported_update_strategies(::P4estCellList) = (SemiParallelUpdat
 
 function PointNeighbors.P4estCellList(; min_corner, max_corner, search_radius = 0.0,
                        backend = DynamicVectorOfVectors{Int32},
-                       max_points_per_cell = 100)
+                       max_points_per_cell = 100, ghost=false)
     # Pad domain to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
     # This padding is safe, and will give us one more layer of cells in the worst case.
@@ -75,9 +75,15 @@ function PointNeighbors.P4estCellList(; min_corner, max_corner, search_radius = 
         connectivity = P4estTypes.brick(Tuple(n_cells_per_dimension))
         p4est = P4estTypes.pxest(connectivity)
 
-        cell_indices = find_cell_indices(p4est, n_cells_per_dimension)
-        neighbors = find_neighbors(p4est)
+        if ghost
+            cell_indices, neighbors = find_cell_indices_ghost(p4est, n_cells_per_dimension)
+        else
+            cell_indices = find_cell_indices(p4est, n_cells_per_dimension)
+            # TODO This is a tuple
+            neighbors = find_neighbors(p4est)
+        end
 
+        # TODO Don't allocate global array
         cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
     end
 
@@ -119,6 +125,9 @@ end
 
 function find_cell_indices(p4est, n_cells_per_dimension)
     # TODO is there a better way?
+    # Yes, use P4estTypes.unsafe_global_first_quadrant(p4est).
+    # Maybe PointerWrapper(p4est.pointer).first_local_tree[] and last_local_tree[] could be useful?
+
     # Get the global cell indices
     cell_indices = find_cell_indices_global(p4est, n_cells_per_dimension)
 
@@ -140,6 +149,89 @@ function find_cell_indices(p4est, n_cells_per_dimension)
     end
 
     return cell_indices
+end
+
+function find_cell_indices_ghost(p4est, n_cells_per_dimension)
+    neighbors, mpi_neighbors = find_neighbors(p4est)
+    new_mpi_neighbors = similar(mpi_neighbors)
+
+    cell_indices_global = find_cell_indices_global(p4est, n_cells_per_dimension)
+    cell_indices = copy(cell_indices_global)
+    cell_indices .= -1
+
+    ghost_layer = P4estTypes.ghostlayer(p4est, connection=P4estTypes.CONNECT_CORNER(Val(4)))
+
+    proc_offsets = P4estTypes.unsafe_proc_offsets(ghost_layer)
+
+    # Offset (for each rank) to go from local quad ID to global quad ID
+    first_quad = P4estTypes.unsafe_global_first_quadrant(p4est)
+
+    # Now the mirrors
+    local_nums_mirror = P4estTypes.unsafe_local_num.(P4estTypes.mirrors(ghost_layer))
+    global_nums_mirror = copy(local_nums_mirror)
+
+    rank = P4estTypes.MPI.Comm_rank(P4estTypes.MPI.COMM_WORLD)
+    for i in eachindex(local_nums_mirror)
+        global_id = first_quad[rank + 1] + local_nums_mirror[i]
+
+        global_nums_mirror[i] = global_id
+    end
+
+    local_nhs_id = 0
+    for i in eachindex(cell_indices_global)
+        global_index = cell_indices_global[i]
+
+        if global_index in global_nums_mirror
+            local_nhs_id += 1
+            cell_indices[i] = local_nhs_id
+        end
+    end
+
+    # Now the ghosts
+
+    # Local quad IDs of the ghost cells on their local ranks
+    local_nums_ghost = P4estTypes.unsafe_local_num.(P4estTypes.ghosts(ghost_layer))
+
+    global_nums_ghost = copy(local_nums_ghost)
+    for i in eachindex(local_nums_ghost)
+        rank = searchsortedlast(proc_offsets, i - 1) - 1
+        global_id = first_quad[rank + 1] + local_nums_ghost[i]
+
+        global_nums_ghost[i] = global_id
+    end
+
+    rank_local_to_nhs_local = Dict{Tuple{Int, Int}, Int}()
+
+    for i in eachindex(cell_indices_global)
+        global_index = cell_indices_global[i]
+
+        if global_index in global_nums_ghost
+            local_nhs_id += 1
+
+            cell_indices[i] = local_nhs_id
+            # This is a ghost cell, so it lives on another rank
+            # Map rank-local ID to nhs-local cell ID
+            rank_local_id = local_nums_ghost[searchsortedfirst(global_nums_ghost, global_index)]
+            rank_local_to_nhs_local[(rank, rank_local_id)] = local_nhs_id
+        end
+    end
+
+    # Now find (ghost) neighbors of the mirrors
+    neighbors = [Int[] for _ in 1:length(local_nums_mirror)]
+    resize!(new_mpi_neighbors, length(neighbors))
+    for local_nhs_id in eachindex(local_nums_mirror)
+        rank_local_id = local_nums_mirror[local_nhs_id]
+
+        new_mpi_neighbors[local_nhs_id] = mpi_neighbors[rank_local_id]
+
+        for (neighbor_rank, neighbor_rank_local_id) in mpi_neighbors[rank_local_id]
+            neighbor_nhs_local_id = rank_local_to_nhs_local[(neighbor_rank, neighbor_rank_local_id)]
+
+            push!(neighbors[local_nhs_id], neighbor_nhs_local_id)
+        end
+    end
+
+    return cell_indices, (neighbors, new_mpi_neighbors)
 end
 
 # Load the ith element (1-indexed) of an sc array of type T as PointerWrapper
@@ -175,6 +267,7 @@ function find_neighbors_iter_corner(::Type{T}) where {T}
                 ghost_id = local_quad_id
 
                 # MPI ranks are 0-based
+                # Note that `ghost_id` needs to be 0-based as well here
                 rank = searchsortedlast(proc_offsets, ghost_id) - 1
                 local_id = side.quad.p.piggy3.local_num[] + 1
                 buffer_ghost[n_ghost] = (rank, local_id)
@@ -237,6 +330,7 @@ end
     empty!(neighbors_mpi)
     resize!(neighbors_mpi, n_cells)
 
+    # TODO Create a new ghost layer every time?
     ghost_layer = P4estTypes.ghostlayer(p4est, connection=P4estTypes.CONNECT_CORNER(Val(4)))
     proc_offsets = P4estTypes.unsafe_proc_offsets(ghost_layer)
 
