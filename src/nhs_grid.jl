@@ -339,13 +339,14 @@ end
 
 @inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
                                   neighborhood_search::GridNeighborhoodSearch, point;
-                                  search_radius = search_radius(neighborhood_search))
+                                  search_radius = i -> search_radius(neighborhood_search))
     (; periodic_box) = neighborhood_search
 
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+    search_radius_point = search_radius(point)
     cell = cell_coords(point_coords, neighborhood_search)
 
-    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search, search_radius_point)
         neighbor_cell = Tuple(neighbor_cell_)
 
         for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
@@ -356,10 +357,10 @@ end
             distance2 = dot(pos_diff, pos_diff)
 
             pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                            search_radius,
+                                                            search_radius_point,
                                                             periodic_box)
 
-            if distance2 <= search_radius^2
+            if distance2 <= search_radius_point^2
                 distance = sqrt(distance2)
 
                 # Inline to avoid loss of performance
@@ -370,12 +371,13 @@ end
     end
 end
 
-@inline function neighboring_cells(cell, neighborhood_search)
+@inline function neighboring_cells(cell, neighborhood_search, search_radius)
     NDIMS = ndims(neighborhood_search)
+    n_layers = ceil(Int, search_radius / neighborhood_search.search_radius)
 
     # For `cell = (x, y, z)`, this returns Cartesian indices
     # {x-1, x, x+1} × {y-1, y, y+1} × {z-1, z, z+1}.
-    return CartesianIndices(ntuple(i -> (cell[i] - 1):(cell[i] + 1), NDIMS))
+    return CartesianIndices(ntuple(i -> (cell[i] - n_layers):(cell[i] + n_layers), NDIMS))
 end
 
 @inline function eachneighbor(coords, neighborhood_search::GridNeighborhoodSearch)
@@ -383,7 +385,8 @@ end
 
     # Merge all lists of points in the neighboring cells into one iterator
     Iterators.flatten(points_in_cell(Tuple(cell), neighborhood_search)
-                      for cell in neighboring_cells(cell, neighborhood_search))
+                      for cell in neighboring_cells(cell, neighborhood_search,
+                                                    neighborhood_search.search_radius))
 end
 
 @inline function points_in_cell(cell_index, neighborhood_search)

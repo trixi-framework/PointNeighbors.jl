@@ -141,7 +141,8 @@ See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
                                 parallel::Union{Bool, ParallelizationBackend} = true,
-                                points = axes(system_coords, 2)) where {T}
+                                points = axes(system_coords, 2),
+                                search_radius = i -> search_radius(neighborhood_search)) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
     # and heavily impact performance.
@@ -159,11 +160,12 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
     end
 
     foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search, points,
-                           parallel_)
+                           parallel_, search_radius)
 end
 
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
-                                        neighborhood_search, points, parallel::Val{true})
+                                        neighborhood_search, points, parallel::Val{true},
+                                        search_radius)
     @threaded system_coords for point in points
         foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
     end
@@ -174,7 +176,7 @@ end
 # When a `KernelAbstractions.Backend` is passed, launch a GPU kernel on this backend
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points,
-                                        backend::ParallelizationBackend)
+                                        backend::ParallelizationBackend, search_radius)
     @threaded backend for point in points
         foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
     end
@@ -183,9 +185,11 @@ end
 end
 
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
-                                        neighborhood_search, points, parallel::Val{false})
+                                        neighborhood_search, points, parallel::Val{false},
+                                        search_radius)
     for point in points
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point;
+                         search_radius)
     end
 
     return nothing
@@ -193,8 +197,10 @@ end
 
 @inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
                                   neighborhood_search, point;
-                                  search_radius = search_radius(neighborhood_search))
+                                  search_radius = i -> search_radius(neighborhood_search))
     (; periodic_box) = neighborhood_search
+
+    search_radius_point = search_radius(point)
 
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
     for neighbor in eachneighbor(point_coords, neighborhood_search)
@@ -204,10 +210,10 @@ end
         pos_diff = point_coords - neighbor_coords
         distance2 = dot(pos_diff, pos_diff)
 
-        pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
-                                                        periodic_box)
+        pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
+                                                        search_radius_point, periodic_box)
 
-        if distance2 <= search_radius^2
+        if distance2 <= search_radius_point^2
             distance = sqrt(distance2)
 
             # Inline to avoid loss of performance

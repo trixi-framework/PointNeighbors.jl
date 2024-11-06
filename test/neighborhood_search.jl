@@ -232,4 +232,123 @@
             end
         end
     end
+
+    @testset verbose=true "Variable Search Radius" begin
+        cloud_sizes = [
+            (10, 11),
+            (100, 90),
+            (9, 10, 7),
+            (39, 40, 41),
+        ]
+
+        seeds = [1, 2]
+        name(size, seed) = "$(length(size))D with $(prod(size)) Particles " *
+                           "($(seed == 1 ? "`initialize!`" : "`update!`"))"
+        @testset verbose=true "$(name(cloud_size, seed)))" for cloud_size in cloud_sizes,
+                                                               seed in seeds
+
+            coords = point_cloud(cloud_size, seed = seed)
+            NDIMS = length(cloud_size)
+            n_points = size(coords, 2)
+            search_radius = 2.5
+
+            search_radii = rand(n_points) .* 2 * search_radius
+            search_radius_fun = i -> search_radii[i]
+
+            # Use different coordinates for `initialize!` and then `update!` with the
+            # correct coordinates to make sure that `update!` is working as well.
+            coords_initialize = point_cloud(cloud_size, seed = 1)
+
+            # Compute expected neighbor lists by brute-force looping over all points
+            # as potential neighbors (`TrivialNeighborhoodSearch`).
+            trivial_nhs = TrivialNeighborhoodSearch{NDIMS}(; search_radius,
+                                                           eachpoint = axes(coords, 2))
+
+            neighbors_expected = [Int[] for _ in axes(coords, 2)]
+
+            foreach_point_neighbor(coords, coords, trivial_nhs, search_radius = search_radius_fun,
+                                   parallel = false) do point, neighbor,
+                                                        pos_diff, distance
+                append!(neighbors_expected[point], neighbor)
+            end
+
+            # Expand the domain by `search_radius`, as we need the neighboring cells of
+            # the minimum and maximum coordinates as well.
+            min_corner = minimum(coords, dims = 2) .- 2 * search_radius
+            max_corner = maximum(coords, dims = 2) .+ 2 * search_radius
+
+            neighborhood_searches = [
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              update_strategy = SemiParallelUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              update_strategy = SerialUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius),
+                                              update_strategy = ParallelUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius),
+                                              update_strategy = SemiParallelUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius,
+                                                                           backend = Vector{Vector{Int}})),
+            ]
+
+            names = [
+                "`GridNeighborhoodSearch` with `SemiParallelUpdate`",
+                "`GridNeighborhoodSearch` with `SerialUpdate`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelUpdate`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
+            ]
+
+            # Also test copied templates
+            template_nhs = [
+                GridNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(update_strategy = SerialUpdate()),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner)),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner),
+                                              update_strategy = SemiParallelUpdate()),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           backend = Vector{Vector{Int32}})),
+            ]
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            append!(neighborhood_searches, copied_nhs)
+
+            names_copied = [name * " copied" for name in names]
+            append!(names, names_copied)
+
+            @testset "$(names[i])" for i in eachindex(names)
+                nhs = neighborhood_searches[i]
+
+                # Initialize with `seed = 1`
+                initialize!(nhs, coords_initialize, coords_initialize)
+
+                # For other seeds, update with the correct coordinates.
+                # This way, we test only `initialize!` when `seed == 1`,
+                # and `initialize!` plus `update!` else.
+                if seed != 1
+                    update!(nhs, coords, coords)
+                end
+
+                neighbors = [Int[] for _ in axes(coords, 2)]
+
+                foreach_point_neighbor(coords, coords, nhs, search_radius = search_radius_fun,
+                                       parallel = false) do point, neighbor,
+                                                            pos_diff, distance
+                    append!(neighbors[point], neighbor)
+                end
+
+                @test sort.(neighbors) == neighbors_expected
+            end
+        end
+    end
 end;
