@@ -1,6 +1,9 @@
 # Return the `i`-th column of the array `A` as an `SVector`.
 @inline function extract_svector(A, ::Val{NDIMS}, i) where {NDIMS}
-    return SVector(ntuple(@inline(dim->A[dim, i]), NDIMS))
+    # Inlining this makes the WCSPH benchmark ~8% faster on an H100 GPU.
+    # Even when adding an explicit bounds check before, it is still ~4% faster.
+    # However, inlining makes it ~25% slower on an RTX 3090.
+    return SVector(ntuple(@inline(dim -> A[dim, i]), NDIMS))
 end
 
 # When particles end up with coordinates so big that the cell coordinates
@@ -13,13 +16,20 @@ end
 # If we threw an error here, we would prevent the time integration method from
 # retrying with a smaller time step, and we would thus crash perfectly fine simulations.
 @inline function floor_to_int(i)
-    if isnan(i) || i > typemax(Int)
+    # `Base.floor(Int, i)` is defined as `trunc(Int, round(x, RoundDown))`
+    rounded = round(i, RoundDown)
+
+    # `Base.trunc(Int, x)` throws an `InexactError` in these cases, and otherwise
+    # returns `unsafe_trunc(Int, rounded)`.
+    if isnan(rounded) || rounded >= typemax(Int)
         return typemax(Int)
-    elseif i < typemin(Int)
+    elseif rounded <= typemin(Int)
         return typemin(Int)
     end
 
-    return floor(Int, i)
+    # After making sure that `rounded` is in the range of `Int`,
+    # we can safely call `unsafe_trunc`.
+    return unsafe_trunc(Int, rounded)
 end
 
 abstract type AbstractThreadingBackend end
@@ -134,7 +144,7 @@ end
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.
     generic_kernel(backend)(ndrange = ndrange) do i
-        @inline f(iterator[indices[i]])
+        @inbounds @inline f(iterator[indices[i]])
     end
 
     KernelAbstractions.synchronize(backend)
