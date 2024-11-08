@@ -34,16 +34,26 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
                                                smoothing_length, viscosity = viscosity,
                                                density_diffusion = density_diffusion)
 
-    v = vcat(fluid.velocity, fluid.density')
-    u = copy(fluid.coordinates)
+    # Note that we cannot just disable paralellism in TrixiParticles.
+    # But passing a different backend like `CUDA.CUDABackend`
+    # allows us to change the type of the array to run the benchmark on the GPU.
+    if parallel isa Bool
+        system = fluid_system
+        nhs = neighborhood_search
+    else
+        system = PointNeighbors.Adapt.adapt(parallel, fluid_system)
+        nhs = PointNeighbors.Adapt.adapt(parallel, neighborhood_search)
+    end
+
+    v = PointNeighbors.Adapt.adapt(parallel, vcat(fluid.velocity, fluid.density'))
+    u = PointNeighbors.Adapt.adapt(parallel, coordinates)
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(fluid_system, neighborhood_search)
-    TrixiParticles.compute_pressure!(fluid_system, v)
+    TrixiParticles.initialize!(system, nhs)
+    TrixiParticles.compute_pressure!(system, v)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $neighborhood_search,
-                                              $fluid_system, $fluid_system)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
 end
 
 """
