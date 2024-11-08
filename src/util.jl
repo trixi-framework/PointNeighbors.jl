@@ -1,9 +1,10 @@
 # Return the `i`-th column of the array `A` as an `SVector`.
 @inline function extract_svector(A, ::Val{NDIMS}, i) where {NDIMS}
-    # Inlining this makes the WCSPH benchmark ~8% faster on an H100 GPU.
-    # Even when adding an explicit bounds check before, it is still ~4% faster.
-    # However, inlining makes it ~25% slower on an RTX 3090.
-    return SVector(ntuple(@inline(dim -> A[dim, i]), NDIMS))
+    # Explicit bounds check, which can be removed by calling this function with `@inbounds`
+    @boundscheck checkbounds(A, NDIMS, i)
+
+    # Assume inbounds access now
+    return SVector(ntuple(@inline(dim -> @inbounds A[dim, i]), NDIMS))
 end
 
 # When particles end up with coordinates so big that the cell coordinates
