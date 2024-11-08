@@ -429,6 +429,9 @@ end
 
     local_points = @localmem Int32 MAX
     local_neighbor_coords = @localmem eltype(system_coords) (ndims(neighborhood_search), MAX)
+    
+    next_local_points = @localmem Int32 MAX
+    next_local_neighbor_coords = @localmem eltype(system_coords) (ndims(neighborhood_search), MAX)
 
     pv = points_in_cell(cell, neighborhood_search)
     n_particles_in_current_cell = length(pv)
@@ -436,31 +439,38 @@ end
         point = @inbounds pv[particleidx]
         point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
                                                  point)
-        # KernelAbstractions.@print("Point $point with coords ($(point_coords[1]), $(point_coords[2]))\n")
     else
         point = zero(Int32)
         point_coords = zero(SVector{ndims(neighborhood_search), eltype(system_coords)})
     end
 
-    for i in -1:1, j in -1:1, k in -1:1
-        neighbor_cell = (cell[1] + i, cell[2] + j, cell[3] + k)
-    # for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
-    #     neighbor_cell = Tuple(neighbor_cell_)
+    @inline function stage!(local_points, local_neighbor_coords, neighbor_cell)
         points_view = points_in_cell(neighbor_cell, neighborhood_search)
         n_particles_in_neighbor_cell = length(points_view)
-        # if n_particles_in_neighbor_cell
-        #     continue
-        # end
 
         # First use all threads to load the neighbors into local memory in parallel
         if particleidx <= n_particles_in_neighbor_cell
             @inbounds p = local_points[particleidx] = points_view[particleidx]
-            # KernelAbstractions.@print("Point $point, neighbor $p with coords ($(neighbor_system_coords[1, p]), $(neighbor_system_coords[2, p]))\n")
             for d in 1:ndims(neighborhood_search)
                 @inbounds local_neighbor_coords[d, particleidx] = neighbor_system_coords[d, p]
             end
         end
-        @synchronize()
+        return n_particles_in_neighbor_cell
+    end
+
+    neighborhood = neighboring_cells(cell, neighbor_search)
+    (neighbor_cell, state) = iterate(neighborhood)
+
+    n_particles_in_neighbor_cell = stage!(local_points, local_neighbor_coords, Tuple(neighbor_cell))
+    @synchronize()
+
+    while true
+        next = iterate(neighborhood, state)
+        if next !== nothing
+            (next_neighbor_cell, state) = next
+            next_n_particles_in_neighbor_cell = stage!(next_local_points, next_local_neighbor_coords, Tuple(next_neighbor_cell))
+        end
+
         # Now each thread works on one point again
         if particleidx <= n_particles_in_current_cell
             for local_neighbor in 1:n_particles_in_neighbor_cell
@@ -483,7 +493,16 @@ end
                 end
             end
         end
+        next === nothing && break
         @synchronize()
+        # swap variables
+        n_particles_in_neighbor_cell = next_n_particles_in_neighbor_cell
+        temp = local_points
+        local_points = next_local_points
+        next_local_points = temp
+        temp = local_neighbor_coords
+        local_neighbor_coords = next_local_neighbor_coords
+        next_local_neighbor_coords = temp
     end
 end
 
