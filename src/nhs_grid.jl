@@ -337,18 +337,34 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     return neighborhood_search
 end
 
-@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                  neighborhood_search::GridNeighborhoodSearch, point;
-                                  search_radius = search_radius(neighborhood_search))
+@propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                              neighborhood_search::GridNeighborhoodSearch,
+                                              point;
+                                              search_radius = search_radius(neighborhood_search))
+    # Due to https://github.com/JuliaLang/julia/issues/30411, we cannot just remove
+    # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
+    # We have to use `@propagate_inbounds`, which will also remove boundschecks
+    # in the neighbor loop, which is not safe (see comment below).
+    # To avoid this, we have to use a functio barrier to disable the `@inbounds` again.
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+
+    __foreach_neighbor(f, system_coords, neighbor_system_coords, neighborhood_search,
+                       point, point_coords, search_radius)
+end
+
+@inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                    neighborhood_search::GridNeighborhoodSearch,
+                                    point, point_coords, search_radius)
     (; periodic_box) = neighborhood_search
 
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
     cell = cell_coords(point_coords, neighborhood_search)
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
 
         for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
+            # Making the following `@inbounds` yields a ~3% speedup on an NVIDIA H100.
+            # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
