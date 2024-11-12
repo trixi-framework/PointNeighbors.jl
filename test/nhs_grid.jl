@@ -44,11 +44,13 @@
 
         # Check that the update strategy is preserved
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
-                                                                     max_corner),
+                                                                     max_corner,
+                                                                     max_points_per_cell = 101),
                                         update_strategy = SerialUpdate())
         copy = copy_neighborhood_search(nhs, 1.0, 10)
 
         @test copy.update_strategy == SerialUpdate()
+        @test size(copy.cell_list.cells.backend, 1) == 101
     end
 
     @testset "Cells at Coordinate Limits" begin
