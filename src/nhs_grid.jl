@@ -361,8 +361,11 @@ end
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
+        neighbors = points_in_cell(neighbor_cell, neighborhood_search)
 
-        for neighbor in points_in_cell(neighbor_cell, neighborhood_search)
+        for neighbor_ in eachindex(neighbors)
+            neighbor = @inbounds neighbors[neighbor_]
+
             # Making the following `@inbounds` yields a ~3% speedup on an NVIDIA H100.
             # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
             neighbor_coords = extract_svector(neighbor_system_coords,
@@ -402,7 +405,7 @@ end
                       for cell in neighboring_cells(cell, neighborhood_search))
 end
 
-@inline function points_in_cell(cell_index, neighborhood_search)
+@propagate_inbounds function points_in_cell(cell_index, neighborhood_search)
     (; cell_list) = neighborhood_search
 
     return cell_list[periodic_cell_index(cell_index, neighborhood_search)]
