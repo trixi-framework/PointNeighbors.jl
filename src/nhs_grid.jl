@@ -366,7 +366,7 @@ end
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
 
-            # Making the following `@inbounds` yields a ~3% speedup on an NVIDIA H100.
+            # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
             # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
