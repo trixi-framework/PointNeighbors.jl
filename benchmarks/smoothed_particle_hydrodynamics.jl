@@ -34,7 +34,7 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
                                                smoothing_length, viscosity = viscosity,
                                                density_diffusion = density_diffusion)
 
-    # Note that we cannot just disable paralellism in TrixiParticles.
+    # Note that we cannot just disable parallelism in TrixiParticles.
     # But passing a different backend like `CUDA.CUDABackend`
     # allows us to change the type of the array to run the benchmark on the GPU.
     if parallel isa Bool
@@ -88,7 +88,7 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_; parallel = true
                                                acceleration = (0.0f0, 0.0f0, 0.0f0),
                                                density_diffusion = density_diffusion)
 
-    # Note that we cannot just disable paralellism in TrixiParticles.
+    # Note that we cannot just disable parallelism in TrixiParticles.
     # But passing a different backend like `CUDA.CUDABackend`
     # allows us to change the type of the array to run the benchmark on the GPU.
     if parallel isa Bool
