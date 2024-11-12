@@ -361,14 +361,14 @@ end
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
-        neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+        neighbors = @inbounds points_in_cell(neighbor_cell, neighborhood_search)
 
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
 
             # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
             # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_coords = extract_svector(neighbor_system_coords,
+            neighbor_coords = @inbounds extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
             pos_diff = point_coords - neighbor_coords
