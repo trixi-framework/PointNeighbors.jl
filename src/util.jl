@@ -4,7 +4,7 @@
     @boundscheck checkbounds(A, NDIMS, i)
 
     # Assume inbounds access now
-    return SVector(ntuple(@inline(dim -> @inbounds A[dim, i]), NDIMS))
+    return SVector(ntuple(@inline(dim->@inbounds A[dim, i]), NDIMS))
 end
 
 # When particles end up with coordinates so big that the cell coordinates
