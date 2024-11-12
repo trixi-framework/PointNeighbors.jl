@@ -345,7 +345,7 @@ end
     # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
     # We have to use `@propagate_inbounds`, which will also remove boundschecks
     # in the neighbor loop, which is not safe (see comment below).
-    # To avoid this, we have to use a functio barrier to disable the `@inbounds` again.
+    # To avoid this, we have to use a function barrier to disable the `@inbounds` again.
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
 
     __foreach_neighbor(f, system_coords, neighbor_system_coords, neighborhood_search,
