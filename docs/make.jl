@@ -52,7 +52,7 @@ makedocs(modules = [PointNeighbors],
              "Home" => "index.md",
              "API reference" => "reference.md",
              "Authors" => "authors.md",
-             "License" => "license.md",
+             "License" => "license.md"
          ])
 
 deploydocs(;
