@@ -429,7 +429,7 @@ end
 
     local_points = @localmem Int32 MAX
     local_neighbor_coords = @localmem eltype(system_coords) (ndims(neighborhood_search), MAX)
-    
+
     next_local_points = @localmem Int32 MAX
     next_local_neighbor_coords = @localmem eltype(system_coords) (ndims(neighborhood_search), MAX)
 
@@ -446,28 +446,36 @@ end
 
     @inline function stage!(local_points, local_neighbor_coords, neighbor_cell)
         points_view = points_in_cell(neighbor_cell, neighborhood_search)
-        n_particles_in_neighbor_cell = length(points_view)
+        n_particles_in_neighbor_cell_ = length(points_view)
 
         # First use all threads to load the neighbors into local memory in parallel
-        if particleidx <= n_particles_in_neighbor_cell
+        if particleidx <= n_particles_in_neighbor_cell_
             @inbounds p = local_points[particleidx] = points_view[particleidx]
             for d in 1:ndims(neighborhood_search)
                 @inbounds local_neighbor_coords[d, particleidx] = neighbor_system_coords[d, p]
             end
         end
-        return n_particles_in_neighbor_cell
+        return n_particles_in_neighbor_cell_
     end
 
-    neighborhood = neighboring_cells(cell, neighbor_search)
-    (neighbor_cell, state) = iterate(neighborhood)
+    neighborhood = neighboring_cells(cell, neighborhood_search)
+    # (neighbor_cell, state) = iterate(neighborhood)
+    neighbor_cell = first(neighborhood)
 
     n_particles_in_neighbor_cell = stage!(local_points, local_neighbor_coords, Tuple(neighbor_cell))
     @synchronize()
 
-    while true
-        next = iterate(neighborhood, state)
-        if next !== nothing
-            (next_neighbor_cell, state) = next
+    for neighbor_ in 1:length(neighborhood)
+        neighbor_cell = @inbounds neighborhood[neighbor_]
+
+    # while true
+    #     next = iterate(neighborhood, state)
+    #     if next !== nothing
+        # n_particles_in_neighbor_cell = stage!(local_points, local_neighbor_coords, Tuple(neighbor_cell))
+        # @synchronize
+        if neighbor_ < length(neighborhood)
+            next_neighbor_cell = neighborhood[neighbor_ + 1]
+            # (next_neighbor_cell, state) = next
             next_n_particles_in_neighbor_cell = stage!(next_local_points, next_local_neighbor_coords, Tuple(next_neighbor_cell))
         end
 
@@ -493,7 +501,8 @@ end
                 end
             end
         end
-        next === nothing && break
+        # next === nothing && break
+        neighbor_ >= length(neighborhood) && break
         @synchronize()
         # swap variables
         n_particles_in_neighbor_cell = next_n_particles_in_neighbor_cell
