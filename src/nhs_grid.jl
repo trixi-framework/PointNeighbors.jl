@@ -167,6 +167,12 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
     empty!(cell_list)
 
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
     for point in axes(y, 2)
         # Get cell index of the point's cell
         point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
