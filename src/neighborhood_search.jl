@@ -164,8 +164,13 @@ end
 
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points, parallel::Val{true})
+    # Explicit bounds check before the hot loop (or GPU kernel)
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+
     @threaded system_coords for point in points
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+        # Now we can assume that `point` is inbounds
+        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+                                   neighborhood_search, point)
     end
 
     return nothing
@@ -175,8 +180,13 @@ end
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points,
                                         backend::ParallelizationBackend)
+    # Explicit bounds check before the hot loop (or GPU kernel)
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+
     @threaded backend for point in points
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+        # Now we can assume that `point` is inbounds
+        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+                                   neighborhood_search, point)
     end
 
     return nothing
@@ -184,8 +194,13 @@ end
 
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points, parallel::Val{false})
+    # Explicit bounds check before the hot loop
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+
     for point in points
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+        # Now we can assume that `point` is inbounds
+        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+                                   neighborhood_search, point)
     end
 
     return nothing
