@@ -48,12 +48,12 @@ function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
     # Pad domain to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
     # This padding is safe, and will give us one more layer of cells in the worst case.
-    min_corner = SVector(Tuple(min_corner .- 1e-3 * search_radius))
-    max_corner = SVector(Tuple(max_corner .+ 1e-3 * search_radius))
+    min_corner = SVector(Tuple(min_corner .- 1.0f-3 * search_radius))
+    max_corner = SVector(Tuple(max_corner .+ 1.0f-3 * search_radius))
 
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
-        cells = construct_backend(backend, 0, 0)
+        cells = construct_backend(backend, 0, max_points_per_cell)
         linear_indices = nothing
     else
         # Note that we don't shift everything so that the first cell starts at `min_corner`.
@@ -180,5 +180,15 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
     (; min_corner, max_corner) = cell_list
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
-                            backend = typeof(cell_list.cells))
+                            backend = typeof(cell_list.cells),
+                            max_points_per_cell = max_points_per_cell(cell_list.cells))
+end
+
+function max_points_per_cell(cells::DynamicVectorOfVectors)
+    return size(cells.backend, 1)
+end
+
+# Fallback when backend is a `Vector{Vector{T}}`
+function max_points_per_cell(cells)
+    return 100
 end
