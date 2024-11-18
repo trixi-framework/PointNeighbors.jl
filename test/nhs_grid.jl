@@ -200,7 +200,7 @@
         names = [
             "Simple Example 2D",
             "Box Not Multiple of Search Radius 2D",
-            "Simple Example 3D",
+            "Simple Example 3D"
         ]
 
         coordinates = [
@@ -210,7 +210,7 @@
              -0.12 -0.05 -0.09 0.15 0.42],
             [-0.08 0.0 0.18 0.1 -0.08
              -0.12 -0.05 -0.09 0.15 0.39
-             0.14 0.34 0.12 0.06 0.13],
+             0.14 0.34 0.12 0.06 0.13]
         ]
 
         periodic_boxes = [
@@ -218,7 +218,7 @@
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
             PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.205, 0.43]),
-            PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35]),
+            PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35])
         ]
 
         @testset verbose=true "$(names[i])" for i in eachindex(names)
@@ -257,11 +257,11 @@
             nhs = GridNeighborhoodSearch{2}(search_radius = 1.0, n_points = size(coords, 2),
                                             periodic_box = PeriodicBox(min_corner = [
                                                                            -1.5,
-                                                                           0.0,
+                                                                           0.0
                                                                        ],
                                                                        max_corner = [
                                                                            2.5,
-                                                                           3.0,
+                                                                           3.0
                                                                        ]))
 
             initialize_grid!(nhs, coords)
