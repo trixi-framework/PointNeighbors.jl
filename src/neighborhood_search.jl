@@ -36,6 +36,16 @@ in this case to avoid unnecessary updates.
 The first flag in `points_moving` indicates if points in `x` are moving.
 The second flag indicates if points in `y` are moving.
 
+!!! warning "Experimental Feature: Backend Specification"
+    The keyword argument `parallelization_backend` allows users to specify the
+    multithreading backend. This feature is currently considered experimental!
+
+    Possible parallelization backends are:
+    - [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
+    - [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
+    - [`PolyesterBackend`](@ref) to use `Polyester.@batch`
+    - `KernelAbstractions.Backend` to launch a GPU kernel
+
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
@@ -130,7 +140,7 @@ Note that `system_coords` and `neighbor_coords` can be identical.
 See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
-                                parallel::Union{Bool, KernelAbstractions.Backend} = true,
+                                parallel::Union{Bool, ParallelizationBackend} = true,
                                 points = axes(system_coords, 2)) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
@@ -141,8 +151,7 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
         # threaded loop with `Polyester.@batch`, or, when `system_coords` is a GPU array,
         # launch the loop as a kernel on the GPU.
         parallel_ = Val(parallel)
-    elseif parallel isa KernelAbstractions.Backend
-        # WARNING! Undocumented, experimental feature:
+    elseif parallel isa ParallelizationBackend
         # When a `KernelAbstractions.Backend` is passed, launch the loop as a GPU kernel
         # on this backend. This is useful to test the GPU code on the CPU by passing
         # `parallel = KernelAbstractions.CPU()`, even though `system_coords isa Array`.
@@ -155,8 +164,13 @@ end
 
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points, parallel::Val{true})
+    # Explicit bounds check before the hot loop (or GPU kernel)
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+
     @threaded system_coords for point in points
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+        # Now we can assume that `point` is inbounds
+        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+                                   neighborhood_search, point)
     end
 
     return nothing
@@ -165,9 +179,14 @@ end
 # When a `KernelAbstractions.Backend` is passed, launch a GPU kernel on this backend
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points,
-                                        backend::KernelAbstractions.Backend)
+                                        backend::ParallelizationBackend)
+    # Explicit bounds check before the hot loop (or GPU kernel)
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+
     @threaded backend for point in points
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+        # Now we can assume that `point` is inbounds
+        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+                                   neighborhood_search, point)
     end
 
     return nothing
@@ -175,8 +194,13 @@ end
 
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points, parallel::Val{false})
+    # Explicit bounds check before the hot loop
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+
     for point in points
-        foreach_neighbor(f, system_coords, neighbor_coords, neighborhood_search, point)
+        # Now we can assume that `point` is inbounds
+        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+                                   neighborhood_search, point)
     end
 
     return nothing

@@ -1,7 +1,7 @@
 name = "PointNeighbors"
 uuid = "1c4d5385-0a27-49de-8e2c-43b175c8985c"
 authors = ["Erik Faulhaber <erik.faulhaber@uni-koeln.de>"]
-version = "0.4.1-dev"
+version = "0.4.6-dev"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
@@ -20,10 +20,10 @@ CellListMap = "69e1c6dd-3888-40e6-b3c8-31ac5f578864"
 PointNeighborsCellListMapExt = "CellListMap"
 
 [compat]
-Adapt = "4"
+Adapt = "3, 4"
 Atomix = "0.1"
 CellListMap = "0.9"
-GPUArraysCore = "0.1"
+GPUArraysCore = "0.1, 0.2"
 KernelAbstractions = "0.9"
 LinearAlgebra = "1"
 Polyester = "0.7.5"

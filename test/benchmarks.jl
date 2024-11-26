@@ -14,6 +14,14 @@
             @test_nowarn_mod plot_benchmarks(benchmark_n_body, size, 2)
         end
 
+        @testset verbose=true "`benchmark_wcsph`" begin
+            @test_nowarn_mod plot_benchmarks(benchmark_wcsph, size, 2)
+        end
+
+        @testset verbose=true "`benchmark_tlsph`" begin
+            @test_nowarn_mod plot_benchmarks(benchmark_tlsph, size, 2)
+        end
+
         @testset verbose=true "`benchmark_initialize`" begin
             @test_nowarn_mod plot_benchmarks(benchmark_initialize, size, 2)
         end

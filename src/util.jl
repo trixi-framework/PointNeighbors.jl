@@ -1,6 +1,10 @@
 # Return the `i`-th column of the array `A` as an `SVector`.
 @inline function extract_svector(A, ::Val{NDIMS}, i) where {NDIMS}
-    return SVector(ntuple(@inline(dim->A[dim, i]), NDIMS))
+    # Explicit bounds check, which can be removed by calling this function with `@inbounds`
+    @boundscheck checkbounds(A, NDIMS, i)
+
+    # Assume inbounds access now
+    return SVector(ntuple(@inline(dim->@inbounds A[dim, i]), NDIMS))
 end
 
 # When particles end up with coordinates so big that the cell coordinates
@@ -13,14 +17,50 @@ end
 # If we threw an error here, we would prevent the time integration method from
 # retrying with a smaller time step, and we would thus crash perfectly fine simulations.
 @inline function floor_to_int(i)
-    if isnan(i) || i > typemax(Int)
+    # `Base.floor(Int, i)` is defined as `trunc(Int, round(x, RoundDown))`
+    rounded = round(i, RoundDown)
+
+    # `Base.trunc(Int, x)` throws an `InexactError` in these cases, and otherwise
+    # returns `unsafe_trunc(Int, rounded)`.
+    if isnan(rounded) || rounded >= typemax(Int)
         return typemax(Int)
-    elseif i < typemin(Int)
+    elseif rounded <= typemin(Int)
         return typemin(Int)
     end
 
-    return floor(Int, i)
+    # After making sure that `rounded` is in the range of `Int`,
+    # we can safely call `unsafe_trunc`.
+    return unsafe_trunc(Int, rounded)
 end
+
+abstract type AbstractThreadingBackend end
+
+"""
+    PolyesterBackend()
+
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Polyester.@batch`.
+"""
+struct PolyesterBackend <: AbstractThreadingBackend end
+
+"""
+    ThreadsDynamicBackend()
+
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Threads.@threads :dynamic`.
+"""
+struct ThreadsDynamicBackend <: AbstractThreadingBackend end
+
+"""
+    ThreadsStaticBackend()
+
+
+Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
+with `Threads.@threads :static`.
+"""
+struct ThreadsStaticBackend <: AbstractThreadingBackend end
+
+const ParallelizationBackend = Union{AbstractThreadingBackend, KernelAbstractions.Backend}
 
 """
     @threaded x for ... end
@@ -30,15 +70,21 @@ Semantically the same as `Threads.@threads` when iterating over a `AbstractUnitR
 but without guarantee that the underlying implementation uses `Threads.@threads`
 or works for more general `for` loops.
 
-The first argument must either be a `KernelAbstractions.Backend` or an array from which the
-backend can be derived to determine if the loop must be run threaded on the CPU
+The first argument must either be a parallelization backend (see below) or an array from
+which the backend can be derived to determine if the loop must be run threaded on the CPU
 or launched as a kernel on the GPU. Passing `KernelAbstractions.CPU()` will run the GPU
 kernel on the CPU.
+
+Possible parallelization backends are:
+- [`PolyesterBackend`](@ref) to use `Polyester.@batch`
+- [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
+- [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
+- `KernelAbstractions.Backend` to execute the loop as a GPU kernel
 
 In particular, the underlying threading capabilities might be provided by other packages
 such as [Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl).
 
-!!! warn
+!!! warning "Warning"
     This macro does not necessarily work for general `for` loops. For example,
     it does not necessarily support general iterables such as `eachline(filename)`.
 """
@@ -61,8 +107,23 @@ macro threaded(system, expr)
 end
 
 # Use `Polyester.@batch` for low-overhead threading
+# This is currently the default when x::Array
 @inline function parallel_foreach(f, iterator, x)
     Polyester.@batch for i in iterator
+        @inline f(i)
+    end
+end
+
+# Use `Threads.@threads :dynamic`
+@inline function parallel_foreach(f, iterator, x::ThreadsDynamicBackend)
+    Threads.@threads :dynamic for i in iterator
+        @inline f(i)
+    end
+end
+
+# Use `Threads.@threads :static`
+@inline function parallel_foreach(f, iterator, x::ThreadsStaticBackend)
+    Threads.@threads :static for i in iterator
         @inline f(i)
     end
 end
@@ -84,7 +145,7 @@ end
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.
     generic_kernel(backend)(ndrange = ndrange) do i
-        @inline f(iterator[indices[i]])
+        @inbounds @inline f(iterator[indices[i]])
     end
 
     KernelAbstractions.synchronize(backend)
