@@ -58,9 +58,10 @@ function PointNeighbors.foreach_point_neighbor(f::T, system_coords, neighbor_coo
                                                parallel = true) where {T}
     (; cell_list, box) = neighborhood_search
 
-    # `0` is the returned output, which we don't use
+    # `0` is the returned output, which we don't use.
+    # Note that `parallel !== false` is `true` when `parallel` is a PointNeighbors backend.
     CellListMap.map_pairwise!(0, box, cell_list,
-                              parallel = parallel) do x, y, i, j, d2, output
+                              parallel = parallel !== false) do x, y, i, j, d2, output
         # Skip all indices not in `points`
         i in points || return output
 
