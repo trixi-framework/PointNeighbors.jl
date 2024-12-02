@@ -88,7 +88,7 @@ function PointNeighbors.update!(neighborhood_search::CellListMapNeighborhoodSear
                                 points_moving = (true, true))
     (; cell_list) = neighborhood_search
 
-    @assert x === y "When `points_equal_neighbors == true`, `x` must be equal to `y`"
+    @assert x===y "When `points_equal_neighbors == true`, `x` must be equal to `y`"
 
     # Resize box
     box = CellListMap.Box(CellListMap.limits(x), neighborhood_search.box.cutoff)
