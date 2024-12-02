@@ -1,17 +1,23 @@
 module PointNeighborsCellListMapExt
 
 using PointNeighbors
-using CellListMap: CellListMap
+using CellListMap: CellListMap, CellList, CellListPair
 
 mutable struct CellListMapNeighborhoodSearch{CL, B}
     cell_list :: CL
     box       :: B
 
-    function PointNeighbors.CellListMapNeighborhoodSearch(NDIMS, search_radius)
+    function PointNeighbors.CellListMapNeighborhoodSearch(NDIMS, search_radius,
+                                                          points_equal_neighbors = true)
         # Create a cell list with only one point and resize it later
         x = zeros(NDIMS, 1)
         box = CellListMap.Box(CellListMap.limits(x, x), search_radius)
-        cell_list = CellListMap.CellList(x, x, box)
+
+        if points_equal_neighbors
+            cell_list = CellListMap.CellList(x, box)
+        else
+            cell_list = CellListMap.CellList(x, x, box)
+        end
 
         return new{typeof(cell_list), typeof(box)}(cell_list, box)
     end
@@ -30,7 +36,8 @@ function PointNeighbors.initialize!(neighborhood_search::CellListMapNeighborhood
     PointNeighbors.update!(neighborhood_search, x, y)
 end
 
-function PointNeighbors.update!(neighborhood_search::CellListMapNeighborhoodSearch,
+# When `x !== y`, a `CellListPair` must be used
+function PointNeighbors.update!(neighborhood_search::CellListMapNeighborhoodSearch{<:CellListPair},
                                 x::AbstractMatrix, y::AbstractMatrix;
                                 points_moving = (true, true))
     (; cell_list) = neighborhood_search
@@ -44,6 +51,30 @@ function PointNeighbors.update!(neighborhood_search::CellListMapNeighborhoodSear
 
     # Recalculate number of batches for multithreading
     CellListMap.set_number_of_batches!(cell_list)
+
+    return neighborhood_search
+end
+
+# When `points_equal_neighbors == true`, a `CellList` is used and `x` must be equal to `y`
+function PointNeighbors.update!(neighborhood_search::CellListMapNeighborhoodSearch{<:CellList},
+                                x::AbstractMatrix, y::AbstractMatrix;
+                                points_moving = (true, true))
+    (; cell_list) = neighborhood_search
+
+    @assert x === y "When `points_equal_neighbors == true`, `x` must be equal to `y`"
+
+    # Resize box
+    box = CellListMap.Box(CellListMap.limits(x), neighborhood_search.box.cutoff)
+    neighborhood_search.box = box
+
+    # Resize and update cell list
+    CellListMap.UpdateCellList!(x, box, cell_list)
+
+    # Recalculate number of batches for multithreading
+    CellListMap.set_number_of_batches!(cell_list)
+
+    # Due to https://github.com/m3g/CellListMap.jl/issues/106, we have to update again
+    CellListMap.UpdateCellList!(x, box, cell_list)
 
     return neighborhood_search
 end
