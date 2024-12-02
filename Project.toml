@@ -21,7 +21,7 @@ PointNeighborsCellListMapExt = "CellListMap"
 
 [compat]
 Adapt = "3, 4"
-Atomix = "0.1"
+Atomix = "0.1, 1"
 CellListMap = "0.9"
 GPUArraysCore = "0.1, 0.2"
 KernelAbstractions = "0.9"
