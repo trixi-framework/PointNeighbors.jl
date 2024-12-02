@@ -261,6 +261,8 @@ end
     return coords
 end
 
-function CellListMapNeighborhoodSearch(args...; kwargs...)
-    error("CellListMap.jl has to be imported to use `CellListMapNeighborhoodSearch`")
+function CellListMapNeighborhoodSearch(NDIMS; search_radius = 1.0,
+                                       points_equal_neighbors = false)
+    error("CellListMap.jl has to be imported to use `CellListMapNeighborhoodSearch`. " *
+          "If you did import CellListMap.jl, please try `]instantiate`.")
 end
