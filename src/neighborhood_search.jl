@@ -261,6 +261,6 @@ end
     return coords
 end
 
-function CellListMapNeighborhoodSearch(_...)
+function CellListMapNeighborhoodSearch(args...; kwargs...)
     error("CellListMap.jl has to be imported to use `CellListMapNeighborhoodSearch`")
 end

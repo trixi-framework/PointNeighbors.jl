@@ -91,6 +91,7 @@
             # Run this for every neighborhood search
             @testset "$(names[j])" for j in eachindex(names)
                 nhs = neighborhood_searches[j]
+                @test PointNeighbors.search_radius(nhs) == search_radius
 
                 initialize!(nhs, coords, coords)
 
@@ -176,7 +177,9 @@
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
-                CellListMapNeighborhoodSearch(NDIMS, search_radius)
+                CellListMapNeighborhoodSearch(NDIMS; search_radius),
+                CellListMapNeighborhoodSearch(NDIMS; search_radius,
+                                              points_equal_neighbors = true)
             ]
 
             names = [
@@ -186,7 +189,8 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
-                "`CellListMapNeighborhoodSearch`"
+                "`CellListMapNeighborhoodSearch`",
+                "`CellListMapNeighborhoodSearch` with `points_equal_neighbors = true`"
             ]
 
             # Also test copied templates
@@ -202,7 +206,8 @@
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
-                CellListMapNeighborhoodSearch(NDIMS, 1.0)
+                CellListMapNeighborhoodSearch(NDIMS),
+                CellListMapNeighborhoodSearch(NDIMS, points_equal_neighbors = true)
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
@@ -212,6 +217,7 @@
 
             @testset "$(names[i])" for i in eachindex(names)
                 nhs = neighborhood_searches[i]
+                @test PointNeighbors.search_radius(nhs) == search_radius
 
                 # Initialize with `seed = 1`
                 initialize!(nhs, coords_initialize, coords_initialize)
