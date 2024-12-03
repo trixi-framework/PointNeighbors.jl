@@ -34,7 +34,9 @@ mutable struct CellListMapNeighborhoodSearch{CL, B}
     cell_list :: CL
     box       :: B
 
-    function PointNeighbors.CellListMapNeighborhoodSearch(NDIMS; search_radius = 1.0,
+    # Add dispatch on `NDIMS` to avoid method overwriting of the function in PointNeighbors.jl
+    function PointNeighbors.CellListMapNeighborhoodSearch(NDIMS::Integer;
+                                                          search_radius = 1.0,
                                                           points_equal_neighbors = false)
         # Create a cell list with only one point and resize it later
         x = zeros(NDIMS, 1)
