@@ -1,5 +1,6 @@
 using Plots
 using BenchmarkTools
+import CellListMap
 
 # Generate a rectangular point cloud
 include("../test/point_cloud.jl")
@@ -40,7 +41,8 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          seed = 1, perturbation_factor_position = 1.0)
     neighborhood_searches_names = ["TrivialNeighborhoodSearch";;
                                    "GridNeighborhoodSearch";;
-                                   "PrecomputedNeighborhoodSearch"]
+                                   "PrecomputedNeighborhoodSearch";;
+                                   "CellListMapNeighborhoodSearch"]
 
     # Multiply number of points in each iteration (roughly) by this factor
     scaling_factor = 4
@@ -62,7 +64,8 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
         neighborhood_searches = [
             TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_particles),
             GridNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles),
-            PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles)
+            PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles),
+            CellListMapNeighborhoodSearch(NDIMS; search_radius)
         ]
 
         for i in eachindex(neighborhood_searches)
