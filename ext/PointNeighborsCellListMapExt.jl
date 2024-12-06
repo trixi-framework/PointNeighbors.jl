@@ -32,6 +32,7 @@ Note that periodic boundaries are not yet supported.
 """
 mutable struct CellListMapNeighborhoodSearch{CL, B}
     cell_list :: CL
+    # Note that we need this struct to be mutable to replace the box in `update!`
     box       :: B
 
     # Add dispatch on `NDIMS` to avoid method overwriting of the function in PointNeighbors.jl
@@ -160,7 +161,8 @@ function PointNeighbors.foreach_point_neighbor(f::T, system_coords, neighbor_coo
         return output
     end
 
-    # With a `CellList`, interaction of a particle with itself is not included
+    # With a `CellList`, only pairs with `i < j` are considered.
+    # We can cover `i > j` with symmetry above, but `i = j` has to be computed separately.
     PointNeighbors.@threaded system_coords for point in points
         zero_pos_diff = zero(PointNeighbors.SVector{ndims(neighborhood_search),
                                                     eltype(system_coords)})
