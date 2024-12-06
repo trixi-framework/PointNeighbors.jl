@@ -41,8 +41,12 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          seed = 1, perturbation_factor_position = 1.0)
     neighborhood_searches_names = ["TrivialNeighborhoodSearch";;
                                    "GridNeighborhoodSearch";;
-                                   "PrecomputedNeighborhoodSearch";;
-                                   "CellListMapNeighborhoodSearch"]
+                                   "PrecomputedNeighborhoodSearch"]
+
+    if length(n_points_per_dimension) > 1
+        # Not implemented for 1D
+        push!(neighborhood_searches_names, "CellListMapNeighborhoodSearch")
+    end
 
     # Multiply number of points in each iteration (roughly) by this factor
     scaling_factor = 4
@@ -64,9 +68,13 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
         neighborhood_searches = [
             TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_particles),
             GridNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles),
-            PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles),
-            CellListMapNeighborhoodSearch(NDIMS; search_radius)
+            PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles)
         ]
+
+        if NDIMS > 1
+            # Not implemented for 1D
+            push!(neighborhood_searches, CellListMapNeighborhoodSearch(NDIMS; search_radius))
+        end
 
         for i in eachindex(neighborhood_searches)
             neighborhood_search = neighborhood_searches[i]
