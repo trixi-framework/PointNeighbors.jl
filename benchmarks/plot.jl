@@ -39,8 +39,8 @@ plot_benchmarks(benchmark_count_neighbors, (10, 10), 3)
 function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          parallel = true, title = "",
                          seed = 1, perturbation_factor_position = 1.0)
-    neighborhood_searches_names = ["TrivialNeighborhoodSearch";;
-                                   "GridNeighborhoodSearch";;
+    neighborhood_searches_names = ["TrivialNeighborhoodSearch",
+                                   "GridNeighborhoodSearch",
                                    "PrecomputedNeighborhoodSearch"]
 
     if length(n_points_per_dimension) > 1
@@ -88,10 +88,12 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
         end
     end
 
+    labels = reshape(neighborhood_searches_names, (1, length(neighborhood_searches_names)))
+
     plot(n_particles_vec, times,
          xaxis = :log, yaxis = :log,
          xticks = (n_particles_vec, n_particles_vec),
          xlabel = "#particles", ylabel = "Runtime [s]",
          legend = :outerright, size = (750, 400), dpi = 200,
-         label = neighborhood_searches_names, title = title)
+         label = labels, title = title)
 end
