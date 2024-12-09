@@ -39,9 +39,10 @@ plot_benchmarks(benchmark_count_neighbors, (10, 10), 3)
 function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          parallel = true, title = "",
                          seed = 1, perturbation_factor_position = 1.0)
-    neighborhood_searches_names = ["TrivialNeighborhoodSearch",
-                                   "GridNeighborhoodSearch",
-                                   "PrecomputedNeighborhoodSearch"]
+    neighborhood_searches_names = [
+        "TrivialNeighborhoodSearch",
+        "GridNeighborhoodSearch",
+        "PrecomputedNeighborhoodSearch"]
 
     if length(n_points_per_dimension) > 1
         # Not implemented for 1D
@@ -73,7 +74,8 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
 
         if NDIMS > 1
             # Not implemented for 1D
-            push!(neighborhood_searches, CellListMapNeighborhoodSearch(NDIMS; search_radius))
+            push!(neighborhood_searches,
+                  CellListMapNeighborhoodSearch(NDIMS; search_radius))
         end
 
         for i in eachindex(neighborhood_searches)

@@ -31,9 +31,9 @@ Note that periodic boundaries are not yet supported.
     This is an experimental feature and may change in future releases.
 """
 mutable struct CellListMapNeighborhoodSearch{CL, B}
-    cell_list :: CL
+    cell_list::CL
     # Note that we need this struct to be mutable to replace the box in `update!`
-    box       :: B
+    box::B
 
     # Add dispatch on `NDIMS` to avoid method overwriting of the function in PointNeighbors.jl
     function PointNeighbors.CellListMapNeighborhoodSearch(NDIMS::Integer;
