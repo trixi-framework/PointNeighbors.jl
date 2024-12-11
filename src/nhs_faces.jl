@@ -43,7 +43,7 @@ function faces_in_cell(cell, neighborhood_search)
 end
 
 function initialize!(neighborhood_search::FaceNeighborhoodSearch, geometry;
-                     pad=ntuple(_ -> 1, ndims(geometry)))
+                     pad = ntuple(_ -> 1, ndims(geometry)))
     (; cell_list, neighbor_iterator, search_radius) = neighborhood_search
 
     empty!(cell_list)
@@ -75,7 +75,7 @@ function initialize!(neighborhood_search::FaceNeighborhoodSearch, geometry;
     for cell_runner in meshgrid(min_cell, max_cell)
         resize!(face_ids, 0)
         for neighbor in neighboring_cells(cell_runner, neighborhood_search,
-                                                         search_radius)
+                                          search_radius)
             append!(face_ids, faces_in_cell(Tuple(neighbor), neighborhood_search))
         end
 
@@ -133,7 +133,7 @@ end
 
 # See https://tavianator.com/2022/ray_box_boundary.html
 function ray_intersection(min_corner, max_corner, ray_origin, ray_direction;
-                          pad=sqrt(eps()))
+                          pad = sqrt(eps()))
     NDIMS = length(ray_origin)
 
     inv_dir = SVector(ntuple(@inline(dim->1 / ray_direction[dim]), NDIMS))
@@ -190,7 +190,7 @@ end
     return meshgrid(mins, maxs)
 end
 
-@inline function meshgrid(min_corner, max_corner; increment=1)
+@inline function meshgrid(min_corner, max_corner; increment = 1)
     min_ = collect(min_corner)
     max_ = collect(max_corner)
 
