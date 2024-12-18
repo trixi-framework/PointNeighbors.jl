@@ -1,26 +1,21 @@
-struct FaceNeighborhoodSearch{NDIMS, ELTYPE, PB}
-    cell_list         :: Dict{NTuple{NDIMS, Int}, Vector{Int}}
-    cell_size         :: NTuple{NDIMS, ELTYPE}
-    neighbor_iterator :: Dict{NTuple{NDIMS, Int}, Vector{Int}}
-    empty_vector      :: Vector{Int} # Just an empty vector (used in `eachneighbor`)
-    n_cells           :: NTuple{NDIMS, Int}
-    periodic_box      :: Nothing
+struct FaceNeighborhoodSearch{NDIMS, CL, ELTYPE} <: AbstractNeighborhoodSearch
+    neighbor_iterator :: CL
+    cell_list         :: CL
     search_radius     :: ELTYPE
+    periodic_box      :: Nothing
+    cell_size         :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
+end
 
-    function FaceNeighborhoodSearch{NDIMS}(search_radius) where {NDIMS}
-        ELTYPE = eltype(search_radius)
+function FaceNeighborhoodSearch{NDIMS}(; cell_list = DictionaryCellList{NDIMS}(),
+                                       search_radius) where {NDIMS}
+    ELTYPE = eltype(search_radius)
+    CL = typeof(cell_list)
 
-        cell_list = Dict{NTuple{NDIMS, Int}, Vector{Int}}()
-        neighbor_iterator = Dict{NTuple{NDIMS, Int}, Vector{Int}}()
+    neighbor_iterator = copy(cell_list)
 
-        cell_size = ntuple(dim -> search_radius, NDIMS)
-        empty_vector = Int[]
+    cell_size = ntuple(_ -> search_radius, Val(NDIMS))
 
-        n_cells = ntuple(_ -> -1, Val(NDIMS))
-
-        new{NDIMS, ELTYPE, Nothing}(cell_list, cell_size, neighbor_iterator, empty_vector,
-                                    n_cells, nothing, search_radius)
-    end
+    new{NDIMS, CL, ELTYPE}(neighbor_iterator, cell_list, search_radius, nothing, cell_size)
 end
 
 @inline Base.ndims(::FaceNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
