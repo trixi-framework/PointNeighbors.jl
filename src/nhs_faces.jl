@@ -8,14 +8,13 @@ end
 
 function FaceNeighborhoodSearch{NDIMS}(; cell_list = DictionaryCellList{NDIMS}(),
                                        search_radius) where {NDIMS}
-    ELTYPE = eltype(search_radius)
-    CL = typeof(cell_list)
 
     neighbor_iterator = deepcopy(cell_list)
 
     cell_size = ntuple(_ -> search_radius, Val(NDIMS))
 
-    new{NDIMS, CL, ELTYPE}(neighbor_iterator, cell_list, search_radius, nothing, cell_size)
+    return FaceNeighborhoodSearch(neighbor_iterator, cell_list, search_radius, nothing,
+                                  cell_size)
 end
 
 @inline Base.ndims(::FaceNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
