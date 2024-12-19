@@ -2,14 +2,16 @@ struct FaceNeighborhoodSearch{NDIMS, CL, ELTYPE} <: AbstractNeighborhoodSearch
     cell_list     :: CL
     search_radius :: ELTYPE
     periodic_box  :: Nothing
+    n_cells       :: NTuple{NDIMS, Int}
     cell_size     :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
 end
 
 function FaceNeighborhoodSearch{NDIMS}(; cell_list = DictionaryCellList{NDIMS}(),
                                        search_radius) where {NDIMS}
     cell_size = ntuple(_ -> search_radius, Val(NDIMS))
+    n_cells = ntuple(_ -> -1, Val(NDIMS))
 
-    return FaceNeighborhoodSearch(cell_list, search_radius, nothing, cell_size)
+    return FaceNeighborhoodSearch(cell_list, search_radius, nothing, n_cells, cell_size)
 end
 
 @inline Base.ndims(::FaceNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
