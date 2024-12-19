@@ -11,7 +11,7 @@ function FaceNeighborhoodSearch{NDIMS}(; cell_list = DictionaryCellList{NDIMS}()
     ELTYPE = eltype(search_radius)
     CL = typeof(cell_list)
 
-    neighbor_iterator = copy(cell_list)
+    neighbor_iterator = deepcopy(cell_list)
 
     cell_size = ntuple(_ -> search_radius, Val(NDIMS))
 
