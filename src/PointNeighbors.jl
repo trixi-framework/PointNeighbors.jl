@@ -10,6 +10,7 @@ using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
+using TrixiParticles: eachface, face_vertices, face_normal
 
 include("util.jl")
 include("vector_of_vectors.jl")
@@ -17,11 +18,13 @@ include("neighborhood_search.jl")
 include("nhs_trivial.jl")
 include("cell_lists/cell_lists.jl")
 include("nhs_grid.jl")
+include("nhs_faces.jl")
 include("nhs_precomputed.jl")
 include("gpu.jl")
 
 export foreach_point_neighbor, foreach_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
+export FaceNeighborhoodSearch
 export DictionaryCellList, FullGridCellList
 export ParallelUpdate, SemiParallelUpdate, SerialUpdate
 export initialize!, update!, initialize_grid!, update_grid!
