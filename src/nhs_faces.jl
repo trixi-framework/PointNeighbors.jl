@@ -25,7 +25,7 @@ faces_in_cell(cell, neighborhood_search) = points_in_cell(cell, neighborhood_sea
 
 function initialize!(neighborhood_search::FaceNeighborhoodSearch, geometry;
                      pad = ntuple(_ -> 1, ndims(geometry)))
-    (; cell_list, neighbor_iterator, search_radius) = neighborhood_search
+    (; cell_list, search_radius) = neighborhood_search
 
     empty!(cell_list)
 

@@ -10,6 +10,7 @@ using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
+using TrixiParticles: eachface, face_vertices, face_normal
 
 include("util.jl")
 include("vector_of_vectors.jl")
