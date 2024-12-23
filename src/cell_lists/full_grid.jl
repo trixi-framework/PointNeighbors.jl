@@ -198,7 +198,7 @@ function check_domain_bounds(cell_list::FullGridCellList, y, search_radius)
     if any(isnan, y)
         error("particle coordinates contain NaNs")
     end
-    
+
     # Require one extra layer in each direction to make sure neighbor cells exist
     min_corner = minimum(y, dims = 2) .- search_radius
     max_corner = maximum(y, dims = 2) .+ search_radius
