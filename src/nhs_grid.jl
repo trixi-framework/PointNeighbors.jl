@@ -414,14 +414,16 @@ end
     ndrange = max_particles_per_cell * length(nonempty_cells)
 
     n_gpus = length(CUDA.devices())
-    ndrange_local = [div(ndrange, n_gpus) for _ in 1:n_gpus]
-    ndrange_local[end] += ndrange % n_gpus
+    cells_split = Iterators.partition(nonempty_cells, ceil(Int, length(nonempty_cells) / n_gpus))
+    @assert length(cells_split) == n_gpus
 
     kernel = foreach_neighbor_localmem(backend, (max_particles_per_cell,))
-    @sync for i in 1:n_gpus
+    @sync for (i, nonempty_cells_) in enumerate(cells_split)
         Threads.@spawn begin
             CUDA.device!(i - 1)
-            kernel(f, system_coords, neighbor_coords, neighborhood_search, nonempty_cells, Val(max_particles_per_cell), search_radius; ndrange = ndrange_local[i])
+            kernel(f, system_coords, neighbor_coords, neighborhood_search, nonempty_cells_,
+                   Val(max_particles_per_cell), search_radius;
+                   ndrange = length(nonempty_cells_) * max_particles_per_cell)
             KernelAbstractions.synchronize(backend)
         end
     end
