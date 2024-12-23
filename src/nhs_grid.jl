@@ -185,7 +185,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
-# WARNING! Undocumented, experimental feature:
+# WARNING! Experimental feature:
 # By default, determine the parallelization backend from the type of `x`.
 # Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
 # on this backend. This can be useful to run GPU kernels on the CPU by passing
@@ -203,9 +203,15 @@ end
 # Update only with neighbor coordinates
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
                       y::AbstractMatrix; parallelization_backend = y) where {NDIMS}
+    check_domain_bounds(neighborhood_search.cell_list, y,
+                        search_radius(neighborhood_search))
+
     update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
                  parallelization_backend)
 end
+
+# This is dispatched in `cell_lists/full_grid.jl` for the `FullGridCellList`
+check_domain_bounds(_, _, _) = nothing
 
 # Serial and semi-parallel update.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.

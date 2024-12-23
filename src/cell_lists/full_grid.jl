@@ -45,11 +45,12 @@ supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpd
 function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
                           backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
-    # Pad domain to avoid 0 in cell indices due to rounding errors.
+    # Add one layer in each direction to make sure neighbor cells exist.
+    # Also pad domain a little more to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
     # This padding is safe, and will give us one more layer of cells in the worst case.
-    min_corner = SVector(Tuple(min_corner .- 1.0f-3 * search_radius))
-    max_corner = SVector(Tuple(max_corner .+ 1.0f-3 * search_radius))
+    min_corner = SVector(Tuple(min_corner .- 1.001f0 * search_radius))
+    max_corner = SVector(Tuple(max_corner .+ 1.001f0 * search_radius))
 
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
@@ -188,7 +189,17 @@ function max_points_per_cell(cells::DynamicVectorOfVectors)
     return size(cells.backend, 1)
 end
 
-# Fallback when backend is a `Vector{Vector{T}}`
+# Fallback when backend is a `Vector{Vector{T}}`. Only used for copying the cell list.
 function max_points_per_cell(cells)
     return 100
+end
+
+function check_domain_bounds(cell_list::FullGridCellList, y, search_radius)
+    # Require one extra layer in each direction to make sure neighbor cells exist
+    min_corner = minimum(y, dims = 2) .- search_radius
+    max_corner = maximum(y, dims = 2) .+ search_radius
+
+    if any(min_corner .< cell_list.min_corner) || any(max_corner .> cell_list.max_corner)
+        error("particle coordinates are outside the domain bounds of the cell list")
+    end
 end
