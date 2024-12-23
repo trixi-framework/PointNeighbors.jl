@@ -165,6 +165,9 @@ end
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix)
     (; cell_list) = neighborhood_search
 
+    check_domain_bounds(neighborhood_search.cell_list, y,
+                        search_radius(neighborhood_search))
+
     empty!(cell_list)
 
     if neighborhood_search.search_radius < eps()

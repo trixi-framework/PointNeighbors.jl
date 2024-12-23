@@ -13,9 +13,16 @@
             @test cell_list.max_corner == fill(10.0 + 1.001f0, N)
 
             nhs = GridNeighborhoodSearch{N}(; cell_list, search_radius)
-
             y = rand(N, 10)
+
+            y[1, 7] = -0.01
+            @test_throws ErrorException initialize!(nhs, y, y)
+
+            y[1, 7] = 10.01
+            @test_throws ErrorException initialize!(nhs, y, y)
+
             y[1, 7] = 0.0
+            @test_nowarn_mod initialize!(nhs, y, y)
             @test_nowarn_mod update!(nhs, y, y)
 
             y[1, 7] = 10.0
