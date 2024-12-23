@@ -75,7 +75,7 @@
         @test PointNeighbors.cell_coords(coords1, nothing, cell_list, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int)) .+ 1
         @test PointNeighbors.cell_coords(coords2, nothing, cell_list, (1.0, 1.0)) ==
-              (typemax(Int), 0) .+ 1
+              (typemax(Int), 1) .+ 1
         @test PointNeighbors.cell_coords(coords3, nothing, cell_list, (1.0, 1.0)) ==
               (typemax(Int), typemin(Int)) .+ 1
     end
