@@ -145,14 +145,14 @@ end
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.
     n_gpus = length(CUDA.devices())
-    ndrange_local = [div(ndrange, n_gpus) for _ in 1:n_gpus]
-    ndrange_local[end] += ndrange % n_gpus
+    indices_split = Iterators.partition(indices, ceil(Int, length(indices) / n_gpus))
+    @assert length(indices_split) == n_gpus
 
-    @sync for i in 1:n_gpus
+    @sync for (i, indices_) in enumerate(indices_split)
         Threads.@spawn begin
             CUDA.device!(i - 1)
-            generic_kernel(backend)(ndrange = ndrange_local[i]) do j
-                @inbounds @inline f(iterator[indices[j]])
+            generic_kernel(backend)(ndrange = length(indices_)) do j
+                @inbounds @inline f(iterator[indices_[j]])
             end
             KernelAbstractions.synchronize(backend)
         end
