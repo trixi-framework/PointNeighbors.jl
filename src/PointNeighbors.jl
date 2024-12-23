@@ -10,6 +10,7 @@ using KernelAbstractions: KernelAbstractions, @kernel, @index, @localmem, @synch
 using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
+using CUDA
 
 include("util.jl")
 include("vector_of_vectors.jl")

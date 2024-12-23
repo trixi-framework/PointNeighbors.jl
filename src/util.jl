@@ -144,11 +144,23 @@ end
 
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.
-    generic_kernel(backend)(ndrange = ndrange) do i
-        @inbounds @inline f(iterator[indices[i]])
-    end
+    n_gpus = length(CUDA.devices())
+    ndrange_local = [div(ndrange, n_gpus) for _ in 1:n_gpus]
+    ndrange_local[end] += ndrange % n_gpus
 
-    KernelAbstractions.synchronize(backend)
+    @sync for i in 1:n_gpus
+        Threads.@spawn begin
+            CUDA.device!(i - 1)
+            generic_kernel(backend)(ndrange = ndrange_local[i]) do j
+                @inbounds @inline f(iterator[indices[j]])
+            end
+            KernelAbstractions.synchronize(backend)
+        end
+    end
+    # generic_kernel(backend)(ndrange = ndrange) do i
+    #     @inbounds @inline f(iterator[indices[i]])
+    # end
+    # KernelAbstractions.synchronize(backend)
 end
 
 @kernel function generic_kernel(f)

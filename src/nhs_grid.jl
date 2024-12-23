@@ -412,10 +412,22 @@ end
     # max_particles_per_cell = maximum(lengths)
     nonempty_cells = Adapt.adapt(backend, filter(index -> lengths[linear_indices[index]] > 0, cartesian_indices))
     ndrange = max_particles_per_cell * length(nonempty_cells)
-    kernel = foreach_neighbor_localmem(backend, (max_particles_per_cell,))
-    kernel(f, system_coords, neighbor_coords, neighborhood_search, nonempty_cells, Val(max_particles_per_cell), search_radius; ndrange)
 
-    KernelAbstractions.synchronize(backend)
+    n_gpus = length(CUDA.devices())
+    ndrange_local = [div(ndrange, n_gpus) for _ in 1:n_gpus]
+    ndrange_local[end] += ndrange % n_gpus
+
+    kernel = foreach_neighbor_localmem(backend, (max_particles_per_cell,))
+    @sync for i in 1:n_gpus
+        Threads.@spawn begin
+            CUDA.device!(i - 1)
+            kernel(f, system_coords, neighbor_coords, neighborhood_search, nonempty_cells, Val(max_particles_per_cell), search_radius; ndrange = ndrange_local[i])
+            KernelAbstractions.synchronize(backend)
+        end
+    end
+    # kernel(f, system_coords, neighbor_coords, neighborhood_search, nonempty_cells, Val(max_particles_per_cell), search_radius; ndrange)
+
+    # KernelAbstractions.synchronize(backend)
 
     return nothing
 end
