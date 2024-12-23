@@ -10,6 +10,11 @@
 Adapt.@adapt_structure FullGridCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
 
+# TODO quick and dirty method to make all `CuArray`s unified memory
+function Adapt.adapt_structure(to::typeof(CuArray), array::Array)
+    return CuArray{eltype(array), ndims(array), CUDA.UnifiedMemory}(array)
+end
+
 # `adapt(CuArray, ::SVector)::SVector`, but `adapt(Array, ::SVector)::Vector`.
 # We don't want to change the type of the `SVector` here.
 function Adapt.adapt_structure(to::typeof(Array), svector::SVector)
