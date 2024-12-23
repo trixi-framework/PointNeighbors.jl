@@ -42,7 +42,8 @@ end
 
 supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpdate)
 
-function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
+function FullGridCellList(; min_corner, max_corner,
+                          search_radius = zero(eltype(min_corner)),
                           backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
     # Add one layer in each direction to make sure neighbor cells exist.
