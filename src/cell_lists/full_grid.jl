@@ -199,9 +199,10 @@ function check_domain_bounds(cell_list::FullGridCellList, y, search_radius)
         error("particle coordinates contain NaNs")
     end
 
-    # Require one extra layer in each direction to make sure neighbor cells exist
-    min_corner = minimum(y, dims = 2) .- search_radius
-    max_corner = maximum(y, dims = 2) .+ search_radius
+    # Require one extra layer in each direction to make sure neighbor cells exist.
+    # Convert to CPU in case this lives on the GPU.
+    min_corner = Array(minimum(y, dims = 2) .- search_radius)
+    max_corner = Array(maximum(y, dims = 2) .+ search_radius)
 
     if any(min_corner .< cell_list.min_corner) || any(max_corner .> cell_list.max_corner)
         error("particle coordinates are outside the domain bounds of the cell list")
