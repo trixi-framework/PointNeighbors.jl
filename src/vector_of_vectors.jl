@@ -62,7 +62,10 @@ end
     # Outer bounds check
     @boundscheck checkbounds(vov, i)
 
-    # Activate new entry in column `i`. Inner bounds check is included here.
+    # Inner bounds check
+    @boundscheck check_list_bounds(vov, lengths[i] += 1)
+
+    # Activate new entry in column `i`
     backend[lengths[i] += 1, i] = value
 
     return vov
@@ -85,12 +88,20 @@ end
     # thread.
     new_length = @inbounds Atomix.@atomic lengths[i] += 1
 
+    # Inner bounds check
+    @boundscheck check_list_bounds(vov, new_length)
+
     # We can write here without race conditions, since the atomic add guarantees
     # that `new_length` is different for each thread.
-    # Inner bounds check is included here.
-    backend[new_length, i] = value
+    @inbounds backend[new_length, i] = value
 
     return vov
+end
+
+@inline function check_list_bounds(vov::DynamicVectorOfVectors, new_length)
+    if new_length > size(vov.backend, 1)
+        error("cell list is full. Use a larger `max_points_per_cell`.")
+    end
 end
 
 # `deleteat!(vov[i], j)`
