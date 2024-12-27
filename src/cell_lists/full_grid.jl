@@ -122,8 +122,10 @@ end
 function push_cell!(cell_list::FullGridCellList, cell, particle)
     (; cells) = cell_list
 
+    @boundscheck check_cell_bounds(cell_list, cell)
+
     # `push!(cell_list[cell], particle)`, but for all backends
-    pushat!(cells, cell_index(cell_list, cell), particle)
+    @inbounds pushat!(cells, cell_index(cell_list, cell), particle)
 
     return cell_list
 end
@@ -136,16 +138,20 @@ end
 @inline function push_cell_atomic!(cell_list::FullGridCellList, cell, particle)
     (; cells) = cell_list
 
+    @boundscheck check_cell_bounds(cell_list, cell)
+
     # `push!(cell_list[cell], particle)`, but for all backends.
     # The atomic version of `pushat!` uses atomics to avoid race conditions when `pushat!`
     # is used in a parallel loop.
-    pushat_atomic!(cells, cell_index(cell_list, cell), particle)
+    @inbounds pushat_atomic!(cells, cell_index(cell_list, cell), particle)
 
     return cell_list
 end
 
 function deleteat_cell!(cell_list::FullGridCellList, cell, i)
     (; cells) = cell_list
+
+    @boundscheck check_cell_bounds(cell_list, cell)
 
     # `deleteat!(cell_list[cell], i)`, but for all backends
     deleteatat!(cells, cell_index(cell_list, cell), i)
@@ -172,8 +178,10 @@ end
     return cells[cell_index(cell_list, cell)]
 end
 
-@inline function is_correct_cell(cell_list::FullGridCellList, cell_coords, cell_index_)
-    return cell_index(cell_list, cell_coords) == cell_index_
+@inline function is_correct_cell(cell_list::FullGridCellList, cell, cell_index_)
+    @boundscheck check_cell_bounds(cell_list, cell)
+
+    return cell_index(cell_list, cell) == cell_index_
 end
 
 @inline index_type(::FullGridCellList) = Int32
@@ -195,17 +203,16 @@ function max_points_per_cell(cells)
     return 100
 end
 
-function check_domain_bounds(cell_list::FullGridCellList, y, search_radius)
-    if any(isnan, y)
-        error("particle coordinates contain NaNs")
-    end
+@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Tuple)
+    (; linear_indices) = cell_list
 
-    # Require one extra layer in each direction to make sure neighbor cells exist.
-    # Convert to CPU in case this lives on the GPU.
-    min_corner = Array(minimum(y, dims = 2) .- search_radius)
-    max_corner = Array(maximum(y, dims = 2) .+ search_radius)
-
-    if any(min_corner .< cell_list.min_corner) || any(max_corner .> cell_list.max_corner)
-        error("particle coordinates are outside the domain bounds of the cell list")
+    if !all(cell[i] in axes(linear_indices)[i] for i in eachindex(cell))
+        error("particle coordinates are NaN or outside the domain bounds of the cell list")
     end
+end
+
+@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Integer)
+    (; cells) = cell_list
+
+    checkbounds(cells, cell)
 end

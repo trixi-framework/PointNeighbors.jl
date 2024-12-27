@@ -165,9 +165,6 @@ end
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix)
     (; cell_list) = neighborhood_search
 
-    check_domain_bounds(neighborhood_search.cell_list, y,
-                        search_radius(neighborhood_search))
-
     empty!(cell_list)
 
     if neighborhood_search.search_radius < eps()
@@ -206,15 +203,9 @@ end
 # Update only with neighbor coordinates
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
                       y::AbstractMatrix; parallelization_backend = y) where {NDIMS}
-    check_domain_bounds(neighborhood_search.cell_list, y,
-                        search_radius(neighborhood_search))
-
     update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
                  parallelization_backend)
 end
-
-# This is dispatched in `cell_lists/full_grid.jl` for the `FullGridCellList`
-check_domain_bounds(_, _, _) = nothing
 
 # Serial and semi-parallel update.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
