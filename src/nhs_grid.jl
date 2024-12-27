@@ -185,7 +185,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
-# WARNING! Undocumented, experimental feature:
+# WARNING! Experimental feature:
 # By default, determine the parallelization backend from the type of `x`.
 # Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
 # on this backend. This can be useful to run GPU kernels on the CPU by passing

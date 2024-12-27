@@ -42,14 +42,16 @@ end
 
 supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpdate)
 
-function FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
+function FullGridCellList(; min_corner, max_corner,
+                          search_radius = zero(eltype(min_corner)),
                           backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
-    # Pad domain to avoid 0 in cell indices due to rounding errors.
+    # Add one layer in each direction to make sure neighbor cells exist.
+    # Also pad domain a little more to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
     # This padding is safe, and will give us one more layer of cells in the worst case.
-    min_corner = SVector(Tuple(min_corner .- 1.0f-3 * search_radius))
-    max_corner = SVector(Tuple(max_corner .+ 1.0f-3 * search_radius))
+    min_corner = SVector(Tuple(min_corner .- 1.001f0 * search_radius))
+    max_corner = SVector(Tuple(max_corner .+ 1.001f0 * search_radius))
 
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
@@ -120,8 +122,10 @@ end
 function push_cell!(cell_list::FullGridCellList, cell, particle)
     (; cells) = cell_list
 
+    @boundscheck check_cell_bounds(cell_list, cell)
+
     # `push!(cell_list[cell], particle)`, but for all backends
-    pushat!(cells, cell_index(cell_list, cell), particle)
+    @inbounds pushat!(cells, cell_index(cell_list, cell), particle)
 
     return cell_list
 end
@@ -134,16 +138,20 @@ end
 @inline function push_cell_atomic!(cell_list::FullGridCellList, cell, particle)
     (; cells) = cell_list
 
+    @boundscheck check_cell_bounds(cell_list, cell)
+
     # `push!(cell_list[cell], particle)`, but for all backends.
     # The atomic version of `pushat!` uses atomics to avoid race conditions when `pushat!`
     # is used in a parallel loop.
-    pushat_atomic!(cells, cell_index(cell_list, cell), particle)
+    @inbounds pushat_atomic!(cells, cell_index(cell_list, cell), particle)
 
     return cell_list
 end
 
 function deleteat_cell!(cell_list::FullGridCellList, cell, i)
     (; cells) = cell_list
+
+    @boundscheck check_cell_bounds(cell_list, cell)
 
     # `deleteat!(cell_list[cell], i)`, but for all backends
     deleteatat!(cells, cell_index(cell_list, cell), i)
@@ -170,8 +178,10 @@ end
     return cells[cell_index(cell_list, cell)]
 end
 
-@inline function is_correct_cell(cell_list::FullGridCellList, cell_coords, cell_index_)
-    return cell_index(cell_list, cell_coords) == cell_index_
+@inline function is_correct_cell(cell_list::FullGridCellList, cell, cell_index_)
+    @boundscheck check_cell_bounds(cell_list, cell)
+
+    return cell_index(cell_list, cell) == cell_index_
 end
 
 @inline index_type(::FullGridCellList) = Int32
@@ -188,7 +198,21 @@ function max_points_per_cell(cells::DynamicVectorOfVectors)
     return size(cells.backend, 1)
 end
 
-# Fallback when backend is a `Vector{Vector{T}}`
+# Fallback when backend is a `Vector{Vector{T}}`. Only used for copying the cell list.
 function max_points_per_cell(cells)
     return 100
+end
+
+@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Tuple)
+    (; linear_indices) = cell_list
+
+    if !all(cell[i] in axes(linear_indices)[i] for i in eachindex(cell))
+        error("particle coordinates are NaN or outside the domain bounds of the cell list")
+    end
+end
+
+@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Integer)
+    (; cells) = cell_list
+
+    checkbounds(cells, cell)
 end
