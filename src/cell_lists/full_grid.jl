@@ -37,7 +37,7 @@ struct FullGridCellList{C, LI, MINC, MAXC} <: AbstractCellList
 end
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
-    return (ParallelUpdate, SemiParallelUpdate, SerialUpdate)
+    return (ParallelUpdate, SemiParallelUpdate, ParallelIncrementalUpdate, SerialUpdate)
 end
 
 supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpdate)
