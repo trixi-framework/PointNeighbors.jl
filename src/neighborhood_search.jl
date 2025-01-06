@@ -112,12 +112,12 @@ end
                            points = axes(system_coords, 2), parallel = true)
 
 Loop for each point in `system_coords` over all points in `neighbor_coords` whose distances
-to that point are smaller than the search radius and execute the function `f(i, j, x, y, d)`,
+to that point are smaller than the search radius and execute the function `f(i, j, pos_diff, d)`,
 where
 - `i` is the column index of the point in `system_coords`,
 - `j` the column index of the neighbor in `neighbor_coords`,
-- `x` an `SVector` of the coordinates of the point (`system_coords[:, i]`),
-- `y` an `SVector` of the coordinates of the neighbor (`neighbor_coords[:, j]`),
+- `pos_diff` the vector ``x - y`` where ``x`` denotes the coordinates of the point
+  (`system_coords[:, i]`) and ``y`` the coordinates of the neighbor (`neighbor_coords[:, j]`),
 - `d` the distance between `x` and `y`.
 
 The `neighborhood_search` must have been initialized or updated with `system_coords`
