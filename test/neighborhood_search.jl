@@ -39,7 +39,7 @@
             search_radius = 0.1
 
             min_corner = periodic_boxes[i].min_corner
-            max_corner = max_corner = periodic_boxes[i].max_corner
+            max_corner = periodic_boxes[i].max_corner
 
             neighborhood_searches = [
                 TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_points,
