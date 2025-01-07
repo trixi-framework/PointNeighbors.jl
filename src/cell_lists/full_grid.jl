@@ -58,10 +58,7 @@ function FullGridCellList(; min_corner, max_corner,
         cells = construct_backend(backend, 0, max_points_per_cell)
         linear_indices = nothing
     else
-        # Note that we don't shift everything so that the first cell starts at `min_corner`.
-        # The first cell is the cell containing `min_corner`, so we need to add one layer
-        # in order for `max_corner` to be inside a cell.
-        n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius) .+ 1
+        n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius)
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
 
         cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
@@ -206,7 +203,9 @@ end
 @inline function check_cell_bounds(cell_list::FullGridCellList, cell::Tuple)
     (; linear_indices) = cell_list
 
-    if !all(cell[i] in axes(linear_indices)[i] for i in eachindex(cell))
+    # Make sure that points are not added to the outer padding layer, which is needed
+    # to ensure that neighboring cells in all directions of all non-empty cells exist.
+    if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
         error("particle coordinates are NaN or outside the domain bounds of the cell list")
     end
 end
