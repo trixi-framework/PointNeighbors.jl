@@ -10,7 +10,7 @@
         names = [
             "Simple Example 2D",
             "Box Not Multiple of Search Radius 2D",
-            "Simple Example 3D",
+            "Simple Example 3D"
         ]
 
         coordinates = [
@@ -20,7 +20,7 @@
              -0.12 -0.05 -0.09 0.15 0.42],
             [-0.08 0.0 0.18 0.1 -0.08
              -0.12 -0.05 -0.09 0.15 0.39
-             0.14 0.34 0.12 0.06 0.13],
+             0.14 0.34 0.12 0.06 0.13]
         ]
 
         periodic_boxes = [
@@ -28,7 +28,7 @@
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
             PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.205, 0.43]),
-            PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35]),
+            PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35])
         ]
 
         @testset verbose=true "$(names[i])" for i in eachindex(names)
@@ -58,7 +58,7 @@
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
-                                                     periodic_box = periodic_boxes[i]),
+                                                     periodic_box = periodic_boxes[i])
             ]
 
             names = [
@@ -66,7 +66,7 @@
                 "`GridNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
-                "`PrecomputedNeighborhoodSearch`",
+                "`PrecomputedNeighborhoodSearch`"
             ]
 
             # Also test copied templates
@@ -80,7 +80,7 @@
                                               cell_list = FullGridCellList(min_corner = periodic_boxes[i].min_corner,
                                                                            max_corner = periodic_boxes[i].max_corner,
                                                                            backend = Vector{Vector{Int32}})),
-                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i])
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
@@ -119,7 +119,7 @@
             (10, 11),
             (100, 90),
             (9, 10, 7),
-            (39, 40, 41),
+            (39, 40, 41)
         ]
 
         seeds = [1, 2]
@@ -179,7 +179,7 @@
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = PointNeighbors.P4estCellList(; min_corner,
                                                                            max_corner,
-                                                                           search_radius)),
+                                                                           search_radius))
             ]
 
             names = [
@@ -189,7 +189,7 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
-                "`GridNeighborhoodSearch` with `P4estCellList`",
+                "`GridNeighborhoodSearch` with `P4estCellList`"
             ]
 
             # Also test copied templates
@@ -206,7 +206,7 @@
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
                 GridNeighborhoodSearch{NDIMS}(cell_list = PointNeighbors.P4estCellList(; min_corner,
-                                                                           max_corner)),
+                                                                           max_corner))
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)

@@ -4,6 +4,7 @@ using Reexport: @reexport
 
 using Adapt: Adapt
 using Atomix: Atomix
+using Base: @propagate_inbounds
 using GPUArraysCore: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot

@@ -21,8 +21,8 @@ PointNeighborsP4estExt = "P4estTypes"
 
 [compat]
 Adapt = "3, 4"
-Atomix = "0.1"
-GPUArraysCore = "0.1"
+Atomix = "0.1, 1"
+GPUArraysCore = "0.1, 0.2"
 KernelAbstractions = "0.9"
 LinearAlgebra = "1"
 P4estTypes = "0.2"

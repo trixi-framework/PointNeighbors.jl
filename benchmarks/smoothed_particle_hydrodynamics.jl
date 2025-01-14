@@ -34,16 +34,80 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
                                                smoothing_length, viscosity = viscosity,
                                                density_diffusion = density_diffusion)
 
-    v = vcat(fluid.velocity, fluid.density')
-    u = copy(fluid.coordinates)
+    # Note that we cannot just disable parallelism in TrixiParticles.
+    # But passing a different backend like `CUDA.CUDABackend`
+    # allows us to change the type of the array to run the benchmark on the GPU.
+    if parallel isa Bool
+        system = fluid_system
+        nhs = neighborhood_search
+    else
+        system = PointNeighbors.Adapt.adapt(parallel, fluid_system)
+        nhs = PointNeighbors.Adapt.adapt(parallel, neighborhood_search)
+    end
+
+    v = PointNeighbors.Adapt.adapt(parallel, vcat(fluid.velocity, fluid.density'))
+    u = PointNeighbors.Adapt.adapt(parallel, coordinates)
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(fluid_system, neighborhood_search)
-    TrixiParticles.compute_pressure!(fluid_system, v)
+    TrixiParticles.initialize!(system, nhs)
+    TrixiParticles.compute_pressure!(system, v)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $neighborhood_search,
-                                              $fluid_system, $fluid_system)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
+end
+
+"""
+    benchmark_wcsph_fp32(neighborhood_search, coordinates; parallel = true)
+
+Like [`benchmark_wcsph`](@ref), but using single precision floating point numbers.
+"""
+function benchmark_wcsph_fp32(neighborhood_search, coordinates_; parallel = true)
+    coordinates = convert(Matrix{Float32}, coordinates_)
+    density = 1000.0f0
+    fluid = InitialCondition(; coordinates, density, mass = 0.1f0)
+
+    # Compact support == smoothing length for the Wendland kernel
+    smoothing_length = convert(Float32, PointNeighbors.search_radius(neighborhood_search))
+    if ndims(neighborhood_search) == 1
+        smoothing_kernel = SchoenbergCubicSplineKernel{1}()
+    else
+        smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
+    end
+
+    sound_speed = 10.0f0
+    state_equation = StateEquationCole(; sound_speed, reference_density = density,
+                                       exponent = 1)
+
+    fluid_density_calculator = ContinuityDensity()
+    viscosity = ArtificialViscosityMonaghan(alpha = 0.02f0, beta = 0.0f0)
+    density_diffusion = DensityDiffusionMolteniColagrossi(delta = 0.1f0)
+
+    fluid_system = WeaklyCompressibleSPHSystem(fluid, fluid_density_calculator,
+                                               state_equation, smoothing_kernel,
+                                               smoothing_length, viscosity = viscosity,
+                                               acceleration = (0.0f0, 0.0f0, 0.0f0),
+                                               density_diffusion = density_diffusion)
+
+    # Note that we cannot just disable parallelism in TrixiParticles.
+    # But passing a different backend like `CUDA.CUDABackend`
+    # allows us to change the type of the array to run the benchmark on the GPU.
+    if parallel isa Bool
+        system = fluid_system
+        nhs = neighborhood_search
+    else
+        system = PointNeighbors.Adapt.adapt(parallel, fluid_system)
+        nhs = PointNeighbors.Adapt.adapt(parallel, neighborhood_search)
+    end
+
+    v = PointNeighbors.Adapt.adapt(parallel, vcat(fluid.velocity, fluid.density'))
+    u = PointNeighbors.Adapt.adapt(parallel, coordinates)
+    dv = zero(v)
+
+    # Initialize the system
+    TrixiParticles.initialize!(system, nhs)
+    TrixiParticles.compute_pressure!(system, v)
+
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
 end
 
 """

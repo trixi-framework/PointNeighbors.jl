@@ -12,8 +12,15 @@ This is a more realistic benchmark for particle-based simulations than
 However, due to the higher computational cost, differences between neighborhood search
 implementations are less pronounced.
 """
-function benchmark_n_body(neighborhood_search, coordinates; parallel = true)
-    mass = 1e10 * (rand(size(coordinates, 2)) .+ 1)
+function benchmark_n_body(neighborhood_search, coordinates_; parallel = true)
+    # Passing a different backend like `CUDA.CUDABackend`
+    # allows us to change the type of the array to run the benchmark on the GPU.
+    # Passing `parallel = true` or `parallel = false` will not change anything here.
+    coordinates = PointNeighbors.Adapt.adapt(parallel, coordinates_)
+    nhs = PointNeighbors.Adapt.adapt(parallel, neighborhood_search)
+
+    # This preserves the data type of `coordinates`, which makes it work for GPU types
+    mass = 1e10 * (rand!(similar(coordinates, size(coordinates, 2))) .+ 1)
     G = 6.6743e-11
 
     dv = similar(coordinates)
@@ -36,6 +43,5 @@ function benchmark_n_body(neighborhood_search, coordinates; parallel = true)
         return dv
     end
 
-    return @belapsed $compute_acceleration!($dv, $coordinates, $mass, $G,
-                                            $neighborhood_search, $parallel)
+    return @belapsed $compute_acceleration!($dv, $coordinates, $mass, $G, $nhs, $parallel)
 end
