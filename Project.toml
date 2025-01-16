@@ -1,7 +1,7 @@
 name = "PointNeighbors"
 uuid = "1c4d5385-0a27-49de-8e2c-43b175c8985c"
 authors = ["Erik Faulhaber <erik.faulhaber@uni-koeln.de>"]
-version = "0.4.6"
+version = "0.4.7-dev"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"

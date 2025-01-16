@@ -51,14 +51,20 @@ jobs:
     steps:
       - name: Check out project
         uses: actions/checkout@v4
+
       - name: Set up Julia
         uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-      - run: julia -e 'using InteractiveUtils; versioninfo(verbose=true)'
+
+      - name: Display Julia version
+        run: julia -e 'using InteractiveUtils; versioninfo(verbose=true)'
+
       - uses: julia-actions/cache@v2
+
       - name: Build package
         uses: julia-actions/julia-buildpkg@v1
+
       - name: Run unit tests
         uses: julia-actions/julia-runtest@v1
         with:
@@ -67,12 +73,14 @@ jobs:
           coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '1' }}
         env:
           POINTNEIGHBORS_TEST: unit
+
       - name: Process coverage results
         # Only run coverage in one Job (Ubuntu and latest Julia version)
         if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
         uses: julia-actions/julia-processcoverage@v1
         with:
           directories: src,test
+
       - name: Upload coverage report to Codecov
         # Only run coverage in one Job (Ubuntu and latest Julia version)
         if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
@@ -83,6 +91,7 @@ jobs:
           flags: unit
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Run benchmark tests
         uses: julia-actions/julia-runtest@v1
         with:
