@@ -106,13 +106,24 @@ end
 """
     ParallelUpdate()
 
-Fully parallel update by using atomic operations to avoid race conditions when adding points
-into the same cell.
+Fully parallel initialization and update by using atomic operations to avoid race conditions
+when adding points into the same cell.
 This is not available for all cell list implementations, but is the default when available.
 
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct ParallelUpdate end
+
+"""
+    ParallelIncrementalUpdate()
+
+Like [`ParallelUpdate`](@ref), but only updates the cells that have changed.
+This is generally slower than a full reinitialization with [`ParallelUpdate`](@ref),
+but is included for benchmarking purposes.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct ParallelIncrementalUpdate end
 
 """
     SemiParallelUpdate()
@@ -138,7 +149,10 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 struct SerialUpdate end
 
 # No update buffer needed for fully parallel update
-@inline create_update_buffer(::ParallelUpdate, _, _) = nothing
+@inline function create_update_buffer(::Union{ParallelUpdate, ParallelIncrementalUpdate},
+                                      _, _)
+    return nothing
+end
 
 @inline function create_update_buffer(::SemiParallelUpdate, cell_list, n_points)
     # Create update buffer and initialize it with empty vectors
@@ -180,6 +194,35 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
         # Add point to corresponding cell
         push_cell!(cell_list, cell, point)
+    end
+
+    return neighborhood_search
+end
+
+# WARNING! Undocumented, experimental feature:
+# By default, determine the parallelization backend from the type of `y`.
+# Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
+# on this backend. This can be useful to run GPU kernels on the CPU by passing
+# `parallelization_backend = KernelAbstractions.CPU()`, even though `y isa Array`.
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
+                          y::AbstractMatrix; parallelization_backend = y)
+    (; cell_list) = neighborhood_search
+
+    empty!(cell_list)
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @threaded parallelization_backend for point in axes(y, 2)
+        # Get cell index of the point's cell
+        point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+
+        # Add point to corresponding cell
+        push_cell_atomic!(cell_list, cell, point)
     end
 
     return neighborhood_search
@@ -300,7 +343,8 @@ end
 
 # Fully parallel update with atomic push.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any, ParallelUpdate},
+                                                 GridNeighborhoodSearch{<:Any, ParallelIncrementalUpdate}},
                       coords_fun::Function; parallelization_backend = nothing)
     (; cell_list) = neighborhood_search
 
@@ -341,6 +385,14 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     end
 
     return neighborhood_search
+end
+
+# Note that this is only defined when a matrix `y` is passed. When updating with a function,
+# it will fall back to the semi-parallel update.
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
+                      y::AbstractMatrix; parallelization_backend = y)
+    # The parallel (atomic) initialization is usually faster than the incremental update
+    initialize_grid!(neighborhood_search, y; parallelization_backend)
 end
 
 @propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
