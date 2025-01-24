@@ -10,6 +10,53 @@ using PointNeighbors.Adapt: Adapt
 using Base: @propagate_inbounds
 using PointNeighbors.BenchmarkTools
 
+# Define custom type where broadcasting is split over multiple GPUs.
+# So far only works with a single system.
+struct MultiSystemMatrix{T, A, S, R} <: AbstractVector{T}
+    array   :: A
+    sizes   :: S
+    ranges  :: R
+
+    function MultiSystemMatrix(array, sizes, ranges)
+        new{eltype(array), typeof(array), typeof(sizes), typeof(ranges)}(array, sizes, ranges)
+    end
+end
+
+function Base.similar(m::MultiSystemMatrix, ::Type{T}) where {T}
+    array = similar(m.array, T)
+    return MultiSystemMatrix(array, m.sizes, m.ranges)
+end
+
+Base.parent(m::MultiSystemMatrix) = m.array
+Base.size(m::MultiSystemMatrix) = size(m.array)
+Base.getindex(m::MultiSystemMatrix, i) = getindex(m.array, i)
+Base.setindex!(m::MultiSystemMatrix, i, x) = setindex!(m.array, i, x)
+
+# function Base.copyto!(dest::MultiSystemMatrix, src::MultiSystemMatrix)
+#     copyto!(dest.array, src.array)
+#     return dest
+# end
+function Base.copyto!(dest::MultiSystemMatrix, src::MultiSystemMatrix)
+    # TODO check bounds
+    @threaded dest.array for i in eachindex(dest.array)
+        @inbounds dest.array[i] = src.array[i]
+    end
+
+    return dest
+end
+function Base.copyto!(dest::MultiSystemMatrix, src::AbstractVector)
+    copyto!(dest.array, src)
+    return dest
+end
+function Base.copyto!(dest::AbstractVector, src::MultiSystemMatrix)
+    copyto!(dest, src.array)
+    return dest
+end
+
+function Base.Broadcast.BroadcastStyle(::Type{MultiSystemMatrix{T, A, S, R}}) where {T, A, S, R}
+    Broadcast.BroadcastStyle(A)
+end
+
 const UnifiedCuArray = CuArray{<:Any, <:Any, CUDA.UnifiedMemory}
 
 # This is needed because TrixiParticles passes `get_backend(coords)` to distinguish between
@@ -67,6 +114,84 @@ end
     # Select first device again
     CUDA.device!(0)
 end
+
+Base.any(f::Function, A::PointNeighbors.MultiSystemMatrix) = mapreduce(f, |, A)
+
+function Base.mapreduce(f, op, A::PointNeighbors.MultiSystemMatrix; dims=:, init=nothing)
+    n_gpus = length(CUDA.devices())
+    indices = eachindex(A.array)
+    indices_split = Iterators.partition(indices, ceil(Int, length(indices) / n_gpus))
+    @assert length(indices_split) <= n_gpus
+
+    backend = CUDABackend()
+
+    # Synchronize each device
+    for i in 1:n_gpus
+        CUDA.device!(i - 1)
+        KernelAbstractions.synchronize(backend)
+    end
+
+    init2 = init === nothing ? Base._InitialValue() : init
+    result = mapreduce(op, enumerate(indices_split), init=init2) do (i, indices_)
+        # Select the correct device for this partition
+        CUDA.device!(i - 1)
+
+        # return mapreduce(@inline(i -> @inbounds f(A.array[i])), op, indices_)
+        return mapreduce(f, op, view(A.array, indices_); dims=dims, init=init)
+    end
+
+    # Synchronize each device
+    for i in 1:n_gpus
+        CUDA.device!(i - 1)
+        KernelAbstractions.synchronize(backend)
+    end
+
+    return result
+end
+
+@inline function CUDA.GPUArrays._copyto!(dest::PointNeighbors.MultiSystemMatrix, bc::Broadcast.Broadcasted)
+    axes(dest) == axes(bc) || Broadcast.throwdm(axes(dest), axes(bc))
+    isempty(dest) && return dest
+    bc = Broadcast.preprocess(dest, bc)
+
+    @threaded dest.array for i in eachindex(dest.array)
+        @inbounds dest.array[i] = bc[i]
+    end
+
+    # @kernel function broadcast_kernel_linear(dest, bc)
+    #     I = @index(Global, Linear)
+    #     @inbounds dest[I] = bc[I]
+    # end
+
+    # @kernel function broadcast_kernel_cartesian(dest, bc)
+    #     I = @index(Global, Cartesian)
+    #     @inbounds dest[I] = bc[I]
+    # end
+
+    # broadcast_kernel = if ndims(dest) == 1 ||
+    #                       (isa(IndexStyle(dest), IndexLinear) &&
+    #                        isa(IndexStyle(bc), IndexLinear))
+    #     broadcast_kernel_linear(get_backend(dest))
+    # else
+    #     broadcast_kernel_cartesian(get_backend(dest))
+    # end
+
+    # # ndims check for 0D support
+    # broadcast_kernel(dest, bc; ndrange = ndims(dest) > 0 ? size(dest) : (1,))
+    # if eltype(dest) <: BrokenBroadcast
+    #     throw(ArgumentError("Broadcast operation resulting in $(eltype(eltype(dest))) is not GPU compatible"))
+    # end
+
+    return dest
+end
+
+@inline function PointNeighbors.parallel_foreach(f, iterator, ::PointNeighbors.MultiSystemMatrix)
+    PointNeighbors.parallel_foreach(f, iterator, CUDAMultiGPUBackend())
+end
+
+PointNeighbors.get_backend(x::PointNeighbors.MultiSystemMatrix) = CUDAMultiGPUBackend()
+
+Adapt.@adapt_structure PointNeighbors.MultiSystemMatrix
 
 ############################################################################################
 # First approach: Use actual system atomics on unified memory
