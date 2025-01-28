@@ -9,8 +9,8 @@
             cell_list = FullGridCellList(; search_radius, min_corner, max_corner)
 
             # Introduce the same rounding errors for this to pass
-            @test cell_list.min_corner == fill(-1.001f0, N)
-            @test cell_list.max_corner == fill(10.0 + 1.001f0, N)
+            @test cell_list.min_corner == fill(-1.001, N)
+            @test cell_list.max_corner == fill(10.0 + 1.001, N)
 
             nhs = GridNeighborhoodSearch{N}(; cell_list, search_radius)
             y = rand(N, 10)
