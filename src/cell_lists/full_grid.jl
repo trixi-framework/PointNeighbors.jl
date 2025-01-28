@@ -50,8 +50,9 @@ function FullGridCellList(; min_corner, max_corner,
     # Also pad domain a little more to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
     # This padding is safe, and will give us one more layer of cells in the worst case.
-    min_corner = SVector(Tuple(min_corner .- 1.001f0 * search_radius))
-    max_corner = SVector(Tuple(max_corner .+ 1.001f0 * search_radius))
+    # `1001 // 1000` is 1.001 without forcing a float type.
+    min_corner = SVector(Tuple(min_corner .- 1001 // 1000 * search_radius))
+    max_corner = SVector(Tuple(max_corner .+ 1001 // 1000 * search_radius))
 
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
