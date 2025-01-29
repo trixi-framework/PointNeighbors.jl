@@ -185,7 +185,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
-# WARNING! Undocumented, experimental feature:
+# WARNING! Experimental feature:
 # By default, determine the parallelization backend from the type of `x`.
 # Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
 # on this backend. This can be useful to run GPU kernels on the CPU by passing
@@ -418,16 +418,16 @@ end
 end
 
 @inline function periodic_cell_index(cell_index, neighborhood_search)
-    (; n_cells, periodic_box) = neighborhood_search
+    (; n_cells, periodic_box, cell_list) = neighborhood_search
 
-    periodic_cell_index(cell_index, periodic_box, n_cells)
+    periodic_cell_index(cell_index, periodic_box, n_cells, cell_list)
 end
 
-@inline periodic_cell_index(cell_index, ::Nothing, n_cells) = cell_index
+@inline periodic_cell_index(cell_index, ::Nothing, n_cells, cell_list) = cell_index
 
-@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells)
+@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells, cell_list)
     # 1-based modulo
-    return rem.(cell_index .- 1, n_cells, RoundDown) .+ 1
+    return mod1.(cell_index, n_cells)
 end
 
 @inline function cell_coords(coords, neighborhood_search)
