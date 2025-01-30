@@ -4,75 +4,86 @@ using PointNeighbors: PointNeighbors, CUDAMultiGPUBackend, DynamicVectorOfVector
                       GridNeighborhoodSearch, FullGridCellList, extract_svector,
                       cell_coords, cell_index, @threaded, generic_kernel
 using CUDA: CUDA, CuArray, CUDABackend, cu
-using UnsafeAtomics: UnsafeAtomics
 using PointNeighbors.KernelAbstractions: KernelAbstractions, @kernel, @index
 using PointNeighbors.Adapt: Adapt
 using Base: @propagate_inbounds
-using PointNeighbors.BenchmarkTools
 
-# Define custom type where broadcasting is split over multiple GPUs.
-# So far only works with a single system.
-struct MultiSystemMatrix{T, A, S, R} <: AbstractVector{T}
-    array   :: A
-    sizes   :: S
-    ranges  :: R
+# Define custom type wrapping a `CuArray` with unified memory to dispatch on it
+struct MultiGPUArray{T, N, A} <: AbstractArray{T, N}
+    array::A
 
-    function MultiSystemMatrix(array, sizes, ranges)
-        new{eltype(array), typeof(array), typeof(sizes), typeof(ranges)}(array, sizes, ranges)
+    function MultiGPUArray(array::AbstractArray{T, N}) where {T, N}
+        new{T, N, typeof(array)}(array)
     end
 end
 
-function Base.similar(m::MultiSystemMatrix, ::Type{T}) where {T}
+Adapt.@adapt_structure MultiGPUArray
+
+function Base.similar(m::MultiGPUArray, ::Type{T}) where {T}
     array = similar(m.array, T)
-    return MultiSystemMatrix(array, m.sizes, m.ranges)
+    return MultiGPUArray(array)
 end
 
-Base.parent(m::MultiSystemMatrix) = m.array
-Base.size(m::MultiSystemMatrix) = size(m.array)
-Base.getindex(m::MultiSystemMatrix, i) = getindex(m.array, i)
-Base.setindex!(m::MultiSystemMatrix, i, x) = setindex!(m.array, i, x)
+Base.parent(m::MultiGPUArray) = m.array
+Base.size(m::MultiGPUArray) = size(m.array)
+Base.getindex(m::MultiGPUArray, i...) = getindex(m.array, i...)
+Base.setindex!(m::MultiGPUArray, x...) = (setindex!(m.array, x...); m)
 
-# function Base.copyto!(dest::MultiSystemMatrix, src::MultiSystemMatrix)
-#     copyto!(dest.array, src.array)
-#     return dest
-# end
-function Base.copyto!(dest::MultiSystemMatrix, src::MultiSystemMatrix)
+@inline function Base.fill!(m::MultiGPUArray, x)
     # TODO check bounds
-    @threaded dest.array for i in eachindex(dest.array)
+    # TODO convert x
+    @threaded m for i in eachindex(m.array)
+        @inbounds m.array[i] = x
+    end
+
+    return m
+end
+
+function Base.copyto!(dest::MultiGPUArray, src::MultiGPUArray)
+    # TODO check bounds
+    @threaded dest for i in eachindex(dest.array)
         @inbounds dest.array[i] = src.array[i]
     end
 
     return dest
 end
-function Base.copyto!(dest::MultiSystemMatrix, src::AbstractVector)
+
+function Base.copyto!(dest::MultiGPUArray, src::AbstractArray)
     copyto!(dest.array, src)
     return dest
 end
-function Base.copyto!(dest::AbstractVector, src::MultiSystemMatrix)
+
+function Base.copyto!(dest::MultiGPUArray, indices1::CartesianIndices, src::AbstractArray, indices2::CartesianIndices)
+    copyto!(dest.array, indices1, src, indices2)
+    return dest
+end
+
+function Base.copyto!(dest::AbstractArray, src::MultiGPUArray)
     copyto!(dest, src.array)
     return dest
 end
 
-function Base.Broadcast.BroadcastStyle(::Type{MultiSystemMatrix{T, A, S, R}}) where {T, A, S, R}
+function Base.Broadcast.BroadcastStyle(::Type{MultiGPUArray{T, N, A}}) where {T, N, A}
     Broadcast.BroadcastStyle(A)
 end
 
-const UnifiedCuArray = CuArray{<:Any, <:Any, CUDA.UnifiedMemory}
+Base.view(m::MultiGPUArray, i) = MultiGPUArray(view(m.array, i))
+Base.reshape(m::MultiGPUArray, dims::Base.Dims) = MultiGPUArray(reshape(m.array, dims))
 
 # This is needed because TrixiParticles passes `get_backend(coords)` to distinguish between
 # `nothing` (Polyester.jl) and `KernelAbstractions.CPU`.
-PointNeighbors.get_backend(x::UnifiedCuArray) = CUDAMultiGPUBackend()
+PointNeighbors.get_backend(::MultiGPUArray) = CUDAMultiGPUBackend()
 
-# Convert input array to `CuArray` with unified memory
-function Adapt.adapt_structure(to::CUDAMultiGPUBackend, array::Array)
-    return CuArray{eltype(array), ndims(array), CUDA.UnifiedMemory}(array)
+# Convert input array to `MultiGPUArray` wrapping a `CuArray` with unified memory
+function Adapt.adapt_structure(::CUDAMultiGPUBackend, array::Array)
+    return MultiGPUArray(CuArray{eltype(array), ndims(array), CUDA.UnifiedMemory}(array))
 end
 
-@inline function PointNeighbors.parallel_foreach(f, iterator, x::UnifiedCuArray)
+@inline function PointNeighbors.parallel_foreach(f, iterator, ::MultiGPUArray)
     PointNeighbors.parallel_foreach(f, iterator, CUDAMultiGPUBackend())
 end
 
-@inline function PointNeighbors.parallel_foreach(f::T, iterator, x::CUDAMultiGPUBackend) where {T}
+@inline function PointNeighbors.parallel_foreach(f::T, iterator, ::CUDAMultiGPUBackend) where {T}
     # On the GPU, we can only loop over `1:N`. Therefore, we loop over `1:length(iterator)`
     # and index with `iterator[eachindex(iterator)[i]]`.
     # Note that this only works with vector-like iterators that support arbitrary indexing.
@@ -115,11 +126,18 @@ end
     CUDA.device!(0)
 end
 
-Base.any(f::Function, A::PointNeighbors.MultiSystemMatrix) = mapreduce(f, |, A)
+Base.any(f::Function, A::MultiGPUArray) = mapreduce(f, |, A, init = false)
 
-function Base.mapreduce(f, op, A::PointNeighbors.MultiSystemMatrix; dims=:, init=nothing)
+function Base.mapreduce(f, op, A::MultiGPUArray; dims=:, init=nothing)
     n_gpus = length(CUDA.devices())
     indices = eachindex(A.array)
+
+    # Skip empty loops
+    if length(indices) == 0
+        init !== nothing && return init
+        throw(ArgumentError("reducing over an empty collection is not allowed; consider supplying `init` to the reducer"))
+    end
+
     indices_split = Iterators.partition(indices, ceil(Int, length(indices) / n_gpus))
     @assert length(indices_split) <= n_gpus
 
@@ -149,12 +167,13 @@ function Base.mapreduce(f, op, A::PointNeighbors.MultiSystemMatrix; dims=:, init
     return result
 end
 
-@inline function CUDA.GPUArrays._copyto!(dest::PointNeighbors.MultiSystemMatrix, bc::Broadcast.Broadcasted)
+# `@..` by FastBroadcast.jl forwards to this function
+@inline function CUDA.GPUArrays._copyto!(dest::MultiGPUArray, bc::Broadcast.Broadcasted)
     axes(dest) == axes(bc) || Broadcast.throwdm(axes(dest), axes(bc))
     isempty(dest) && return dest
     bc = Broadcast.preprocess(dest, bc)
 
-    @threaded dest.array for i in eachindex(dest.array)
+    @threaded dest for i in eachindex(dest.array)
         @inbounds dest.array[i] = bc[i]
     end
 
@@ -184,14 +203,6 @@ end
 
     return dest
 end
-
-@inline function PointNeighbors.parallel_foreach(f, iterator, ::PointNeighbors.MultiSystemMatrix)
-    PointNeighbors.parallel_foreach(f, iterator, CUDAMultiGPUBackend())
-end
-
-PointNeighbors.get_backend(x::PointNeighbors.MultiSystemMatrix) = CUDAMultiGPUBackend()
-
-Adapt.@adapt_structure PointNeighbors.MultiSystemMatrix
 
 ############################################################################################
 # First approach: Use actual system atomics on unified memory
