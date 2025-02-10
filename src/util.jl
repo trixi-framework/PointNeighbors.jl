@@ -60,7 +60,9 @@ with `Threads.@threads :static`.
 """
 struct ThreadsStaticBackend <: AbstractThreadingBackend end
 
-const ParallelizationBackend = Union{AbstractThreadingBackend, KernelAbstractions.Backend}
+struct CUDAMultiGPUBackend end
+
+const ParallelizationBackend = Union{AbstractThreadingBackend, KernelAbstractions.Backend, CUDAMultiGPUBackend}
 
 """
     @threaded x for ... end
@@ -140,7 +142,9 @@ end
     # Skip empty loops
     ndrange == 0 && return
 
-    backend = KernelAbstractions.get_backend(x)
+    # Use our `get_backend`, which usually forwards to `KernelAbstractions.get_backend`,
+    # but also works when `x` is already a backend.
+    backend = get_backend(x)
 
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.
@@ -155,3 +159,8 @@ end
     i = @index(Global)
     @inline f(i)
 end
+
+get_backend(x) = KernelAbstractions.get_backend(x)
+
+# This is useful to pass the backend directly to `@threaded`
+get_backend(backend::KernelAbstractions.Backend) = backend
