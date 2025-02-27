@@ -10,11 +10,9 @@
         point_position1 = [0.05, 0.05]
         search_radius = 0.1
 
-        @infiltrate
-
         # Create neighborhood search
         nhs1 = GridNeighborhoodSearch{2}(; search_radius, n_points,
-                                         cell_list = SpatialHashingCellList{NDIMS}(n_points))
+                                         cell_list = SpatialHashingCellList{2}(n_points))
 
         initialize_grid!(nhs1, coordinates1)
 

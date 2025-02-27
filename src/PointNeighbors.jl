@@ -19,11 +19,10 @@ include("cell_lists/cell_lists.jl")
 include("nhs_grid.jl")
 include("nhs_precomputed.jl")
 include("gpu.jl")
-include("nhs_spatial_hash.jl")
 
 export foreach_point_neighbor, foreach_neighbor
-export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch, SpatialHashingCellList
-export DictionaryCellList, FullGridCellList
+export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
+export DictionaryCellList, FullGridCellList, SpatialHashingCellList
 export ParallelUpdate, SemiParallelUpdate, SerialUpdate
 export initialize!, update!, initialize_grid!, update_grid!
 export PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend
