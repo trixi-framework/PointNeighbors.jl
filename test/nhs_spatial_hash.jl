@@ -13,7 +13,6 @@
         # Create neighborhood search
         nhs1 = GridNeighborhoodSearch{2}(; search_radius, n_points,
                                          cell_list = SpatialHashingCellList{2}(2 * n_points))
-
         initialize_grid!(nhs1, coordinates1)
 
         # Get each neighbor for `point_position1`
@@ -37,7 +36,6 @@
         nhs2 = GridNeighborhoodSearch{2}(search_radius = 2 * search_radius,
                                          n_points = size(coordinates1, 2),
                                          cell_list = SpatialHashingCellList{2}(2 * n_points))
-
         initialize!(nhs2, coordinates1, coordinates1)
 
         # Get each neighbor in double search radius
