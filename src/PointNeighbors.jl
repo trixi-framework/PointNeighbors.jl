@@ -11,6 +11,8 @@ using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
 
+using Infiltrator: @infiltrate
+
 include("util.jl")
 include("vector_of_vectors.jl")
 include("neighborhood_search.jl")

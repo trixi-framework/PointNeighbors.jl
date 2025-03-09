@@ -358,11 +358,28 @@ end
                        point, point_coords, search_radius)
 end
 
+function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
+    return false
+end
+
+function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
+                         cell_list::SpatialHashingCellList, nhs)
+    neighbor_cell_ = Tuple(neighbor_cell_)
+    (; list_size, cell_collision) = cell_list
+
+    index = spatial_hash(neighbor_cell_, list_size)
+    collision = cell_collision[index]
+    if collision
+        # Check if `neighbor_coords` are in the cell `neighbor_cell_`
+        cell_coords_ = cell_coords(neighbor_coords, nhs)
+        return neighbor_cell_ != cell_coords_
+    end
+end
+
 @inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
                                     neighborhood_search::GridNeighborhoodSearch,
                                     point, point_coords, search_radius)
-    (; periodic_box) = neighborhood_search
-
+    (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
@@ -377,12 +394,23 @@ end
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
+            # Check if `neighbor_coords` are in the cell `neighbor_cell_`.
+            # For the `SpatialHashingCellList`, this might not be the case
+            # if we have a collision.
+            if check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                               neighborhood_search)
+                continue
+            end
+
             pos_diff = point_coords - neighbor_coords
             distance2 = dot(pos_diff, pos_diff)
 
             pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
                                                             search_radius,
                                                             periodic_box)
+
+            is_near = distance2 <= search_radius^2
+            print("$neighbor, $distance2, $is_near \n")
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
@@ -428,6 +456,12 @@ end
 @inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells, cell_list)
     # 1-based modulo
     return mod1.(cell_index, n_cells)
+end
+
+@inline function cell_coords(coords, neighborhood_search)
+    (; periodic_box, cell_list, cell_size) = neighborhood_search
+
+    return cell_coords(coords, periodic_box, cell_list, cell_size)
 end
 
 @inline function cell_coords(coords, neighborhood_search)
