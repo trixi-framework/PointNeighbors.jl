@@ -18,7 +18,7 @@ function SpatialHashingCellList{NDIMS}(list_size) where {NDIMS}
 
     # cell_choords is used to check if there is a collision and contains
     # the coordinates of the first cell added to the hash list
-    cell_coords =  [missing for _ in 1:list_size]
+    cell_coords = [missing for _ in 1:list_size]
     return SpatialHashingCellList(list_size, cell_points, cell_coords, cell_collision)
 end
 
@@ -42,7 +42,6 @@ point::Int, index of the point to be added
 # return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
 # end
 
-
 function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     (; cell_points, cell_coords, cell_collision, list_size) = cell_list
     key = spatial_hash(cell, list_size)
@@ -51,10 +50,23 @@ function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     # Check if the a cell has been added at this hash
     if ismissing(cell_coords)
         cell_coords = cell
-    # Detect collision
+        # Detect collision
     elseif cell != cell_coords
         cell_collision[key] = true
     end
+end
+
+function update!(neighborhood_search::GridNeighborhoodSearch{<:Any, <:Any, <:SpatialHashingCellList}, x::AbstractMatrix,
+                 y::AbstractMatrix; points_moving = (true, true),
+                 parallelization_backend = x)
+
+    # The coordinates of the first set of points are irrelevant for this NHS.
+
+    # Only update when the second set is moving.
+
+    points_moving[2] || return neighborhood_search
+
+    initialize_grid!(neighborhood_search, y)
 end
 
 # Implement reset of collision flag, if after the deletion there still is no collision?
@@ -99,7 +111,8 @@ end
 function spatial_hash(cell::NTuple{3, Real}, index, list_size)
     i, j, k = cell
 
-    return mod(xor(i * 73856093, j * 19349663, k * 83492791, index * 7238423947), list_size) + 1
+    return mod(xor(i * 73856093, j * 19349663, k * 83492791, index * 7238423947),
+               list_size) + 1
 end
 
 function spatial_hash(cell::CartesianIndex{2}, list_size)

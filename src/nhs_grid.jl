@@ -406,9 +406,9 @@ end
             pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
                                                             search_radius,
                                                             periodic_box)
-
-            is_near = distance2 <= search_radius^2
-            print("$neighbor, $distance2, $is_near \n")
+            # DEBUG
+            # is_near = distance2 <= search_radius^2
+            # print("$neighbor, $distance2, $is_near \n")
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
