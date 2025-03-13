@@ -367,9 +367,7 @@ function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
     neighbor_cell_ = Tuple(neighbor_cell_)
     (; list_size, cell_collision) = cell_list
 
-    index = spatial_hash(neighbor_cell_, list_size)
-    collision = cell_collision[index]
-    if collision
+    if cell_collision[spatial_hash(neighbor_cell_, list_size)]
         # Check if `neighbor_coords` are in the cell `neighbor_cell_`
         cell_coords_ = cell_coords(neighbor_coords, nhs)
         return neighbor_cell_ != cell_coords_

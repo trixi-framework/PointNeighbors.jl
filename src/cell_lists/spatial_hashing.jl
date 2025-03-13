@@ -35,12 +35,12 @@ e{NDIMS, Real}, tuple of cell coordinates
 point::Int, index of the point to be added
 """
 
-@inline function cell_coords(coords, periodic_box::Nothing, cell_list::SpatialHashingCellList,
-    cell_size)
-(; min_corner) = cell_list
+# @inline function cell_coords(coords, periodic_box::Nothing, cell_list::SpatialHashingCellList,
+#     cell_size)
+# (; min_corner) = cell_list
 
-return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
-end
+# return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
+# end
 
 
 function push_cell!(cell_list::SpatialHashingCellList, cell, point)
