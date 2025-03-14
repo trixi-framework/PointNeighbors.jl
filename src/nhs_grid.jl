@@ -314,7 +314,8 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     # While pushing to the cell list, iterating over the cell lists is not safe.
     # We can work around this by using the old lengths.
     # TODO this is hardcoded for the `FullGridCellList`
-    @threaded parallelization_backend for i in eachindex(update_buffer, cell_list.cells.lengths)
+    @threaded parallelization_backend for i in eachindex(update_buffer,
+                                                         cell_list.cells.lengths)
         update_buffer[i] = cell_list.cells.lengths[i]
     end
 
