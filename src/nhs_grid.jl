@@ -137,8 +137,11 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
 
-# No update buffer needed for fully parallel update
-@inline create_update_buffer(::ParallelUpdate, _, _) = nothing
+@inline function create_update_buffer(::ParallelUpdate, cell_list, _)
+    # Create empty `lengths` vector to read from while writing to `cell_list.cells.lengths`
+    n_cells = length(each_cell_index(cell_list))
+    return Vector{Int32}(undef, n_cells)
+end
 
 @inline function create_update_buffer(::SemiParallelUpdate, cell_list, n_points)
     # Create update buffer and initialize it with empty vectors
@@ -302,15 +305,24 @@ end
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
                       coords_fun::Function; parallelization_backend = nothing)
-    (; cell_list) = neighborhood_search
+    (; cell_list, update_buffer) = neighborhood_search
 
     # Note that we need two separate loops for adding and removing points.
     # `push_cell_atomic!` only guarantees thread-safety when different threads push
     # simultaneously, but it does not work when `deleteat_cell!` is called at the same time.
 
+    # While pushing to the cell list, iterating over the cell lists is not safe.
+    # We can work around this by using the old lengths.
+    # TODO this is hardcoded for the `FullGridCellList`
+    @threaded parallelization_backend for i in eachindex(update_buffer,
+                                                         cell_list.cells.lengths)
+        update_buffer[i] = cell_list.cells.lengths[i]
+    end
+
     # Add points to new cells
     @threaded parallelization_backend for cell_index in each_cell_index_threadable(cell_list)
-        for point in cell_list[cell_index]
+        for i in 1:update_buffer[cell_index]
+            point = cell_list.cells.backend[i, cell_index]
             cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
 
             if !is_correct_cell(cell_list, cell_coords_, cell_index)
