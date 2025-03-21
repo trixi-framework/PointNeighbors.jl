@@ -202,9 +202,21 @@ end
 
 # Update only with neighbor coordinates
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-                      y::AbstractMatrix; parallelization_backend = y) where {NDIMS}
-    update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
-                 parallelization_backend)
+    y::AbstractMatrix; parallelization_backend = y) where {NDIMS}
+update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
+parallelization_backend)
+end
+
+# Needed here for SpatialHashingCellList until IncrementalParallelUpdate is implemented
+function update!(neighborhood_search::GridNeighborhoodSearch{<:Any, <:Any,
+                                                             <:SpatialHashingCellList},
+                 x::AbstractMatrix,
+                 y::AbstractMatrix; points_moving = (true, true),
+                 parallelization_backend = x)
+    # The coordinates of the first set of points are irrelevant for this NHS.
+    # Only update when the second set is moving.
+    points_moving[2] || return neighborhood_search
+    initialize_grid!(neighborhood_search, y)
 end
 
 # Serial and semi-parallel update.
@@ -372,6 +384,7 @@ function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
         cell_coords_ = cell_coords(neighbor_coords, nhs)
         return neighbor_cell_ != cell_coords_
     end
+    return false
 end
 
 @inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
@@ -392,26 +405,23 @@ end
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
-            # Check if `neighbor_coords` are in the cell `neighbor_cell_`.
-            # For the `SpatialHashingCellList`, this might not be the case
-            # if we have a collision.
-            if check_collision(neighbor_cell_, neighbor_coords, cell_list,
-                               neighborhood_search)
-                continue
-            end
-
             pos_diff = point_coords - neighbor_coords
             distance2 = dot(pos_diff, pos_diff)
 
             pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
                                                             search_radius,
                                                             periodic_box)
-            # DEBUG
-            # is_near = distance2 <= search_radius^2
-            # print("$neighbor, $distance2, $is_near \n")
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
+
+                # Check if `neighbor_coords` are in the cell `neighbor_cell_`.
+                # For the `SpatialHashingCellList`, this might not be the case
+                # if we have a collision.
+                if check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                                   neighborhood_search)
+                    continue
+                end
 
                 # Inline to avoid loss of performance
                 # compared to not using `foreach_point_neighbor`.
@@ -454,12 +464,6 @@ end
 @inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells, cell_list)
     # 1-based modulo
     return mod1.(cell_index, n_cells)
-end
-
-@inline function cell_coords(coords, neighborhood_search)
-    (; periodic_box, cell_list, cell_size) = neighborhood_search
-
-    return cell_coords(coords, periodic_box, cell_list, cell_size)
 end
 
 @inline function cell_coords(coords, neighborhood_search)

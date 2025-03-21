@@ -1,5 +1,6 @@
 struct SpatialHashingCellList{CL, CI, CF}
     list_size::Int
+    NDIMS::Int
     cell_points::CL
     cell_coords::CI # Think about renaming this field, there is a function with the same name
     cell_collision::CF
@@ -16,60 +17,40 @@ function SpatialHashingCellList{NDIMS}(list_size) where {NDIMS}
     cell_points = [Int[] for _ in 1:list_size]
     cell_collision = [false for _ in 1:list_size]
 
-    # cell_choords is used to check if there is a collision and contains
+    # Field cell_choords is used to check if there is a collision and contains
     # the coordinates of the first cell added to the hash list
-    cell_coords = [missing for _ in 1:list_size]
-    return SpatialHashingCellList(list_size, cell_points, cell_coords, cell_collision)
+    cell_coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
+    return SpatialHashingCellList(list_size, NDIMS, cell_points, cell_coords,
+                                  cell_collision)
 end
 
 function Base.empty!(cell_list::SpatialHashingCellList)
+    (; list_size, NDIMS) = cell_list
+
     Base.empty!.(cell_list.cell_points)
-    cell_list.cell_coords .= missing
+    cell_list.cell_coords .= [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
     cell_list.cell_collision .= false
     return cell_list
 end
 
-"""
-cell::NTupl
-e{NDIMS, Real}, tuple of cell coordinates
-point::Int, index of the point to be added
-"""
-
-# @inline function cell_coords(coords, periodic_box::Nothing, cell_list::SpatialHashingCellList,
-#     cell_size)
-# (; min_corner) = cell_list
-
-# return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
-# end
-
 function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     (; cell_points, cell_coords, cell_collision, list_size) = cell_list
     key = spatial_hash(cell, list_size)
-    push!(cell_points[key], point)
+    cell_coord = cell_coords[key]
+    NDIMS = length(cell)
 
+    push!(cell_points[key], point)
     # Check if the a cell has been added at this hash
-    if ismissing(cell_coords)
-        cell_coords = cell
-        # Detect collision
-    elseif cell != cell_coords
+    if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
+        cell_coords[key] = cell
+    # Detect collision
+    elseif cell_coord != cell
         cell_collision[key] = true
     end
 end
 
-function update!(neighborhood_search::GridNeighborhoodSearch{<:Any, <:Any, <:SpatialHashingCellList}, x::AbstractMatrix,
-                 y::AbstractMatrix; points_moving = (true, true),
-                 parallelization_backend = x)
-
-    # The coordinates of the first set of points are irrelevant for this NHS.
-
-    # Only update when the second set is moving.
-
-    points_moving[2] || return neighborhood_search
-
-    initialize_grid!(neighborhood_search, y)
-end
-
 # Implement reset of collision flag, if after the deletion there still is no collision?
+# Not needed if we do not use update!() but initialize!()
 function deleteat_cell!(cell_list::SpatialHashingCellList, cell, i)
     deleteat!(cell_list[cell], i)
 end
