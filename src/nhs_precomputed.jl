@@ -61,11 +61,11 @@ end
 
 function update!(search::PrecomputedNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 points_moving = (true, true))
+                 points_moving = (true, true), parallelization_backend = x)
     (; neighborhood_search, neighbor_lists) = search
 
     # Update grid NHS
-    update!(neighborhood_search, x, y, points_moving = points_moving)
+    update!(neighborhood_search, x, y; points_moving, parallelization_backend)
 
     # Skip update if both point sets are static
     if any(points_moving)

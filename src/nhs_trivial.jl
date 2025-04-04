@@ -33,7 +33,7 @@ end
 @inline initialize!(search::TrivialNeighborhoodSearch, x, y) = search
 
 @inline function update!(search::TrivialNeighborhoodSearch, x, y;
-                         points_moving = (true, true))
+                         points_moving = (true, true), parallelization_backend = x)
     return search
 end
 
