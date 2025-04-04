@@ -6,10 +6,10 @@
         ELTYPE = typeof(type(1))
         vov_ref = Vector{Vector{ELTYPE}}()
         vov = PointNeighbors.DynamicVectorOfVectors{ELTYPE}(max_outer_length = 20,
-                                                            max_inner_length = 10)
+                                                            max_inner_length = 4)
 
         # Test internal size
-        @test size(vov.backend) == (10, 20)
+        @test size(vov.backend) == (4, 20)
 
         function verify(vov, vov_ref)
             @test length(vov) == length(vov_ref)
@@ -42,6 +42,10 @@
         # `push!` to an inner vector
         push!(vov_ref[1], type(12))
         PointNeighbors.pushat!(vov, 1, type(12))
+
+        # `push!` overflow
+        error_ = ErrorException("cell list is full. Use a larger `max_points_per_cell`.")
+        @test_throws error_ PointNeighbors.pushat!(vov, 1, type(13))
 
         verify(vov, vov_ref)
 

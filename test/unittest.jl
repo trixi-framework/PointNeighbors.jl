@@ -5,4 +5,5 @@
     include("nhs_trivial.jl")
     include("nhs_grid.jl")
     include("neighborhood_search.jl")
+    include("cell_lists/full_grid.jl")
 end;
