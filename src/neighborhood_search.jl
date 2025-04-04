@@ -49,7 +49,7 @@ The second flag indicates if points in `y` are moving.
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
-                         points_moving = (true, true))
+                         points_moving = (true, true), parallelization_backend = x)
     return search
 end
 
