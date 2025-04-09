@@ -1,4 +1,4 @@
-# using Plots
+using Plots
 using BenchmarkTools
 # using Morton
 
@@ -36,25 +36,16 @@ include("benchmarks/benchmarks.jl")
 
 plot_benchmarks(benchmark_count_neighbors, (10, 10), 3)
 """
+
 function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                          parallel = true, title = "",
                          seed = 1, perturbation_factor_position = 1.0)
-    neighborhood_searches_names = [#"GridNeighborhoodSearch";;
-                                   #"GridNeighborhoodSearch with `PointWithCoordinates`";;
-                                   "GNHS with `DictionaryCellList`";;
+    neighborhood_searches_names = ["GNHS with `DictionaryCellList`";;
                                    "GNHS with `FullGridCellList`";;
                                    "GNHS with `SpatialHashingCellList` n_points";;
                                    "GNHS with `SpatialHashingCellList` 2 * n_points";;
-                                   "GNHS with `SpatialHashingCellList` 4 * n_points"
-                                   #   "GNHS with `FullGridCellList` semi-parallel update";;
-                                   #   "GNHS with `FullGridCellList` parallel incremental update";;
-                                   #    "GNHS with `FullGridCellList` and `PointWithCoordinates`";;]
-                                   #   "PrecomputedNeighborhoodSearch";;
-                                   #  "CellListMap.jl";;]
-                                   # "CellListMap.jl with `points_equal_neighbors = true`";;]
-                                   #    "original";;]
+                                   "GNHS with `SpatialHashingCellList` 4 * n_points";;
                                    ]
-    # "z-index";;]
 
     # Multiply number of points in each iteration (roughly) by this factor
     scaling_factor = 4
@@ -68,8 +59,6 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
     for iter in 1:iterations
         coordinates = point_cloud(sizes[iter], seed = seed,
                                   perturbation_factor_position = perturbation_factor_position)
-        # coords_z_index = point_cloud_z_index(sizes[iter], seed = seed,
-        #                           perturbation_factor_position = perturbation_factor_position)
 
         search_radius = 3.0
         NDIMS = size(coordinates, 1)
@@ -79,7 +68,6 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
         max_corner = Float32.(maximum(coordinates, dims = 2) .+ search_radius)
 
         neighborhood_searches = [
-            # TrivialNeighborhoodSearch{NDIMS}(; search_radius, eachpoint = 1:n_particles),
             GridNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles,
                                           update_strategy = nothing),
             GridNeighborhoodSearch{NDIMS}(;
@@ -87,40 +75,18 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
                                                                        min_corner,
                                                                        max_corner),
                                           search_radius, n_points = n_particles),
-            # GridNeighborhoodSearch{NDIMS}(; cell_list = DictionaryCellList{PointNeighbors.PointWithCoordinates{NDIMS, Float64}, NDIMS}(),
-            #                               search_radius, n_points = n_particles, update_strategy=nothing),
             GridNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles,
-                                          cell_list = SpatialHashingCellList{2}(1 *
+                                          cell_list = SpatialHashingCellList{NDIMS}(1 *
                                                                                 n_particles)),
             GridNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles,
-                                          cell_list = SpatialHashingCellList{2}(2 *
+                                          cell_list = SpatialHashingCellList{NDIMS}(2 *
                                                                                 n_particles)),
             GridNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles,
-                                          cell_list = SpatialHashingCellList{2}(4 *
+                                          cell_list = SpatialHashingCellList{NDIMS}(4 *
                                                                                 n_particles))
-            # GridNeighborhoodSearch{NDIMS}(; cell_list = FullGridCellList(; search_radius,
-            #                                                              min_corner,
-            #                                                              max_corner),
-            #                               search_radius, n_points = n_particles,
-            #                               update_strategy = SemiParallelUpdate()),
-            # GridNeighborhoodSearch{NDIMS}(; cell_list = FullGridCellList(; search_radius,
-            #                                                              min_corner,
-            #                                                              max_corner),
-            #                               search_radius, n_points = n_particles,
-            #                               update_strategy = ParallelIncrementalUpdate()),
-            # GridNeighborhoodSearch{NDIMS}(; cell_list = FullGridCellList(; search_radius,
-            #                                                              min_corner,
-            #                                                              max_corner, backend=PointNeighbors.DynamicVectorOfVectors{PointNeighbors.PointWithCoordinates{3, Float64}}),
-            #                               search_radius, n_points = n_particles, update_strategy=nothing),
-            # PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points = n_particles, update_strategy=nothing),
-            # CellListMapNeighborhoodSearch(NDIMS; search_radius),
-            # CellListMapNeighborhoodSearch(NDIMS; search_radius, points_equal_neighbors = true),
         ]
 
         for i in eachindex(neighborhood_searches)
-            # if i == 2
-            #     coordinates = coords_z_index
-            # end
             neighborhood_search = neighborhood_searches[i]
             initialize!(neighborhood_search, coordinates, coordinates)
 
@@ -132,11 +98,13 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
         end
     end
 
+    p = plot(n_particles_vec, times,
+         xaxis = :log, yaxis = :log,
+         xticks = (n_particles_vec, n_particles_vec),
+         xlabel = "#particles", ylabel = "Runtime [s]",
+         legend = :outerright, size = (750, 400), dpi = 200,
+         label = neighborhood_searches_names, title = title)
+    display(p)
+
     return n_particles_vec, times, neighborhood_searches_names
-    # plot(n_particles_vec, times,
-    #      xaxis = :log, yaxis = :log,
-    #      xticks = (n_particles_vec, n_particles_vec),
-    #      xlabel = "#particles", ylabel = "Runtime [s]",
-    #      legend = :outerright, size = (750, 400), dpi = 200,
-    #      label = neighborhood_searches_names, title = title)
 end

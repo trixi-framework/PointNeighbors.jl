@@ -1,76 +1,88 @@
 struct SpatialHashingCellList{CL, CI, CF}
     list_size::Int
     NDIMS::Int
-    cell_points::CL
-    cell_coords::CI # Think about renaming this field, there is a function with the same name
-    cell_collision::CF
+    points::CL
+    coords::CI
+    collisions::CF
 end
 
 @inline index_type(::SpatialHashingCellList) = Int64
 
-# Change the order back to (SemiParallelUpdate, SerialUpdate) when SemiParallelUpdate is implemented
-function supported_update_strategies(::SpatialHashingCellList)
+function supported_update_strategies(::PointNeighbors.SpatialHashingCellList)
     return (SerialUpdate, SemiParallelUpdate)
 end
 
 function SpatialHashingCellList{NDIMS}(list_size) where {NDIMS}
-    cell_points = [Int[] for _ in 1:list_size]
-    cell_collision = [false for _ in 1:list_size]
-
-    # Field cell_choords is used to check if there is a collision and contains
-    # the coordinates of the first cell added to the hash list
-    cell_coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
-    return SpatialHashingCellList(list_size, NDIMS, cell_points, cell_coords,
-                                  cell_collision)
+    points = [Int[] for _ in 1:list_size]
+    collisions = [false for _ in 1:list_size]
+    coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
+    return SpatialHashingCellList(list_size, NDIMS, points, coords,
+                                  collisions)
 end
 
 function Base.empty!(cell_list::SpatialHashingCellList)
     (; list_size, NDIMS) = cell_list
 
-    Base.empty!.(cell_list.cell_points)
-    cell_list.cell_coords .= [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
-    cell_list.cell_collision .= false
+    Base.empty!.(cell_list.points)
+    cell_list.coords .= [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
+    cell_list.collisions .= false
     return cell_list
 end
 
 function push_cell!(cell_list::SpatialHashingCellList, cell, point)
-    (; cell_points, cell_coords, cell_collision, list_size) = cell_list
+    (; points, coords, collisions, list_size, NDIMS) = cell_list
     key = spatial_hash(cell, list_size)
-    cell_coord = cell_coords[key]
-    NDIMS = length(cell)
-
-    push!(cell_points[key], point)
-    # Check if the a cell has been added at this hash
+    cell_coord = coords[key]
+    push!(points[key], point)
+    # Check if a cell has been added at this hash
     if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
-        cell_coords[key] = cell
+        coords[key] = cell
     # Detect collision
     elseif cell_coord != cell
-        cell_collision[key] = true
+        collisions[key] = true
     end
 end
 
-# Implement reset of collision flag, if after the deletion there still is no collision?
-# Not needed if we do not use update!() but initialize!()
+using Infiltrator
+
+# function push_cell!(cell_list::SpatialHashingCellList, cell)
+#     (; coords, collisions, list_size, NDIMS) = cell_list
+#     key = spatial_hash(cell, list_size)
+#     cell_coord = coords[key]
+#     if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
+#         coords[key] = cell
+#     elseif cell_coord != cell
+#         collisions[key] = true
+#     end
+# end
+
 function deleteat_cell!(cell_list::SpatialHashingCellList, cell, i)
     deleteat!(cell_list[cell], i)
 end
 
-@inline each_cell_index(cell_list::SpatialHashingCellList) = eachindex(cell_list.cell_points)
+@inline each_cell_index(cell_list::SpatialHashingCellList) = eachindex(cell_list.points)
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, cell::Tuple)
-    (; cell_points) = cell_list
+    (; points) = cell_list
 
-    return cell_points[spatial_hash(cell, length(cell_points))]
+    return points[spatial_hash(cell, length(points))]
 end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, i::Integer)
-    return cell_list.cell_points[i]
+    return cell_list.points[i]
 end
 
-# Naming of cell_coords and cell_index confusing
 @inline function is_correct_cell(cell_list::SpatialHashingCellList{<:Any, Nothing},
-                                 cell_coords, cell_index::Array)
-    return cell_coords == cell_index
+                                 coords, cell_index::Array)
+    return coords == cell_index
+end
+
+function spatial_hash(cell::CartesianIndex{2}, list_size)
+    return spatial_hash(Tuple(cell), list_size)
+end
+
+function spatial_hash(cell::CartesianIndex{3}, list_size)
+    return spatial_hash(Tuple(cell), list_size)
 end
 
 function spatial_hash(cell::NTuple{1, Real}, list_size)
@@ -96,10 +108,3 @@ function spatial_hash(cell::NTuple{3, Real}, index, list_size)
                list_size) + 1
 end
 
-function spatial_hash(cell::CartesianIndex{2}, list_size)
-    return spatial_hash(Tuple(cell), list_size)
-end
-
-function spatial_hash(cell::CartesianIndex{3}, list_size)
-    return spatial_hash(Tuple(cell), list_size)
-end

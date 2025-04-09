@@ -202,9 +202,9 @@ end
 
 # Update only with neighbor coordinates
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-    y::AbstractMatrix; parallelization_backend = y) where {NDIMS}
-update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
-parallelization_backend)
+                      y::AbstractMatrix; parallelization_backend = y) where {NDIMS}
+    update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
+                 parallelization_backend)
 end
 
 # Needed here for SpatialHashingCellList until IncrementalParallelUpdate is implemented
@@ -376,23 +376,35 @@ end
 
 function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
                          cell_list::SpatialHashingCellList, nhs)
-    neighbor_cell_ = Tuple(neighbor_cell_)
-    (; list_size, cell_collision) = cell_list
 
-    if cell_collision[spatial_hash(neighbor_cell_, list_size)]
-        # Check if `neighbor_coords` are in the cell `neighbor_cell_`
-        cell_coords_ = cell_coords(neighbor_coords, nhs)
-        return neighbor_cell_ != cell_coords_
+    check_collision(Tuple(neighbor_cell_), neighbor_coords, cell_list, nhs)
+end
+
+function check_collision(neighbor_cell_::Tuple, neighbor_coords,
+                         cell_list::SpatialHashingCellList, nhs)
+    (; list_size, collisions, coords) = cell_list
+
+    hash = spatial_hash(neighbor_cell_, list_size)
+    if collisions[hash]
+        # Points from multiple cells are in this list.
+        # Check if `neighbor_coords` are in the cell `neighbor_cell`.
+        return neighbor_cell_ != cell_coords(neighbor_coords, nhs)
+    elseif coords[hash] != neighbor_cell_
+        # `cell_collision` is false for this list, meaning only points from one cell are in the list.
+        # However, the cell of this list is not our `neighbor_cell_`, so `neighbor_coords`
+        # are not in `neighbor_cell_`.
+        return true
     end
     return false
 end
+
+using Infiltrator
 
 @inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
                                     neighborhood_search::GridNeighborhoodSearch,
                                     point, point_coords, search_radius)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
-
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
