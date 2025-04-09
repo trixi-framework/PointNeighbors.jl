@@ -3,6 +3,9 @@
 using Test: @test, @testset, @test_throws
 using PointNeighbors
 
+# Load `PointNeighborsCellListMapExt`
+import CellListMap
+
 """
     @trixi_testset "name of the testset" #= code to test #=
 
