@@ -175,6 +175,9 @@
                                                                            max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
+                # GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                #                               cell_list = SpatialHashingCellList{2}(2 *
+                #                                                                     n_points)),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points)
             ]
 
@@ -184,8 +187,8 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
-                "`PrecomputedNeighborhoodSearch`"
-            ]
+                # "`GridNeighborhoodSearch` with `SpatialHashingCellList`",
+                "`PrecomputedNeighborhoodSearch`"]
 
             # Also test copied templates
             template_nhs = [
@@ -199,6 +202,9 @@
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
+                # GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                #                                                            max_corner,
+                #                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}()
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)

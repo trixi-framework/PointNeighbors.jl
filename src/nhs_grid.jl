@@ -210,6 +210,18 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
                  parallelization_backend)
 end
 
+# Needed here for SpatialHashingCellList until IncrementalParallelUpdate is implemented
+function update!(neighborhood_search::GridNeighborhoodSearch{<:Any, <:Any,
+                                                             <:SpatialHashingCellList},
+                 x::AbstractMatrix,
+                 y::AbstractMatrix; points_moving = (true, true),
+                 parallelization_backend = x)
+    # The coordinates of the first set of points are irrelevant for this NHS.
+    # Only update when the second set is moving.
+    points_moving[2] || return neighborhood_search
+    initialize_grid!(neighborhood_search, y)
+end
+
 # Serial and semi-parallel update.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
 function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
@@ -370,13 +382,39 @@ end
                        point, point_coords, search_radius)
 end
 
+function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
+    return false
+end
+
+function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
+                         cell_list::SpatialHashingCellList, nhs)
+
+    check_collision(Tuple(neighbor_cell_), neighbor_coords, cell_list, nhs)
+end
+
+function check_collision(neighbor_cell_::Tuple, neighbor_coords,
+                         cell_list::SpatialHashingCellList, nhs)
+    (; list_size, collisions, coords) = cell_list
+
+    hash = spatial_hash(neighbor_cell_, list_size)
+    if collisions[hash]
+        # Points from multiple cells are in this list.
+        # Check if `neighbor_coords` are in the cell `neighbor_cell`.
+        return neighbor_cell_ != cell_coords(neighbor_coords, nhs)
+    elseif coords[hash] != neighbor_cell_
+        # `cell_collision` is false for this list, meaning only points from one cell are in the list.
+        # However, the cell of this list is not our `neighbor_cell_`, so `neighbor_coords`
+        # are not in `neighbor_cell_`.
+        return true
+    end
+    return false
+end
+
 @inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
                                     neighborhood_search::GridNeighborhoodSearch,
                                     point, point_coords, search_radius)
-    (; periodic_box) = neighborhood_search
-
+    (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
-
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
@@ -398,6 +436,14 @@ end
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
+
+                # Check if `neighbor_coords` are in the cell `neighbor_cell_`.
+                # For the `SpatialHashingCellList`, this might not be the case
+                # if we have a collision.
+                if check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                                   neighborhood_search)
+                    continue
+                end
 
                 # Inline to avoid loss of performance
                 # compared to not using `foreach_point_neighbor`.
