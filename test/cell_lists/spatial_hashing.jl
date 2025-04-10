@@ -1,5 +1,3 @@
-
-using Infiltrator
 @testset verbose=true "SpatialHashingCellList" begin
     # General test for 2D and 3D
     @testset verbose=true "Compare Against `TrivialNeighborhoodSearch`" begin

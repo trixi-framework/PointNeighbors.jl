@@ -410,8 +410,6 @@ function check_collision(neighbor_cell_::Tuple, neighbor_coords,
     return false
 end
 
-using Infiltrator
-
 @inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
                                     neighborhood_search::GridNeighborhoodSearch,
                                     point, point_coords, search_radius)

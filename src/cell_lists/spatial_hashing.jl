@@ -43,8 +43,6 @@ function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     end
 end
 
-using Infiltrator
-
 # function push_cell!(cell_list::SpatialHashingCellList, cell)
 #     (; coords, collisions, list_size, NDIMS) = cell_list
 #     key = spatial_hash(cell, list_size)
