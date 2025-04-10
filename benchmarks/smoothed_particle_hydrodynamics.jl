@@ -51,7 +51,9 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
 
     # Initialize the system
     TrixiParticles.initialize!(system, nhs)
-    TrixiParticles.compute_pressure!(system, v)
+    # Note that the third argument is supposed to be the semidiscretization, but it is only
+    # used for `@threaded`, so we can just pass `v` instead.
+    TrixiParticles.compute_pressure!(system, v, v)
 
     return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
 end
