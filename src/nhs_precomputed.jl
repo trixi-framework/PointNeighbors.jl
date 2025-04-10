@@ -24,7 +24,7 @@ initialization and update.
                             `GridNeighborhoodSearch`. See [`GridNeighborhoodSearch`](@ref)
                             for available options.
 """
-struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
+struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB} <: AbstractNeighborhoodSearch
     neighborhood_search :: NHS
     neighbor_lists      :: NL
     periodic_box        :: PB
