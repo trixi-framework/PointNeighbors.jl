@@ -45,6 +45,8 @@ end
 
 @inline Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
+@inline requires_update(::PrecomputedNeighborhoodSearch) = (true, true)
+
 @inline function search_radius(search::PrecomputedNeighborhoodSearch)
     return search_radius(search.neighborhood_search)
 end
@@ -92,14 +94,17 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
     end
 end
 
-@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
+@inline function foreach_neighbor(f, neighbor_system_coords,
                                   neighborhood_search::PrecomputedNeighborhoodSearch,
-                                  point; search_radius = nothing)
+                                  point, point_coords, search_radius)
     (; periodic_box, neighbor_lists) = neighborhood_search
-    (; search_radius) = neighborhood_search.neighborhood_search
 
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
-    for neighbor in neighbor_lists[point]
+    neighbors = @inbounds neighbor_lists[point]
+    for neighbor_ in eachindex(neighbors)
+        neighbor = @inbounds neighbors[neighbor_]
+
+        # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
+        # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
         neighbor_coords = extract_svector(neighbor_system_coords,
                                           Val(ndims(neighborhood_search)), neighbor)
 

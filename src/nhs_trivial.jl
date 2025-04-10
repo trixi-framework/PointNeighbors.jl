@@ -30,6 +30,8 @@ end
 
 @inline Base.ndims(::TrivialNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
+@inline requires_update(::TrivialNeighborhoodSearch) = (false, false)
+
 @inline initialize!(search::TrivialNeighborhoodSearch, x, y) = search
 
 @inline function update!(search::TrivialNeighborhoodSearch, x, y;
