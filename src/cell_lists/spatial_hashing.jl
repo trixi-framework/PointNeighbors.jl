@@ -1,3 +1,16 @@
+"""
+    SpatialHashingCellList{NDIMS}(; list_size)
+
+A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells, 
+and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell 
+[as described by Ihmsen et al. (2001)](@cite Ihmsen2003). By using a hash map, which only stores non-empty cells, 
+the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles balance memory consumption  
+and the likelihood of hash collisions.
+
+# Arguments
+- `NDIMS::Int`: Number of spatial dimensions (e.g., `2` or `3`).
+- `list_size::Int`: Size of the hash map (e.g., `2 * n_points`) .
+"""
 struct SpatialHashingCellList{CL, CI, CF}
     list_size::Int
     NDIMS::Int
@@ -6,7 +19,7 @@ struct SpatialHashingCellList{CL, CI, CF}
     collisions::CF
 end
 
-@inline index_type(::SpatialHashingCellList) = Int64
+@inline index_type(::SpatialHashingCellList) = Int32
 
 function supported_update_strategies(::PointNeighbors.SpatialHashingCellList)
     return (SerialUpdate, SemiParallelUpdate)
@@ -62,7 +75,6 @@ end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, cell::Tuple)
     (; points) = cell_list
-
     return points[spatial_hash(cell, length(points))]
 end
 
@@ -75,11 +87,7 @@ end
     return coords == cell_index
 end
 
-function spatial_hash(cell::CartesianIndex{2}, list_size)
-    return spatial_hash(Tuple(cell), list_size)
-end
-
-function spatial_hash(cell::CartesianIndex{3}, list_size)
+function spatial_hash(cell::CartesianIndex, list_size)
     return spatial_hash(Tuple(cell), list_size)
 end
 

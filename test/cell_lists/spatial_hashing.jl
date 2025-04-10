@@ -2,9 +2,9 @@
     # General test for 2D and 3D
     @testset verbose=true "Compare Against `TrivialNeighborhoodSearch`" begin
         cloud_sizes = [
-            (10, 11),
+            # (10, 11),
             # (100, 90),
-            # (3, 3, 3),
+            (8, 10, 6),
             # (39, 40, 41)
         ]
 
@@ -39,10 +39,10 @@
                 @test any(nhs.cell_list.collisions)
             end
 
-            @testset verbose=true "Empty Cell and Collision Detection" begin
-                # 1. Find empty lists
-                # 2. Check for collisions with non-empty lists
-            end
+            # @testset verbose=true "Empty Cell and Collision Detection" begin
+            #     # 1. Find empty lists
+            #     # 2. Check for collisions with non-empty lists
+            # end
 
             neighbors = [Int[] for _ in axes(coords, 2)]
 
@@ -91,7 +91,7 @@
     #         @test correct_neighbors1 == found_neighbors1
     #     end
     # end
-    @testset "Collision Handling with empty cells" begin
-        #TODO: Add explicit test for list behavior with empty cells
-    end
+    # @testset "Collision Handling with empty cells" begin
+    #     #TODO: Add explicit test for list behavior with empty cells
+    # end
 end
