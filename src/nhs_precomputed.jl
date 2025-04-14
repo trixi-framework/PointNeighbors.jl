@@ -59,13 +59,18 @@ function initialize!(search::PrecomputedNeighborhoodSearch,
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
 end
 
+# WARNING! Experimental feature:
+# By default, determine the parallelization backend from the type of `x`.
+# Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
+# on this backend. This can be useful to run GPU kernels on the CPU by passing
+# `parallelization_backend = KernelAbstractions.CPU()`, even though `x isa Array`.
 function update!(search::PrecomputedNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 points_moving = (true, true))
+                 points_moving = (true, true), parallelization_backend = x)
     (; neighborhood_search, neighbor_lists) = search
 
     # Update grid NHS
-    update!(neighborhood_search, x, y, points_moving = points_moving)
+    update!(neighborhood_search, x, y; points_moving, parallelization_backend)
 
     # Skip update if both point sets are static
     if any(points_moving)

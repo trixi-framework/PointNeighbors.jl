@@ -49,7 +49,7 @@ The second flag indicates if points in `y` are moving.
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
-                         points_moving = (true, true))
+                         points_moving = (true, true), parallelization_backend = x)
     return search
 end
 
@@ -112,12 +112,12 @@ end
                            points = axes(system_coords, 2), parallel = true)
 
 Loop for each point in `system_coords` over all points in `neighbor_coords` whose distances
-to that point are smaller than the search radius and execute the function `f(i, j, x, y, d)`,
+to that point are smaller than the search radius and execute the function `f(i, j, pos_diff, d)`,
 where
 - `i` is the column index of the point in `system_coords`,
 - `j` the column index of the neighbor in `neighbor_coords`,
-- `x` an `SVector` of the coordinates of the point (`system_coords[:, i]`),
-- `y` an `SVector` of the coordinates of the neighbor (`neighbor_coords[:, j]`),
+- `pos_diff` the vector ``x - y`` where ``x`` denotes the coordinates of the point
+  (`system_coords[:, i]`) and ``y`` the coordinates of the neighbor (`neighbor_coords[:, j]`),
 - `d` the distance between `x` and `y`.
 
 The `neighborhood_search` must have been initialized or updated with `system_coords`
@@ -165,7 +165,7 @@ end
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points, parallel::Val{true})
     # Explicit bounds check before the hot loop (or GPU kernel)
-    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     @threaded system_coords for point in points
         # Now we can assume that `point` is inbounds
@@ -181,7 +181,7 @@ end
                                         neighborhood_search, points,
                                         backend::ParallelizationBackend)
     # Explicit bounds check before the hot loop (or GPU kernel)
-    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     @threaded backend for point in points
         # Now we can assume that `point` is inbounds
@@ -195,7 +195,7 @@ end
 @inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
                                         neighborhood_search, points, parallel::Val{false})
     # Explicit bounds check before the hot loop
-    @boundscheck checkbounds(system_coords, ndims(neighborhood_search))
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     for point in points
         # Now we can assume that `point` is inbounds
