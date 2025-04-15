@@ -102,6 +102,10 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                   cell_size, update_buffer, update_strategy)
 end
 
+@inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
+
+@inline requires_update(::GridNeighborhoodSearch) = (false, true)
+
 """
     ParallelUpdate()
 
@@ -148,6 +152,18 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
 
+@inline function requires_resizing(::GridNeighborhoodSearch{<:Any, ParallelUpdate})
+    # Update is just a re-initialization, so no re-initialization is needed
+    # when the number of points changes.
+    return false
+end
+
+@inline function requires_resizing(::GridNeighborhoodSearch)
+    # Incremental update strategies require re-initialization
+    # when the number of points changes.
+    return true
+end
+
 # No update buffer needed for fully parallel non-incremental update/initialize
 @inline function create_update_buffer(::ParallelUpdate, _, _)
     return nothing
@@ -173,8 +189,6 @@ end
                                                                   max_inner_length = n_points)
     push!(update_buffer, index_type(cell_list)[])
 end
-
-@inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
@@ -410,24 +424,11 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     initialize_grid!(neighborhood_search, y; parallelization_backend)
 end
 
-@propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                              neighborhood_search::GridNeighborhoodSearch,
-                                              point;
-                                              search_radius = search_radius(neighborhood_search))
-    # Due to https://github.com/JuliaLang/julia/issues/30411, we cannot just remove
-    # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
-    # We have to use `@propagate_inbounds`, which will also remove boundschecks
-    # in the neighbor loop, which is not safe (see comment below).
-    # To avoid this, we have to use a function barrier to disable the `@inbounds` again.
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
-
-    __foreach_neighbor(f, system_coords, neighbor_system_coords, neighborhood_search,
-                       point, point_coords, search_radius)
-end
-
-@inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                    neighborhood_search::GridNeighborhoodSearch,
-                                    point, point_coords, search_radius)
+# Specialized version of the function in `neighborhood_search.jl`, which is faster
+# than looping over `eachneighbor`.
+@inline function foreach_neighbor(f, neighbor_system_coords,
+                                  neighborhood_search::GridNeighborhoodSearch,
+                                  point, point_coords, search_radius)
     (; periodic_box) = neighborhood_search
 
     cell = cell_coords(point_coords, neighborhood_search)
@@ -448,8 +449,7 @@ end
             distance2 = dot(pos_diff, pos_diff)
 
             pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                            search_radius,
-                                                            periodic_box)
+                                                            search_radius, periodic_box)
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
