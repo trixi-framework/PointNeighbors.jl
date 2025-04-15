@@ -38,10 +38,9 @@ since not sorting makes our implementation a lot faster (although less paralleli
                             the cell. By default, a [`DictionaryCellList`](@ref) is used.
 - `update_strategy = nothing`: Strategy to parallelize `update!`. Available options are:
     - `nothing`: Automatically choose the best available option.
-    - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations,
-        but is the default when available.
+    - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations.
     - [`SemiParallelUpdate()`](@ref): This is available for all cell list implementations
-        and is the default when [`ParallelUpdate`](@ref) is not available.
+        and is the default when available.
     - [`SerialUpdate()`](@ref)
 
 ## References
@@ -106,13 +105,25 @@ end
 """
     ParallelUpdate()
 
-Fully parallel update by using atomic operations to avoid race conditions when adding points
-into the same cell.
-This is not available for all cell list implementations, but is the default when available.
+Fully parallel initialization and update by using atomic operations to avoid race conditions
+when adding points into the same cell.
+This is not available for all cell list implementations.
 
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct ParallelUpdate end
+
+"""
+    ParallelIncrementalUpdate()
+
+Like [`ParallelUpdate`](@ref), but only updates the cells that have changed.
+This is generally slower than a full reinitialization with [`ParallelUpdate`](@ref),
+but is included for benchmarking purposes.
+This is not available for all cell list implementations, but is the default when available.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct ParallelIncrementalUpdate end
 
 """
     SemiParallelUpdate()
@@ -137,7 +148,12 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
 
-@inline function create_update_buffer(::ParallelUpdate, cell_list, _)
+# No update buffer needed for fully parallel non-incremental update/initialize
+@inline function create_update_buffer(::ParallelUpdate, _, _)
+    return nothing
+end
+
+@inline function create_update_buffer(::ParallelIncrementalUpdate, cell_list, _)
     # Create empty `lengths` vector to read from while writing to `cell_list.cells.lengths`
     n_cells = length(each_cell_index(cell_list))
     return Vector{Int32}(undef, n_cells)
@@ -183,6 +199,36 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
         # Add point to corresponding cell
         push_cell!(cell_list, cell, point)
+    end
+
+    return neighborhood_search
+end
+
+# WARNING! Experimental feature:
+# By default, determine the parallelization backend from the type of `y`.
+# Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
+# on this backend. This can be useful to run GPU kernels on the CPU by passing
+# `parallelization_backend = KernelAbstractions.CPU()`, even though `y isa Array`.
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                      ParallelUpdate},
+                          y::AbstractMatrix; parallelization_backend = y)
+    (; cell_list) = neighborhood_search
+
+    empty!(cell_list)
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @threaded parallelization_backend for point in axes(y, 2)
+        # Get cell index of the point's cell
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+
+        # Add point to corresponding cell
+        push_cell_atomic!(cell_list, cell, point)
     end
 
     return neighborhood_search
@@ -303,7 +349,8 @@ end
 
 # Fully parallel update with atomic push.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                  ParallelIncrementalUpdate},
                       coords_fun::Function; parallelization_backend = nothing)
     (; cell_list, update_buffer) = neighborhood_search
 
@@ -353,6 +400,14 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     end
 
     return neighborhood_search
+end
+
+# Note that this is only defined when a matrix `y` is passed. When updating with a function,
+# it will fall back to the semi-parallel update.
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
+                      y::AbstractMatrix; parallelization_backend = y)
+    # The parallel (atomic) initialization is usually faster than the incremental update
+    initialize_grid!(neighborhood_search, y; parallelization_backend)
 end
 
 @propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
