@@ -13,6 +13,16 @@ function requires_update(::AbstractNeighborhoodSearch)
 end
 
 """
+    requires_resizing(search::AbstractNeighborhoodSearch)
+
+Returns `false` if the neighborhood search can be updated with a different number
+of neighbor points (`y`) without re-initializing it.
+"""
+function requires_resizing(::AbstractNeighborhoodSearch)
+    error("`requires_resizing` not implemented for this neighborhood search.")
+end
+
+"""
     initialize!(search::AbstractNeighborhoodSearch, x, y)
 
 Initialize a neighborhood search with the two coordinate arrays `x` and `y`.
