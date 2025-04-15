@@ -38,10 +38,9 @@ since not sorting makes our implementation a lot faster (although less paralleli
                             the cell. By default, a [`DictionaryCellList`](@ref) is used.
 - `update_strategy = nothing`: Strategy to parallelize `update!`. Available options are:
     - `nothing`: Automatically choose the best available option.
-    - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations,
-        but is the default when available.
+    - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations.
     - [`SemiParallelUpdate()`](@ref): This is available for all cell list implementations
-        and is the default when [`ParallelUpdate`](@ref) is not available.
+        and is the default when available.
     - [`SerialUpdate()`](@ref)
 
 ## References
@@ -108,7 +107,7 @@ end
 
 Fully parallel initialization and update by using atomic operations to avoid race conditions
 when adding points into the same cell.
-This is not available for all cell list implementations, but is the default when available.
+This is not available for all cell list implementations.
 
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
@@ -120,6 +119,7 @@ struct ParallelUpdate end
 Like [`ParallelUpdate`](@ref), but only updates the cells that have changed.
 This is generally slower than a full reinitialization with [`ParallelUpdate`](@ref),
 but is included for benchmarking purposes.
+This is not available for all cell list implementations, but is the default when available.
 
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
@@ -349,10 +349,8 @@ end
 
 # Fully parallel update with atomic push.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
-function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
-                                                                        ParallelUpdate},
-                                                 GridNeighborhoodSearch{<:Any,
-                                                                        ParallelIncrementalUpdate}},
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                  ParallelIncrementalUpdate},
                       coords_fun::Function; parallelization_backend = nothing)
     (; cell_list, update_buffer) = neighborhood_search
 
