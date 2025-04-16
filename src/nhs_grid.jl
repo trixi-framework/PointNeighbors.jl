@@ -178,8 +178,8 @@ end
     return true
 end
 
-# No update buffer needed for fully parallel non-incremental update/initialize
-@inline function create_update_buffer(::ParallelUpdate, _, _)
+# No update buffer needed for non-incremental update/initialize
+@inline function create_update_buffer(::Union{SerialUpdate, ParallelUpdate}, _, _)
     return nothing
 end
 
