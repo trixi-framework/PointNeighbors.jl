@@ -47,10 +47,6 @@ end
 
 @inline requires_update(::PrecomputedNeighborhoodSearch) = (true, true)
 
-@inline function requires_resizing(search::PrecomputedNeighborhoodSearch)
-    return requires_resizing(search.neighborhood_search)
-end
-
 @inline function search_radius(search::PrecomputedNeighborhoodSearch)
     return search_radius(search.neighborhood_search)
 end

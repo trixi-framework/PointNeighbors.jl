@@ -166,18 +166,6 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
 
-@inline function requires_resizing(::GridNeighborhoodSearch{<:Any, ParallelUpdate})
-    # Update is just a re-initialization, so no re-initialization is needed
-    # when the number of points changes.
-    return false
-end
-
-@inline function requires_resizing(::GridNeighborhoodSearch)
-    # Incremental update strategies require re-initialization
-    # when the number of points changes.
-    return true
-end
-
 # No update buffer needed for non-incremental update/initialize
 @inline function create_update_buffer(::Union{SerialUpdate, ParallelUpdate}, _, _)
     return nothing
