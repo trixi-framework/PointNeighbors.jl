@@ -38,10 +38,10 @@ since not sorting makes our implementation a lot faster (although less paralleli
                             the cell. By default, a [`DictionaryCellList`](@ref) is used.
 - `update_strategy = nothing`: Strategy to parallelize `update!`. Available options are:
     - `nothing`: Automatically choose the best available option.
-    - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations,
-        but is the default when available.
+    - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations.
     - [`SemiParallelUpdate()`](@ref): This is available for all cell list implementations
-        and is the default when [`ParallelUpdate`](@ref) is not available.
+        and is the default when available.
+    - [`SerialIncrementalUpdate()`](@ref)
     - [`SerialUpdate()`](@ref)
 
 ## References
@@ -103,16 +103,32 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                   cell_size, update_buffer, update_strategy)
 end
 
+@inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
+
+@inline requires_update(::GridNeighborhoodSearch) = (false, true)
+
 """
     ParallelUpdate()
 
-Fully parallel update by using atomic operations to avoid race conditions when adding points
-into the same cell.
-This is not available for all cell list implementations, but is the default when available.
+Fully parallel initialization and update by using atomic operations to avoid race conditions
+when adding points into the same cell.
+This is not available for all cell list implementations.
 
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct ParallelUpdate end
+
+"""
+    ParallelIncrementalUpdate()
+
+Like [`ParallelUpdate`](@ref), but only updates the cells that have changed.
+This is generally slower than a full reinitialization with [`ParallelUpdate`](@ref),
+but is included for benchmarking purposes.
+This is not available for all cell list implementations, but is the default when available.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct ParallelIncrementalUpdate end
 
 """
     SemiParallelUpdate()
@@ -127,17 +143,47 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 struct SemiParallelUpdate end
 
 """
+    SerialIncrementalUpdate()
+
+Deactivate parallelization in the neighborhood search update.
+Parallel neighborhood search update can be one of the largest sources of error variations
+between simulations with different thread numbers due to neighbor ordering changes.
+This strategy incrementally updates the cell lists in every update.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct SerialIncrementalUpdate end
+
+"""
     SerialUpdate()
 
 Deactivate parallelization in the neighborhood search update.
 Parallel neighborhood search update can be one of the largest sources of error variations
 between simulations with different thread numbers due to neighbor ordering changes.
+This strategy reinitializes the cell lists in every update.
 
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
 
-@inline function create_update_buffer(::ParallelUpdate, cell_list, _)
+@inline function requires_resizing(::GridNeighborhoodSearch{<:Any, ParallelUpdate})
+    # Update is just a re-initialization, so no re-initialization is needed
+    # when the number of points changes.
+    return false
+end
+
+@inline function requires_resizing(::GridNeighborhoodSearch)
+    # Incremental update strategies require re-initialization
+    # when the number of points changes.
+    return true
+end
+
+# No update buffer needed for non-incremental update/initialize
+@inline function create_update_buffer(::Union{SerialUpdate, ParallelUpdate}, _, _)
+    return nothing
+end
+
+@inline function create_update_buffer(::ParallelIncrementalUpdate, cell_list, _)
     # Create empty `lengths` vector to read from while writing to `cell_list.cells.lengths`
     n_cells = length(each_cell_index(cell_list))
     return Vector{Int32}(undef, n_cells)
@@ -150,7 +196,7 @@ end
     push!(update_buffer, (index_type(cell_list)[] for _ in 1:Threads.nthreads())...)
 end
 
-@inline function create_update_buffer(::SerialUpdate, cell_list, n_points)
+@inline function create_update_buffer(::SerialIncrementalUpdate, cell_list, n_points)
     # Create update buffer and initialize it with empty vectors.
     # Only one thread is used here, so we only need one element in the buffer.
     update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = 1,
@@ -158,14 +204,13 @@ end
     push!(update_buffer, index_type(cell_list)[])
 end
 
-@inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
-
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix)
     initialize_grid!(neighborhood_search, y)
 end
 
-function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix)
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
+                          parallelization_backend = y)
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -183,6 +228,36 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
         # Add point to corresponding cell
         push_cell!(cell_list, cell, point)
+    end
+
+    return neighborhood_search
+end
+
+# WARNING! Experimental feature:
+# By default, determine the parallelization backend from the type of `y`.
+# Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
+# on this backend. This can be useful to run GPU kernels on the CPU by passing
+# `parallelization_backend = KernelAbstractions.CPU()`, even though `y isa Array`.
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                      ParallelUpdate},
+                          y::AbstractMatrix; parallelization_backend = y)
+    (; cell_list) = neighborhood_search
+
+    empty!(cell_list)
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @threaded parallelization_backend for point in axes(y, 2)
+        # Get cell index of the point's cell
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+
+        # Add point to corresponding cell
+        push_cell_atomic!(cell_list, cell, point)
     end
 
     return neighborhood_search
@@ -213,7 +288,7 @@ end
 # Serial and semi-parallel update.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
 function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
-                                                                        SerialUpdate},
+                                                                        SerialIncrementalUpdate},
                                                  GridNeighborhoodSearch{<:Any,
                                                                         SemiParallelUpdate}},
                       coords_fun::Function; parallelization_backend = nothing)
@@ -275,7 +350,7 @@ end
 end
 
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
-                                                                                 SerialUpdate},
+                                                                                 SerialIncrementalUpdate},
                                      coords_fun::T, _) where {T}
     (; cell_list) = neighborhood_search
 
@@ -303,7 +378,8 @@ end
 
 # Fully parallel update with atomic push.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                  ParallelIncrementalUpdate},
                       coords_fun::Function; parallelization_backend = nothing)
     (; cell_list, update_buffer) = neighborhood_search
 
@@ -355,24 +431,21 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     return neighborhood_search
 end
 
-@propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                              neighborhood_search::GridNeighborhoodSearch,
-                                              point;
-                                              search_radius = search_radius(neighborhood_search))
-    # Due to https://github.com/JuliaLang/julia/issues/30411, we cannot just remove
-    # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
-    # We have to use `@propagate_inbounds`, which will also remove boundschecks
-    # in the neighbor loop, which is not safe (see comment below).
-    # To avoid this, we have to use a function barrier to disable the `@inbounds` again.
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
-
-    __foreach_neighbor(f, system_coords, neighbor_system_coords, neighborhood_search,
-                       point, point_coords, search_radius)
+# Note that this is only defined when a matrix `y` is passed. When updating with a function,
+# it will fall back to the semi-parallel update.
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
+                                                                        ParallelUpdate},
+                                                 GridNeighborhoodSearch{<:Any,
+                                                                        SerialUpdate}},
+                      y::AbstractMatrix; parallelization_backend = y)
+    initialize_grid!(neighborhood_search, y; parallelization_backend)
 end
 
-@inline function __foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                    neighborhood_search::GridNeighborhoodSearch,
-                                    point, point_coords, search_radius)
+# Specialized version of the function in `neighborhood_search.jl`, which is faster
+# than looping over `eachneighbor`.
+@inline function foreach_neighbor(f, neighbor_system_coords,
+                                  neighborhood_search::GridNeighborhoodSearch,
+                                  point, point_coords, search_radius)
     (; periodic_box) = neighborhood_search
 
     cell = cell_coords(point_coords, neighborhood_search)
@@ -393,8 +466,7 @@ end
             distance2 = dot(pos_diff, pos_diff)
 
             pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                            search_radius,
-                                                            periodic_box)
+                                                            search_radius, periodic_box)
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)

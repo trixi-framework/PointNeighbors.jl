@@ -3,6 +3,26 @@ abstract type AbstractNeighborhoodSearch end
 @inline search_radius(search::AbstractNeighborhoodSearch) = search.search_radius
 
 """
+    requires_update(search::AbstractNeighborhoodSearch)
+
+Returns a tuple `(x_changed, y_changed)` indicating if this type of neighborhood search
+requires an update when the coordinates of the points in `x` or `y` change.
+"""
+function requires_update(::AbstractNeighborhoodSearch)
+    error("`requires_update` not implemented for this neighborhood search.")
+end
+
+"""
+    requires_resizing(search::AbstractNeighborhoodSearch)
+
+Returns `false` if the neighborhood search can be updated with a different number
+of neighbor points (`y`) without re-initializing it.
+"""
+function requires_resizing(::AbstractNeighborhoodSearch)
+    error("`requires_resizing` not implemented for this neighborhood search.")
+end
+
+"""
     initialize!(search::AbstractNeighborhoodSearch, x, y)
 
 Initialize a neighborhood search with the two coordinate arrays `x` and `y`.
@@ -49,7 +69,7 @@ The second flag indicates if points in `y` are moving.
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
-                         points_moving = (true, true))
+                         points_moving = (true, true), parallelization_backend = x)
     return search
 end
 
@@ -206,13 +226,32 @@ end
     return nothing
 end
 
-@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                  neighborhood_search, point;
-                                  search_radius = search_radius(neighborhood_search))
+@propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                              neighborhood_search::AbstractNeighborhoodSearch,
+                                              point;
+                                              search_radius = search_radius(neighborhood_search))
+    # Due to https://github.com/JuliaLang/julia/issues/30411, we cannot just remove
+    # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
+    # We have to use `@propagate_inbounds`, which will also remove boundschecks
+    # in the neighbor loop, which is not safe (see comment below).
+    # To avoid this, we have to use a function barrier to disable the `@inbounds` again.
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+
+    foreach_neighbor(f, neighbor_system_coords, neighborhood_search,
+                     point, point_coords, search_radius)
+end
+
+# This is the generic function that is called for `TrivialNeighborhoodSearch`.
+# For `GridNeighborhoodSearch`, a specialized function is used for slightly better
+# performance. `PrecomputedNeighborhoodSearch` can skip the distance check altogether.
+@inline function foreach_neighbor(f, neighbor_system_coords,
+                                  neighborhood_search::AbstractNeighborhoodSearch,
+                                  point, point_coords, search_radius)
     (; periodic_box) = neighborhood_search
 
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
     for neighbor in eachneighbor(point_coords, neighborhood_search)
+        # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
+        # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
         neighbor_coords = extract_svector(neighbor_system_coords,
                                           Val(ndims(neighborhood_search)), neighbor)
 
