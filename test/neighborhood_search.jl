@@ -159,6 +159,8 @@
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               update_strategy = SemiParallelUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              update_strategy = SerialIncrementalUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               update_strategy = SerialUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
@@ -185,6 +187,7 @@
 
             names = [
                 "`GridNeighborhoodSearch` with `SemiParallelUpdate`",
+                "`GridNeighborhoodSearch` with `SerialIncrementalUpdate`",
                 "`GridNeighborhoodSearch` with `SerialUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelIncrementalUpdate`",
@@ -196,6 +199,7 @@
             # Also test copied templates
             template_nhs = [
                 GridNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(update_strategy = SerialIncrementalUpdate()),
                 GridNeighborhoodSearch{NDIMS}(update_strategy = SerialUpdate()),
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner)),
