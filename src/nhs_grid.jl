@@ -209,7 +209,8 @@ function initialize!(neighborhood_search::GridNeighborhoodSearch,
     initialize_grid!(neighborhood_search, y)
 end
 
-function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix)
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix,
+                          parallelization_backend = y)
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -437,7 +438,6 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
                                                  GridNeighborhoodSearch{<:Any,
                                                                         SerialUpdate}},
                       y::AbstractMatrix; parallelization_backend = y)
-    # The parallel (atomic) initialization is usually faster than the incremental update
     initialize_grid!(neighborhood_search, y; parallelization_backend)
 end
 
