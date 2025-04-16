@@ -229,8 +229,9 @@ end
     # to ensure that neighboring cells in all directions of all non-empty cells exist.
     if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
         size_ = [2:(size(linear_indices, i) - 1) for i in eachindex(cell)]
+        print_size_ = "[$(join(size_, ", "))]"
         error("particle coordinates are NaN or outside the domain bounds of the cell list\n" *
-              "cell $cell is out of bounds for cell grid of size $size_")
+              "cell $cell is out of bounds for cell grid of size $print_size_")
     end
 end
 
