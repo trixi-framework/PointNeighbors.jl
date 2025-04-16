@@ -41,6 +41,7 @@ since not sorting makes our implementation a lot faster (although less paralleli
     - [`ParallelUpdate()`](@ref): This is not available for all cell list implementations.
     - [`SemiParallelUpdate()`](@ref): This is available for all cell list implementations
         and is the default when available.
+    - [`SerialIncrementalUpdate()`](@ref)
     - [`SerialUpdate()`](@ref)
 
 ## References
@@ -142,11 +143,24 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 struct SemiParallelUpdate end
 
 """
+    SerialIncrementalUpdate()
+
+Deactivate parallelization in the neighborhood search update.
+Parallel neighborhood search update can be one of the largest sources of error variations
+between simulations with different thread numbers due to neighbor ordering changes.
+This strategy incrementally updates the cell lists in every update.
+
+See [`GridNeighborhoodSearch`](@ref) for usage information.
+"""
+struct SerialIncrementalUpdate end
+
+"""
     SerialUpdate()
 
 Deactivate parallelization in the neighborhood search update.
 Parallel neighborhood search update can be one of the largest sources of error variations
 between simulations with different thread numbers due to neighbor ordering changes.
+This strategy reinitializes the cell lists in every update.
 
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
@@ -182,7 +196,7 @@ end
     push!(update_buffer, (index_type(cell_list)[] for _ in 1:Threads.nthreads())...)
 end
 
-@inline function create_update_buffer(::SerialUpdate, cell_list, n_points)
+@inline function create_update_buffer(::SerialIncrementalUpdate, cell_list, n_points)
     # Create update buffer and initialize it with empty vectors.
     # Only one thread is used here, so we only need one element in the buffer.
     update_buffer = DynamicVectorOfVectors{index_type(cell_list)}(max_outer_length = 1,
@@ -273,7 +287,7 @@ end
 # Serial and semi-parallel update.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
 function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
-                                                                        SerialUpdate},
+                                                                        SerialIncrementalUpdate},
                                                  GridNeighborhoodSearch{<:Any,
                                                                         SemiParallelUpdate}},
                       coords_fun::Function; parallelization_backend = nothing)
@@ -335,7 +349,7 @@ end
 end
 
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
-                                                                                 SerialUpdate},
+                                                                                 SerialIncrementalUpdate},
                                      coords_fun::T, _) where {T}
     (; cell_list) = neighborhood_search
 
@@ -418,7 +432,10 @@ end
 
 # Note that this is only defined when a matrix `y` is passed. When updating with a function,
 # it will fall back to the semi-parallel update.
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate},
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
+                                                                        ParallelUpdate},
+                                                 GridNeighborhoodSearch{<:Any,
+                                                                        SerialUpdate}},
                       y::AbstractMatrix; parallelization_backend = y)
     # The parallel (atomic) initialization is usually faster than the incremental update
     initialize_grid!(neighborhood_search, y; parallelization_backend)
