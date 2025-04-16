@@ -209,7 +209,7 @@ function initialize!(neighborhood_search::GridNeighborhoodSearch,
     initialize_grid!(neighborhood_search, y)
 end
 
-function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix,
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
                           parallelization_backend = y)
     (; cell_list) = neighborhood_search
 
