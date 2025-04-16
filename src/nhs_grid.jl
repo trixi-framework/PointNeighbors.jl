@@ -279,8 +279,9 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
                                                                         ParallelUpdate},
                                                  GridNeighborhoodSearch{<:Any,
                                                                         SerialUpdate}},
-                      y::AbstractMatrix; parallelization_backend = y)
-    initialize_grid!(neighborhood_search, y; parallelization_backend)
+                      y::AbstractMatrix;
+                      eachindex_y = axes(y, 2), parallelization_backend = y)
+    initialize_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
 end
 
 # Update only with neighbor coordinates
