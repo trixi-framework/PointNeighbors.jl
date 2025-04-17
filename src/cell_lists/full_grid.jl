@@ -133,6 +133,18 @@ function Base.empty!(cell_list::FullGridCellList)
     return cell_list
 end
 
+# TODO Let `@threaded` use `get_backend`
+function Base.empty!(cell_list::FullGridCellList{<:DynamicVectorOfVectors})
+    (; cells) = cell_list
+
+    # `Base.empty!.(cells)`, but for all backends
+    @threaded cells.backend for i in eachindex(cells)
+        emptyat!(cells, i)
+    end
+
+    return cell_list
+end
+
 function Base.empty!(cell_list::FullGridCellList{Nothing})
     # This is an empty "template" cell list to be used with `copy_cell_list`
     error("`search_radius` is not defined for this cell list")
