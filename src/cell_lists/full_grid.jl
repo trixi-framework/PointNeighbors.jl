@@ -126,7 +126,7 @@ function Base.empty!(cell_list::FullGridCellList)
     (; cells) = cell_list
 
     # `Base.empty!.(cells)`, but for all backends
-    for i in eachindex(cells)
+    @threaded cells for i in eachindex(cells)
         emptyat!(cells, i)
     end
 
