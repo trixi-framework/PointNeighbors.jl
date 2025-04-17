@@ -37,10 +37,13 @@ struct FullGridCellList{C, LI, MINC, MAXC} <: AbstractCellList
 end
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
-    return (ParallelUpdate, SemiParallelUpdate, SerialUpdate)
+    return (ParallelIncrementalUpdate, ParallelUpdate, SemiParallelUpdate,
+            SerialIncrementalUpdate, SerialUpdate)
 end
 
-supported_update_strategies(::FullGridCellList) = (SemiParallelUpdate, SerialUpdate)
+function supported_update_strategies(::FullGridCellList)
+    return (SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate)
+end
 
 function FullGridCellList(; min_corner, max_corner,
                           search_radius = zero(eltype(min_corner)),
