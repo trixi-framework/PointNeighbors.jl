@@ -12,11 +12,11 @@ and the likelihood of hash collisions.
 - `list_size::Int`: Size of the hash map (e.g., `2 * n_points`) .
 """
 struct SpatialHashingCellList{CL, CI, CF}
-    list_size::Int
-    NDIMS::Int
     points::CL
     coords::CI
     collisions::CF
+    list_size::Int
+    NDIMS::Int
 end
 
 @inline index_type(::SpatialHashingCellList) = Int32
@@ -29,8 +29,7 @@ function SpatialHashingCellList{NDIMS}(list_size) where {NDIMS}
     points = [Int[] for _ in 1:list_size]
     collisions = [false for _ in 1:list_size]
     coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
-    return SpatialHashingCellList(list_size, NDIMS, points, coords,
-                                  collisions)
+    return SpatialHashingCellList(points, coords, collisions, list_size, NDIMS)
 end
 
 function Base.empty!(cell_list::SpatialHashingCellList)

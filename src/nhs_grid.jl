@@ -210,18 +210,6 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
                  parallelization_backend)
 end
 
-# Needed here for SpatialHashingCellList until IncrementalParallelUpdate is implemented
-function update!(neighborhood_search::GridNeighborhoodSearch{<:Any, <:Any,
-                                                             <:SpatialHashingCellList},
-                 x::AbstractMatrix,
-                 y::AbstractMatrix; points_moving = (true, true),
-                 parallelization_backend = x)
-    # The coordinates of the first set of points are irrelevant for this NHS.
-    # Only update when the second set is moving.
-    points_moving[2] || return neighborhood_search
-    initialize_grid!(neighborhood_search, y)
-end
-
 # Serial and semi-parallel update.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
 function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
