@@ -6,3 +6,4 @@ abstract type AbstractCellList end
 
 include("dictionary.jl")
 include("full_grid.jl")
+include("spatial_hashing.jl")
