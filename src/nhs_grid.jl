@@ -377,30 +377,6 @@ end
 function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
                          cell_list::SpatialHashingCellList, nhs)
     (; list_size, collisions, coords) = cell_list
-    # Convert CartesianIndex to periodic index
-    neighbor_cell = periodic_cell_index(Tuple(neighbor_cell_), nhs)
-    hash_key = spatial_hash(neighbor_cell, list_size)
-
-    if collisions[hash_key]
-        # Points from multiple cells are in this list.
-        # Check if `neighbor_coords` are in the cell `neighbor_cell`.
-        return neighbor_cell != cell_coords(neighbor_coords, nhs)
-    elseif coords[hash_key] != neighbor_cell
-        # `cell_collision` is false for this list, meaning only points from one cell are in the list.
-        # However, the cell of this list is not our `neighbor_cell`, so `neighbor_coords`
-        # are not in `neighbor_cell`.
-        return true
-    end
-    return false
-end
-
-function check_collision1(neighbor_cell_, neighbor_coords, cell_list, nhs)
-    return false
-end
-
-function check_collision1(neighbor_cell_::CartesianIndex, neighbor_coords,
-                         cell_list::SpatialHashingCellList, nhs)
-    (; list_size, collisions, coords) = cell_list
     neighbor_cell = periodic_cell_index(Tuple(neighbor_cell_), nhs)
 
     return neighbor_cell != cell_coords(neighbor_coords, nhs)
@@ -453,7 +429,7 @@ end
                 # Check if `neighbor_coords` are in the cell `neighbor_cell_`.
                 # For the `SpatialHashingCellList`, this might not be the case
                 # if we have a collision.
-                if check_collision1(neighbor_cell_, neighbor_coords, cell_list, neighborhood_search) && cell_collision
+                if check_collision(neighbor_cell_, neighbor_coords, cell_list, neighborhood_search) && cell_collision
                     continue
                 end
 
