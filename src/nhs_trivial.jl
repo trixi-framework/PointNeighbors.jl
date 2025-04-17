@@ -32,15 +32,6 @@ end
 
 @inline requires_update(::TrivialNeighborhoodSearch) = (false, false)
 
-@inline requires_resizing(::TrivialNeighborhoodSearch) = false
-
-@inline initialize!(search::TrivialNeighborhoodSearch, x, y) = search
-
-@inline function update!(search::TrivialNeighborhoodSearch, x, y;
-                         points_moving = (true, true), parallelization_backend = x)
-    return search
-end
-
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachpoint
 
 # Create a copy of a neighborhood search but with a different search radius

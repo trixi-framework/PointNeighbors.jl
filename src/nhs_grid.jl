@@ -166,18 +166,6 @@ See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
 
-@inline function requires_resizing(::GridNeighborhoodSearch{<:Any, ParallelUpdate})
-    # Update is just a re-initialization, so no re-initialization is needed
-    # when the number of points changes.
-    return false
-end
-
-@inline function requires_resizing(::GridNeighborhoodSearch)
-    # Incremental update strategies require re-initialization
-    # when the number of points changes.
-    return true
-end
-
 # No update buffer needed for non-incremental update/initialize
 @inline function create_update_buffer(::Union{SerialUpdate, ParallelUpdate}, _, _)
     return nothing
@@ -205,12 +193,13 @@ end
 end
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
-                     x::AbstractMatrix, y::AbstractMatrix)
-    initialize_grid!(neighborhood_search, y)
+                     x::AbstractMatrix, y::AbstractMatrix;
+                     eachindex_y = axes(y, 2), parallelization_backend = y)
+    initialize_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
 end
 
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
-                          parallelization_backend = y)
+                          eachindex_y = axes(y, 2), parallelization_backend = y)
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -221,9 +210,11 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
         return neighborhood_search
     end
 
-    for point in axes(y, 2)
+    @boundscheck checkbounds(y, eachindex_y)
+
+    for point in eachindex_y
         # Get cell index of the point's cell
-        point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+        @inbounds point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
         cell = cell_coords(point_coords, neighborhood_search)
 
         # Add point to corresponding cell
@@ -240,7 +231,8 @@ end
 # `parallelization_backend = KernelAbstractions.CPU()`, even though `y isa Array`.
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                       ParallelUpdate},
-                          y::AbstractMatrix; parallelization_backend = y)
+                          y::AbstractMatrix;
+                          eachindex_y = axes(y, 2), parallelization_backend = y)
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -251,7 +243,9 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
         return neighborhood_search
     end
 
-    @threaded parallelization_backend for point in axes(y, 2)
+    @boundscheck checkbounds(y, eachindex_y)
+
+    @threaded parallelization_backend for point in eachindex_y
         # Get cell index of the point's cell
         point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
         cell = cell_coords(point_coords, neighborhood_search)
@@ -270,17 +264,34 @@ end
 # `parallelization_backend = KernelAbstractions.CPU()`, even though `x isa Array`.
 function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 points_moving = (true, true), parallelization_backend = x)
+                 eachindex_y = axes(y, 2), points_moving = (true, true),
+                 parallelization_backend = x)
     # The coordinates of the first set of points are irrelevant for this NHS.
     # Only update when the second set is moving.
     points_moving[2] || return neighborhood_search
 
-    update_grid!(neighborhood_search, y; parallelization_backend)
+    update_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
+end
+
+# Note that this is only defined when a matrix `y` is passed. When updating with a function,
+# it will fall back to the semi-parallel update.
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
+                                                                        ParallelUpdate},
+                                                 GridNeighborhoodSearch{<:Any,
+                                                                        SerialUpdate}},
+                      y::AbstractMatrix;
+                      eachindex_y = axes(y, 2), parallelization_backend = y)
+    initialize_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
 end
 
 # Update only with neighbor coordinates
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-                      y::AbstractMatrix; parallelization_backend = y) where {NDIMS}
+                      y::AbstractMatrix;
+                      eachindex_y = axes(y, 2), parallelization_backend = y) where {NDIMS}
+    if eachindex_y != axes(y, 2)
+        error("this neighborhood search/update strategy does not support inactive points")
+    end
+
     update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
                  parallelization_backend)
 end
@@ -429,16 +440,6 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
     end
 
     return neighborhood_search
-end
-
-# Note that this is only defined when a matrix `y` is passed. When updating with a function,
-# it will fall back to the semi-parallel update.
-function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
-                                                                        ParallelUpdate},
-                                                 GridNeighborhoodSearch{<:Any,
-                                                                        SerialUpdate}},
-                      y::AbstractMatrix; parallelization_backend = y)
-    initialize_grid!(neighborhood_search, y; parallelization_backend)
 end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
