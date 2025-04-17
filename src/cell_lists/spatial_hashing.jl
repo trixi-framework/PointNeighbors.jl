@@ -42,36 +42,31 @@ function Base.empty!(cell_list::SpatialHashingCellList)
     return cell_list
 end
 
+# For each entry in the hash table, store the coordinates of the cell of the first point being inserted at this entry.
+# If a point with a different cell coordinate is being added, we have found a collision.
 function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     (; points, coords, collisions, list_size, NDIMS) = cell_list
-    key = spatial_hash(cell, list_size)
-    cell_coord = coords[key]
-    push!(points[key], point)
-    # Check if a cell has been added at this hash
+    hash_key = spatial_hash(cell, list_size)
+    cell_coord = coords[hash_key]
+    push!(points[hash_key], point)
     if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
-        coords[key] = cell
-    # Detect collision
+        coords[hash_key] = cell
     elseif cell_coord != cell
-        collisions[key] = true
+        collisions[hash_key] = true
     end
 end
-
-# function push_cell!(cell_list::SpatialHashingCellList, cell)
-#     (; coords, collisions, list_size, NDIMS) = cell_list
-#     key = spatial_hash(cell, list_size)
-#     cell_coord = coords[key]
-#     if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
-#         coords[key] = cell
-#     elseif cell_coord != cell
-#         collisions[key] = true
-#     end
-# end
 
 function deleteat_cell!(cell_list::SpatialHashingCellList, cell, i)
     deleteat!(cell_list[cell], i)
 end
 
 @inline each_cell_index(cell_list::SpatialHashingCellList) = eachindex(cell_list.points)
+
+function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
+                        periodic_box)
+    (; NDIMS, list_size) = cell_list
+    return SpatialHashingCellList{NDIMS}(list_size)
+end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, cell::Tuple)
     (; points) = cell_list
@@ -113,4 +108,3 @@ function spatial_hash(cell::NTuple{3, Real}, index, list_size)
     return mod(xor(i * 73856093, j * 19349663, k * 83492791, index * 7238423947),
                list_size) + 1
 end
-

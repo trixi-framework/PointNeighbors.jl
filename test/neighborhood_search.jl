@@ -1,3 +1,5 @@
+using Infiltrator
+
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "All Neighborhood Searches" begin
@@ -58,7 +60,11 @@
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
-                                                     periodic_box = periodic_boxes[i])
+                                                     periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              periodic_box = periodic_boxes[i],
+                                              cell_list = SpatialHashingCellList{NDIMS}(2 *
+                                                                                        n_points))
             ]
 
             names = [
@@ -66,7 +72,8 @@
                 "`GridNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
-                "`PrecomputedNeighborhoodSearch`"
+                "`PrecomputedNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `SpatialHashingCellList`"
             ]
 
             # Also test copied templates
@@ -80,7 +87,9 @@
                                               cell_list = FullGridCellList(min_corner = periodic_boxes[i].min_corner,
                                                                            max_corner = periodic_boxes[i].max_corner,
                                                                            backend = Vector{Vector{Int32}})),
-                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i])
+                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
+                                            cell_list = SpatialHashingCellList{NDIMS}(2 * n_points))
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
@@ -175,10 +184,10 @@
                                                                            max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
-                # GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
-                #                               cell_list = SpatialHashingCellList{2}(2 *
-                #                                                                     n_points)),
-                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points)
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = SpatialHashingCellList{NDIMS}(2 *
+                                                                                    n_points))
             ]
 
             names = [
@@ -187,8 +196,9 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
-                # "`GridNeighborhoodSearch` with `SpatialHashingCellList`",
-                "`PrecomputedNeighborhoodSearch`"]
+                "`PrecomputedNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `SpatialHashingCellList`",
+                ]
 
             # Also test copied templates
             template_nhs = [
@@ -202,10 +212,8 @@
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
-                # GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
-                #                                                            max_corner,
-                #                                                            backend = Vector{Vector{Int32}})),
-                PrecomputedNeighborhoodSearch{NDIMS}()
+                PrecomputedNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(2 * n_points))
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
