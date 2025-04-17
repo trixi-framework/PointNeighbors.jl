@@ -52,11 +52,12 @@ end
 end
 
 function initialize!(search::PrecomputedNeighborhoodSearch,
-                     x::AbstractMatrix, y::AbstractMatrix)
+                     x::AbstractMatrix, y::AbstractMatrix;
+                     eachindex_y = axes(y, 2), parallelization_backend = y)
     (; neighborhood_search, neighbor_lists) = search
 
     # Initialize grid NHS
-    initialize!(neighborhood_search, x, y)
+    initialize!(neighborhood_search, x, y; eachindex_y, parallelization_backend)
 
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
 end
@@ -68,11 +69,12 @@ end
 # `parallelization_backend = KernelAbstractions.CPU()`, even though `x isa Array`.
 function update!(search::PrecomputedNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 points_moving = (true, true), parallelization_backend = x)
+                 eachindex_y = axes(y, 2), points_moving = (true, true),
+                 parallelization_backend = x)
     (; neighborhood_search, neighbor_lists) = search
 
     # Update grid NHS
-    update!(neighborhood_search, x, y; points_moving, parallelization_backend)
+    update!(neighborhood_search, x, y; eachindex_y, points_moving, parallelization_backend)
 
     # Skip update if both point sets are static
     if any(points_moving)

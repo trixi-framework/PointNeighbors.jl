@@ -13,7 +13,7 @@ function requires_update(::AbstractNeighborhoodSearch)
 end
 
 """
-    initialize!(search::AbstractNeighborhoodSearch, x, y)
+    initialize!(search::AbstractNeighborhoodSearch, x, y; eachindex_y = axes(y, 2))
 
 Initialize a neighborhood search with the two coordinate arrays `x` and `y`.
 
@@ -22,12 +22,19 @@ all points in `y` whose distances to that point are smaller than the search radi
 `x` and `y` are expected to be matrices, where the `i`-th column contains the coordinates
 of point `i`. Note that `x` and `y` can be identical.
 
+Optionally, when points in `y` are to be ignored, the keyword argument `eachindex_y` can be
+passed to specify the indices of the points in `y` that are to be used.
+
 See also [`update!`](@ref).
 """
-@inline initialize!(search::AbstractNeighborhoodSearch, x, y) = search
+@inline function initialize!(search::AbstractNeighborhoodSearch, x, y;
+                             eachindex_y = axes(y, 2), parallelization_backend = y)
+    return search
+end
 
 """
-    update!(search::AbstractNeighborhoodSearch, x, y; points_moving = (true, true))
+    update!(search::AbstractNeighborhoodSearch, x, y;
+            points_moving = (true, true), eachindex_y = axes(y, 2))
 
 Update an already initialized neighborhood search with the two coordinate arrays `x` and `y`.
 
@@ -46,6 +53,9 @@ in this case to avoid unnecessary updates.
 The first flag in `points_moving` indicates if points in `x` are moving.
 The second flag indicates if points in `y` are moving.
 
+Optionally, when points in `y` are to be ignored, the keyword argument `eachindex_y` can be
+passed to specify the indices of the points in `y` that are to be used.
+
 !!! warning "Experimental Feature: Backend Specification"
     The keyword argument `parallelization_backend` allows users to specify the
     multithreading backend. This feature is currently considered experimental!
@@ -59,7 +69,8 @@ The second flag indicates if points in `y` are moving.
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
-                         points_moving = (true, true), parallelization_backend = x)
+                         eachindex_y = axes(y, 2), points_moving = (true, true),
+                         parallelization_backend = x)
     return search
 end
 
