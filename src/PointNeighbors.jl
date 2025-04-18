@@ -6,7 +6,7 @@ using Adapt: Adapt
 using Atomix: Atomix
 using Base: @propagate_inbounds
 using GPUArraysCore: AbstractGPUArray
-using KernelAbstractions: KernelAbstractions, @kernel, @index
+using KernelAbstractions: KernelAbstractions, @kernel, @index, @localmem, @synchronize
 using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
