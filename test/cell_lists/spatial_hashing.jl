@@ -7,7 +7,6 @@
             (8, 10, 6),
             (39, 40, 41)
         ]
-
         name(size) = "$(length(size))D with $(prod(size)) Particles"
         @testset verbose=true "$(name(cloud_size))" for cloud_size in cloud_sizes
             coords = point_cloud(cloud_size, seed = 1)
@@ -39,13 +38,7 @@
                 @test any(nhs.cell_list.collisions)
             end
 
-            # @testset verbose=true "Empty Cell and Collision Detection" begin
-            #     # 1. Find empty lists
-            #     # 2. Check for collisions with non-empty lists
-            # end
-
             neighbors = [Int[] for _ in axes(coords, 2)]
-
             foreach_point_neighbor(coords, coords, nhs,
                                    parallel = false) do point, neighbor,
                                                         pos_diff, distance

@@ -11,7 +11,8 @@ and the likelihood of hash collisions.
 - `NDIMS::Int`: Number of spatial dimensions (e.g., `2` or `3`).
 - `list_size::Int`: Size of the hash map (e.g., `2 * n_points`) .
 """
-struct SpatialHashingCellList{CL, CI, CF}
+
+struct SpatialHashingCellList{CL, CI, CF} <: AbstractCellList
     points::CL
     coords::CI
     collisions::CF
@@ -21,8 +22,8 @@ end
 
 @inline index_type(::SpatialHashingCellList) = Int32
 
-function supported_update_strategies(::PointNeighbors.SpatialHashingCellList)
-    return (SerialUpdate, SemiParallelUpdate)
+function supported_update_strategies(::SpatialHashingCellList)
+    return (SerialUpdate,)
 end
 
 function SpatialHashingCellList{NDIMS}(list_size) where {NDIMS}
@@ -45,6 +46,7 @@ end
 # If a point with a different cell coordinate is being added, we have found a collision.
 function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     (; points, coords, collisions, list_size, NDIMS) = cell_list
+
     hash_key = spatial_hash(cell, list_size)
     cell_coord = coords[hash_key]
     push!(points[hash_key], point)

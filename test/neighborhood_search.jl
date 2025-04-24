@@ -1,5 +1,3 @@
-using Infiltrator
-
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "All Neighborhood Searches" begin

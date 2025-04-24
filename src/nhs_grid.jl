@@ -469,15 +469,15 @@ end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over eachneighbor`.
-@inline function __foreach_neighbor(f, neighbor_system_coords,
+@inline function foreach_neighbor(f, neighbor_system_coords,
                                     neighborhood_search::GridNeighborhoodSearch,
                                     point, point_coords, search_radius)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
+
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
-
         cell_collision = check_cell_collision(neighbor_cell_,
         cell_list, neighborhood_search)
 
