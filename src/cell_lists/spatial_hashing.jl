@@ -12,15 +12,16 @@ and the likelihood of hash collisions.
 - `list_size::Int`: Size of the hash map (e.g., `2 * n_points`) .
 """
 
-struct SpatialHashingCellList{CL, CI, CF} <: AbstractCellList
+struct SpatialHashingCellList{NDIMS, CL, CI, CF} <: AbstractCellList
     points::CL
     coords::CI
     collisions::CF
     list_size::Int
-    NDIMS::Int
 end
 
 @inline index_type(::SpatialHashingCellList) = Int32
+
+@inline Base.ndims(::SpatialHashingCellList{NDIMS}) where {NDIMS} = NDIMS
 
 function supported_update_strategies(::SpatialHashingCellList)
     return (SerialUpdate,)
@@ -30,11 +31,13 @@ function SpatialHashingCellList{NDIMS}(list_size) where {NDIMS}
     points = [Int[] for _ in 1:list_size]
     collisions = [false for _ in 1:list_size]
     coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
-    return SpatialHashingCellList(points, coords, collisions, list_size, NDIMS)
+    return SpatialHashingCellList{NDIMS, typeof(points), typeof(coords),
+                                  typeof(collisions)}(points, coords, collisions, list_size)
 end
 
 function Base.empty!(cell_list::SpatialHashingCellList)
-    (; list_size, NDIMS) = cell_list
+    (; list_size) = cell_list
+    NDIMS = ndims(cell_list)
 
     Base.empty!.(cell_list.points)
     cell_list.coords .= [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
@@ -45,14 +48,17 @@ end
 # For each entry in the hash table, store the coordinates of the cell of the first point being inserted at this entry.
 # If a point with a different cell coordinate is being added, we have found a collision.
 function push_cell!(cell_list::SpatialHashingCellList, cell, point)
-    (; points, coords, collisions, list_size, NDIMS) = cell_list
-
+    (; points, coords, collisions, list_size) = cell_list
+    NDIMS = ndims(cell_list)
     hash_key = spatial_hash(cell, list_size)
-    cell_coord = coords[hash_key]
     push!(points[hash_key], point)
+
+    cell_coord = coords[hash_key]
     if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
+        # If this cell is not used yet, set cell coordinates
         coords[hash_key] = cell
     elseif cell_coord != cell
+        # If it is already used by a different cell, mark as collision
         collisions[hash_key] = true
     end
 end
@@ -65,7 +71,9 @@ end
 
 function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
                         periodic_box)
-    (; NDIMS, list_size) = cell_list
+    (; list_size) = cell_list
+    NDIMS = ndims(cell_list)
+
     return SpatialHashingCellList{NDIMS}(list_size)
 end
 
@@ -81,10 +89,6 @@ end
 @inline function is_correct_cell(cell_list::SpatialHashingCellList{<:Any, Nothing},
                                  coords, cell_index::Array)
     return coords == cell_index
-end
-
-function spatial_hash(cell::CartesianIndex, list_size)
-    return spatial_hash(Tuple(cell), list_size)
 end
 
 function spatial_hash(cell::NTuple{1, Real}, list_size)

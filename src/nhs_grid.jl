@@ -458,6 +458,8 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
     return false
 end
 
+# Check if there is a collision in this cell, meaning there is at least one point
+# in this list that doesn't actually belong in this cell.
 function check_cell_collision(neighbor_cell_::CartesianIndex,
                               cell_list::SpatialHashingCellList, nhs)
     (; list_size, collisions, coords) = cell_list
@@ -501,7 +503,7 @@ end
                 # Check if `neighbor_coords` are in the cell `neighbor_cell_`.
                 # For the `SpatialHashingCellList`, this might not be the case
                 # if we have a collision.
-                if check_collision(neighbor_cell_, neighbor_coords, cell_list, neighborhood_search) && cell_collision
+                if cell_collision && check_collision(neighbor_cell_, neighbor_coords, cell_list, neighborhood_search)
                     continue
                 end
 
