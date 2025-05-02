@@ -442,9 +442,12 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
 end
 
 function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
+    # This is only relevant for the `SpatialHashingCellList`
     return false
 end
 
+# Check if `neighbor_coords` belong to `neighbor_cell`, which might not be the case
+# with the `SpatialHashingCellList` if this cell has a collision.
 function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
                          cell_list::SpatialHashingCellList, nhs)
     (; list_size, collisions, coords) = cell_list
@@ -455,6 +458,7 @@ end
 
 function check_cell_collision(neighbor_cell_::CartesianIndex,
                               cell_list, nhs)
+    # This is only relevant for the `SpatialHashingCellList`
     return false
 end
 
@@ -466,11 +470,15 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
     neighbor_cell = periodic_cell_index(Tuple(neighbor_cell_), nhs)
     hash = spatial_hash(neighbor_cell, list_size)
 
+    # `collisions[hash] == true` means points from multiple cells are in this list.
+    # `collisions[hash] == false` means points from only one cells are in this list.
+    # We could still have a collision though, if this one cell is not `neighbor_cell`,
+    # which is possible when `neighbor_cell` is empty.
     return collisions[hash] || coords[hash] != neighbor_cell
 end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
-# than looping over eachneighbor`.
+# than looping over `eachneighbor`.
 @inline function foreach_neighbor(f, neighbor_system_coords,
                                     neighborhood_search::GridNeighborhoodSearch,
                                     point, point_coords, search_radius)
@@ -480,9 +488,11 @@ end
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+
+        # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
         cell_collision = check_cell_collision(neighbor_cell_,
         cell_list, neighborhood_search)
-
+        
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
 
@@ -500,15 +510,14 @@ end
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
 
-                # Check if `neighbor_coords` are in the cell `neighbor_cell_`.
-                # For the `SpatialHashingCellList`, this might not be the case
-                # if we have a collision.
+                # If this cell has a collision, check if this point belongs to this cell
+                # (only with `SpatialHashingCellList`).
                 if cell_collision && check_collision(neighbor_cell_, neighbor_coords, cell_list, neighborhood_search)
                     continue
                 end
 
                 # Inline to avoid loss of performance
-                # compared to not using `foreach_point_neighbor`.
+                # compared to not using `foreach_point_neighbor
                 @inline f(point, neighbor, pos_diff, distance)
             end
         end

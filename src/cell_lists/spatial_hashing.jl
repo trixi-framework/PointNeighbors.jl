@@ -4,8 +4,8 @@
 A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells, 
 and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell 
 [as described by Ihmsen et al. (2001)](@cite Ihmsen2003). By using a hash map, which only stores non-empty cells, 
-the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles balance memory consumption  
-and the likelihood of hash collisions.
+the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles to balance memory consumption  
+against the likelihood of hash collisions.
 
 # Arguments
 - `NDIMS::Int`: Number of spatial dimensions (e.g., `2` or `3`).
@@ -13,10 +13,10 @@ and the likelihood of hash collisions.
 """
 
 struct SpatialHashingCellList{NDIMS, CL, CI, CF} <: AbstractCellList
-    points::CL
-    coords::CI
-    collisions::CF
-    list_size::Int
+    points     :: CL
+    coords     :: CI
+    collisions :: CF
+    list_size  :: Int
 end
 
 @inline index_type(::SpatialHashingCellList) = Int32
@@ -78,8 +78,7 @@ function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
 end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, cell::Tuple)
-    (; points) = cell_list
-    return points[spatial_hash(cell, length(points))]
+    return cell_list.points[spatial_hash(cell, length(points))]
 end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, i::Integer)
@@ -91,6 +90,7 @@ end
     return coords == cell_index
 end
 
+# Hash functions according to Ihmsen et al. (2001)
 function spatial_hash(cell::NTuple{1, Real}, list_size)
     return mod(cell[1] * 73856093, list_size) + 1
 end
@@ -105,11 +105,4 @@ function spatial_hash(cell::NTuple{3, Real}, list_size)
     i, j, k = cell
 
     return mod(xor(i * 73856093, j * 19349663, k * 83492791), list_size) + 1
-end
-
-function spatial_hash(cell::NTuple{3, Real}, index, list_size)
-    i, j, k = cell
-
-    return mod(xor(i * 73856093, j * 19349663, k * 83492791, index * 7238423947),
-               list_size) + 1
 end
