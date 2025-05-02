@@ -78,7 +78,7 @@ function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
 end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, cell::Tuple)
-    return cell_list.points[spatial_hash(cell, length(points))]
+    return cell_list.points[spatial_hash(cell, length(cell_list.points))]
 end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, i::Integer)

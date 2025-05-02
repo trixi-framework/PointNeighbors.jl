@@ -480,8 +480,8 @@ end
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
 @inline function foreach_neighbor(f, neighbor_system_coords,
-                                    neighborhood_search::GridNeighborhoodSearch,
-                                    point, point_coords, search_radius)
+                                  neighborhood_search::GridNeighborhoodSearch,
+                                  point, point_coords, search_radius)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
 
@@ -491,8 +491,8 @@ end
 
         # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
         cell_collision = check_cell_collision(neighbor_cell_,
-        cell_list, neighborhood_search)
-        
+                                              cell_list, neighborhood_search)
+
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
 
@@ -512,7 +512,9 @@ end
 
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
-                if cell_collision && check_collision(neighbor_cell_, neighbor_coords, cell_list, neighborhood_search)
+                if cell_collision &&
+                   check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                                   neighborhood_search)
                     continue
                 end
 
