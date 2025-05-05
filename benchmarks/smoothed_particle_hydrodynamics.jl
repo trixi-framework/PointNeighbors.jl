@@ -13,8 +13,8 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
     density = 1000.0
     fluid = InitialCondition(; coordinates, density, mass = 0.1)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
@@ -68,8 +68,9 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_; parallel = true
     density = 1000.0f0
     fluid = InitialCondition(; coordinates, density, mass = 0.1f0)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = convert(Float32, PointNeighbors.search_radius(neighborhood_search))
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = convert(Float32,
+                               PointNeighbors.search_radius(neighborhood_search) / 2)
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
@@ -123,8 +124,8 @@ function benchmark_tlsph(neighborhood_search, coordinates; parallel = true)
     material = (density = 1000.0, E = 1.4e6, nu = 0.4)
     solid = InitialCondition(; coordinates, density = material.density, mass = 0.1)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
