@@ -27,7 +27,8 @@ export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate
        ParallelIncrementalUpdate
 export requires_update
 export initialize!, update!, initialize_grid!, update_grid!
-export SerialBackend, PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend
+export SerialBackend, PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend,
+       default_backend
 export PeriodicBox, copy_neighborhood_search
 
 end # module PointNeighbors
