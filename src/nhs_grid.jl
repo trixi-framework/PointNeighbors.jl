@@ -519,7 +519,7 @@ end
                 end
 
                 # Inline to avoid loss of performance
-                # compared to not using `foreach_point_neighbor
+                # compared to not using `foreach_point_neighbor`.
                 @inline f(point, neighbor, pos_diff, distance)
             end
         end
