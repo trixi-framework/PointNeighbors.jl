@@ -55,8 +55,8 @@ in this case to avoid unnecessary updates.
 The first flag in `points_moving` indicates if points in `x` are moving.
 The second flag indicates if points in `y` are moving.
 
-If the neighborhood search update supports parallelization, the keyword argument
-`parallelization_backend` can be used to specify the parallelization backend.
+If the neighborhood search type supports parallelization, the keyword argument
+`parallelization_backend` can be used to specify a parallelization backend.
 See [`@threaded`](@ref) for a list of available backends.
 
 See also [`initialize!`](@ref).
