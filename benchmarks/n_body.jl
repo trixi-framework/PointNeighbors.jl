@@ -26,7 +26,7 @@ function benchmark_n_body(neighborhood_search, coordinates_;
 
     dv = similar(coordinates)
 
-    function compute_acceleration!(dv, coordinates, mass, G, neighborhood_search;
+    function compute_acceleration!(dv, coordinates, mass, G, neighborhood_search,
                                    parallelization_backend)
         dv .= 0.0
 
