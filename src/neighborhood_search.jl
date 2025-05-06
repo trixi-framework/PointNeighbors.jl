@@ -23,8 +23,8 @@ all points in `y` whose distances to that point are smaller than the search radi
 `x` and `y` are expected to be matrices, where the `i`-th column contains the coordinates
 of point `i`. Note that `x` and `y` can be identical.
 
-If the neighborhood search initialization supports parallelization, the keyword argument
-`parallelization_backend` can be used to specify the parallelization backend.
+If the neighborhood search type supports parallelization, the keyword argument
+`parallelization_backend` can be used to specify a parallelization backend.
 See [`@threaded`](@ref) for a list of available backends.
 
 See also [`update!`](@ref).
