@@ -36,7 +36,7 @@ include("benchmarks/benchmarks.jl")
 plot_benchmarks(benchmark_count_neighbors, (10, 10), 3)
 """
 function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
-                         parallel = true, title = "",
+                         parallelization_backend = PolyesterBackend(), title = "",
                          seed = 1, perturbation_factor_position = 1.0)
     neighborhood_searches_names = ["TrivialNeighborhoodSearch";;
                                    "GridNeighborhoodSearch";;
@@ -69,7 +69,7 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
             neighborhood_search = neighborhood_searches[i]
             initialize!(neighborhood_search, coordinates, coordinates)
 
-            time = benchmark(neighborhood_search, coordinates, parallel = parallel)
+            time = benchmark(neighborhood_search, coordinates; parallelization_backend)
             times[iter, i] = time
             time_string = BenchmarkTools.prettytime(time * 1e9)
             println("$(neighborhood_searches_names[i])")

@@ -47,22 +47,20 @@ end
 
 @inline requires_update(::PrecomputedNeighborhoodSearch) = (true, true)
 
-@inline function requires_resizing(search::PrecomputedNeighborhoodSearch)
-    return requires_resizing(search.neighborhood_search)
-end
-
 @inline function search_radius(search::PrecomputedNeighborhoodSearch)
     return search_radius(search.neighborhood_search)
 end
 
 function initialize!(search::PrecomputedNeighborhoodSearch,
-                     x::AbstractMatrix, y::AbstractMatrix)
+                     x::AbstractMatrix, y::AbstractMatrix;
+                     parallelization_backend = default_backend(x))
     (; neighborhood_search, neighbor_lists) = search
 
     # Initialize grid NHS
-    initialize!(neighborhood_search, x, y)
+    initialize!(neighborhood_search, x, y; parallelization_backend)
 
-    initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+    initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                               parallelization_backend)
 end
 
 # WARNING! Experimental feature:
@@ -72,7 +70,7 @@ end
 # `parallelization_backend = KernelAbstractions.CPU()`, even though `x isa Array`.
 function update!(search::PrecomputedNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 points_moving = (true, true), parallelization_backend = x)
+                 points_moving = (true, true), parallelization_backend = default_backend(x))
     (; neighborhood_search, neighbor_lists) = search
 
     # Update grid NHS
@@ -80,11 +78,13 @@ function update!(search::PrecomputedNeighborhoodSearch,
 
     # Skip update if both point sets are static
     if any(points_moving)
-        initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+        initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                                   parallelization_backend)
     end
 end
 
-function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                                    parallelization_backend)
     # Initialize neighbor lists
     empty!(neighbor_lists)
     resize!(neighbor_lists, size(x, 2))
@@ -93,7 +93,8 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
     end
 
     # Fill neighbor lists
-    foreach_point_neighbor(x, y, neighborhood_search) do point, neighbor, _, _
+    foreach_point_neighbor(x, y, neighborhood_search;
+                           parallelization_backend) do point, neighbor, _, _
         push!(neighbor_lists[point], neighbor)
     end
 end

@@ -167,8 +167,7 @@
         coordinates2 = coordinates1 .+ [1.4, -3.5, 0.8]
 
         # Update neighborhood search
-        coords_fun2(i) = coordinates2[:, i]
-        update_grid!(nhs1, coords_fun2)
+        update_grid!(nhs1, coordinates2)
 
         # Get each neighbor for updated NHS
         neighbors2 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs1)))
