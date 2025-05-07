@@ -237,7 +237,9 @@ end
     end
 end
 
-# On GPUs, we can't throw a proper error message because string interpolation is not allowed
+# On GPUs, we can't throw a proper error message because string interpolation is not
+# allowed. Note that we cannot dispatch on `AbstractGPUArray`, as we are inside a kernel,
+# so the array types are something like `CuDeviceArray`, which is not an `AbstractGPUArray`.
 @inline function check_cell_bounds(cell_list::FullGridCellList, cell::Tuple)
     (; linear_indices) = cell_list
 
