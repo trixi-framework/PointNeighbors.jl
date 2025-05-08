@@ -194,12 +194,14 @@ end
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
-                     eachindex_y = axes(y, 2), parallelization_backend = y)
-    initialize_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
+                     parallelization_backend = default_backend(x),
+                     eachindex_y = axes(y, 2))
+    initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
 end
 
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
-                          eachindex_y = axes(y, 2), parallelization_backend = y)
+                          parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -212,9 +214,10 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
     @boundscheck checkbounds(y, eachindex_y)
 
-    for point in eachindex_y
+    # Ignore the parallelization backend here. This cannot be parallelized.
+    for point in axes(y, 2)
         # Get cell index of the point's cell
-        @inbounds point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
         cell = cell_coords(point_coords, neighborhood_search)
 
         # Add point to corresponding cell
@@ -224,15 +227,10 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
-# WARNING! Experimental feature:
-# By default, determine the parallelization backend from the type of `y`.
-# Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
-# on this backend. This can be useful to run GPU kernels on the CPU by passing
-# `parallelization_backend = KernelAbstractions.CPU()`, even though `y isa Array`.
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                       ParallelUpdate},
-                          y::AbstractMatrix;
-                          eachindex_y = axes(y, 2), parallelization_backend = y)
+                          y::AbstractMatrix; parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -257,15 +255,10 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
     return neighborhood_search
 end
 
-# WARNING! Experimental feature:
-# By default, determine the parallelization backend from the type of `x`.
-# Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
-# on this backend. This can be useful to run GPU kernels on the CPU by passing
-# `parallelization_backend = KernelAbstractions.CPU()`, even though `x isa Array`.
 function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 eachindex_y = axes(y, 2), points_moving = (true, true),
-                 parallelization_backend = x)
+                 points_moving = (true, true), parallelization_backend = default_backend(x),
+                 eachindex_y = axes(y, 2))
     # The coordinates of the first set of points are irrelevant for this NHS.
     # Only update when the second set is moving.
     points_moving[2] || return neighborhood_search
@@ -285,25 +278,15 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
 end
 
 # Update only with neighbor coordinates
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS},
-                      y::AbstractMatrix;
-                      eachindex_y = axes(y, 2), parallelization_backend = y) where {NDIMS}
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS}, y::AbstractMatrix;
+                      parallelization_backend = default_backend(y),
+                      eachindex_y = axes(y, 2)) where {NDIMS}
+    (; cell_list, update_buffer) = neighborhood_search
+
     if eachindex_y != axes(y, 2)
+        # Incremental update doesn't support inactive points
         error("this neighborhood search/update strategy does not support inactive points")
     end
-
-    update_grid!(neighborhood_search, i -> extract_svector(y, Val(NDIMS), i);
-                 parallelization_backend)
-end
-
-# Serial and semi-parallel update.
-# See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
-function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
-                                                                        SerialIncrementalUpdate},
-                                                 GridNeighborhoodSearch{<:Any,
-                                                                        SemiParallelUpdate}},
-                      coords_fun::Function; parallelization_backend = nothing)
-    (; cell_list, update_buffer) = neighborhood_search
 
     # Empty each thread's list
     @threaded parallelization_backend for i in eachindex(update_buffer)
@@ -312,7 +295,7 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
 
     # Find all cells containing points that now belong to another cell.
     # This loop is threaded for `update_strategy == SemiParallelUpdate()`.
-    mark_changed_cells!(neighborhood_search, coords_fun, parallelization_backend)
+    mark_changed_cells!(neighborhood_search, y, parallelization_backend)
 
     # Iterate over all marked cells and move the points into their new cells.
     # This is always a serial loop (hence "semi-parallel").
@@ -327,11 +310,10 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
             # `deleteat_cell!(..., i)` will change the order of points that come after `i`.
             for i in reverse(eachindex(points))
                 point = points[i]
-                cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+                point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+                new_cell_coords = cell_coords(point_coords, neighborhood_search)
 
-                if !is_correct_cell(cell_list, cell_coords_, cell_index)
-                    new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
-
+                if !is_correct_cell(cell_list, new_cell_coords, cell_index)
                     # Add point to new cell or create cell if it does not exist
                     push_cell!(cell_list, new_cell_coords, point)
 
@@ -350,31 +332,33 @@ end
 # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                                  SemiParallelUpdate},
-                                     coords_fun::T, parallelization_backend) where {T}
+                                     y, parallelization_backend) where {T}
     (; cell_list) = neighborhood_search
 
     # `each_cell_index(cell_list)` might return a `KeySet`, which has to be `collect`ed
     # first to be able to be used in a threaded loop. This function takes care of that.
     @threaded parallelization_backend for cell_index in each_cell_index_threadable(cell_list)
-        mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
+        mark_changed_cell!(neighborhood_search, cell_index, y)
     end
 end
 
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                                  SerialIncrementalUpdate},
-                                     coords_fun::T, _) where {T}
+                                     y, _) where {T}
     (; cell_list) = neighborhood_search
 
+    # Ignore the parallelization backend here for `SerialIncrementalUpdate`.
     for cell_index in each_cell_index(cell_list)
-        mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
+        mark_changed_cell!(neighborhood_search, cell_index, y)
     end
 end
 
-@inline function mark_changed_cell!(neighborhood_search, cell_index, coords_fun)
+@inline function mark_changed_cell!(neighborhood_search, cell_index, y)
     (; cell_list, update_buffer) = neighborhood_search
 
     for point in cell_list[cell_index]
-        cell = cell_coords(coords_fun(point), neighborhood_search)
+        point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
 
         # `cell` is a tuple, `cell_index` is the linear index used internally by the
         # cell list to store cells inside `cell`.
@@ -387,12 +371,17 @@ end
     end
 end
 
-# Fully parallel update with atomic push.
-# See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
+# Fully parallel incremental update with atomic push.
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                   ParallelIncrementalUpdate},
-                      coords_fun::Function; parallelization_backend = nothing)
+                      y::AbstractMatrix; parallelization_backend = default_backend(y),
+                      eachindex_y = axes(y, 2))
     (; cell_list, update_buffer) = neighborhood_search
+
+    if eachindex_y != axes(y, 2)
+        # Incremental update doesn't support inactive points
+        error("this neighborhood search/update strategy does not support inactive points")
+    end
 
     # Note that we need two separate loops for adding and removing points.
     # `push_cell_atomic!` only guarantees thread-safety when different threads push
@@ -410,11 +399,10 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
     @threaded parallelization_backend for cell_index in each_cell_index_threadable(cell_list)
         for i in 1:update_buffer[cell_index]
             point = cell_list.cells.backend[i, cell_index]
-            cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+            point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+            new_cell_coords = cell_coords(point_coords, neighborhood_search)
 
-            if !is_correct_cell(cell_list, cell_coords_, cell_index)
-                new_cell_coords = cell_coords(coords_fun(point), neighborhood_search)
-
+            if !is_correct_cell(cell_list, new_cell_coords, cell_index)
                 # Add point to new cell or create cell if it does not exist
                 push_cell_atomic!(cell_list, new_cell_coords, point)
             end
@@ -430,9 +418,10 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
         # `deleteat_cell!(..., i)` will change the order of points that come after `i`.
         for i in reverse(eachindex(points))
             point = points[i]
-            cell_coords_ = cell_coords(coords_fun(point), neighborhood_search)
+            point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+            new_cell_coords = cell_coords(point_coords, neighborhood_search)
 
-            if !is_correct_cell(cell_list, cell_coords_, cell_index)
+            if !is_correct_cell(cell_list, new_cell_coords, cell_index)
                 # Remove moved point from this cell
                 deleteat_cell!(cell_list, cell_index, i)
             end
@@ -440,6 +429,16 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
     end
 
     return neighborhood_search
+end
+
+# Non-incremental update strategies just forward to `initialize_grid!`
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
+                                                                        ParallelUpdate},
+                                                 GridNeighborhoodSearch{<:Any,
+                                                                        SerialUpdate}},
+                      y::AbstractMatrix; parallelization_backend = default_backend(y),
+                      eachindex_y = axes(y, 2))
+    initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
 end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster

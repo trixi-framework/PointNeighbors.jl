@@ -31,10 +31,3 @@ function Adapt.adapt_structure(to, nhs::GridNeighborhoodSearch)
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
                                   cell_size, update_buffer, nhs.update_strategy)
 end
-
-# This is useful to pass the backend directly to `@threaded`
-@inline KernelAbstractions.get_backend(backend::KernelAbstractions.Backend) = backend
-
-@inline function KernelAbstractions.get_backend(vov::DynamicVectorOfVectors)
-    return KernelAbstractions.get_backend(vov.backend)
-end

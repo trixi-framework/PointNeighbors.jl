@@ -9,7 +9,8 @@ include("../test/point_cloud.jl")
 
 Benchmark neighborhood search initialization with the given `coordinates`.
 """
-function benchmark_initialize(neighborhood_search, coordinates; parallel = true)
+function benchmark_initialize(neighborhood_search, coordinates;
+                              parallelization_backend = default_backend(coordinates))
     return @belapsed $initialize!($neighborhood_search, $coordinates, $coordinates)
 end
 
@@ -21,7 +22,8 @@ perturbed point clouds.
 
 This is a good benchmark for incremental updates, since most particles stay in their cells.
 """
-function benchmark_update_alternating(neighborhood_search, coordinates; parallel = true)
+function benchmark_update_alternating(neighborhood_search, coordinates;
+                                      parallelization_backend = default_backend(coordinates))
     coordinates2 = copy(coordinates)
     # Perturb all coordinates with a perturbation factor of `0.015`.
     # This factor was tuned so that ~0.5% of the particles change their cell during an

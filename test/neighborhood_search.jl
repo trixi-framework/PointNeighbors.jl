@@ -145,8 +145,10 @@
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
             foreach_point_neighbor(coords, coords, trivial_nhs,
-                                   parallel = false) do point, neighbor,
-                                                        pos_diff, distance
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbor,
+                                                                                 pos_diff,
+                                                                                 distance
                 append!(neighbors_expected[point], neighbor)
             end
 
@@ -236,8 +238,10 @@
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
                 foreach_point_neighbor(coords, coords, nhs,
-                                       parallel = false) do point, neighbor,
-                                                            pos_diff, distance
+                                       parallelization_backend = SerialBackend()) do point,
+                                                                                     neighbor,
+                                                                                     pos_diff,
+                                                                                     distance
                     append!(neighbors[point], neighbor)
                 end
 

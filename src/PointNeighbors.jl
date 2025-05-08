@@ -11,8 +11,8 @@ using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
 
-include("util.jl")
 include("vector_of_vectors.jl")
+include("util.jl")
 include("neighborhood_search.jl")
 include("nhs_trivial.jl")
 include("cell_lists/cell_lists.jl")
@@ -25,8 +25,10 @@ export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoo
 export DictionaryCellList, FullGridCellList
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
-export requires_update, initialize!, update!, initialize_grid!, update_grid!
-export PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend
+export requires_update
+export initialize!, update!, initialize_grid!, update_grid!
+export SerialBackend, PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend,
+       default_backend
 export PeriodicBox, copy_neighborhood_search
 
 end # module PointNeighbors

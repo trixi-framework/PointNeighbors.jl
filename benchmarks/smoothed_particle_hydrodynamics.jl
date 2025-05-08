@@ -9,7 +9,8 @@ A benchmark of the right-hand side of a full real-life Weakly Compressible
 Smoothed Particle Hydrodynamics (WCSPH) simulation with TrixiParticles.jl.
 This method is used to simulate an incompressible fluid.
 """
-function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
+function benchmark_wcsph(neighborhood_search, coordinates;
+                         parallelization_backend = default_backend(coordinates))
     density = 1000.0
     fluid = InitialCondition(; coordinates, density, mass = 0.1)
 
@@ -34,19 +35,12 @@ function benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
                                                smoothing_length, viscosity = viscosity,
                                                density_diffusion = density_diffusion)
 
-    # Note that we cannot just disable parallelism in TrixiParticles.
-    # But passing a different backend like `CUDA.CUDABackend`
-    # allows us to change the type of the array to run the benchmark on the GPU.
-    if parallel isa Bool
-        system = fluid_system
-        nhs = neighborhood_search
-    else
-        system = PointNeighbors.Adapt.adapt(parallel, fluid_system)
-        nhs = PointNeighbors.Adapt.adapt(parallel, neighborhood_search)
-    end
+    system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
+    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
 
-    v = PointNeighbors.Adapt.adapt(parallel, vcat(fluid.velocity, fluid.density'))
-    u = PointNeighbors.Adapt.adapt(parallel, coordinates)
+    v = PointNeighbors.Adapt.adapt(parallelization_backend,
+                                   vcat(fluid.velocity, fluid.density'))
+    u = PointNeighbors.Adapt.adapt(parallelization_backend, coordinates)
     dv = zero(v)
 
     # Initialize the system
@@ -61,7 +55,8 @@ end
 
 Like [`benchmark_wcsph`](@ref), but using single precision floating point numbers.
 """
-function benchmark_wcsph_fp32(neighborhood_search, coordinates_; parallel = true)
+function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
+                              parallelization_backend = default_backend(coordinates_))
     coordinates = convert(Matrix{Float32}, coordinates_)
     density = 1000.0f0
     fluid = InitialCondition(; coordinates, density, mass = 0.1f0)
@@ -88,19 +83,12 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_; parallel = true
                                                acceleration = (0.0f0, 0.0f0, 0.0f0),
                                                density_diffusion = density_diffusion)
 
-    # Note that we cannot just disable parallelism in TrixiParticles.
-    # But passing a different backend like `CUDA.CUDABackend`
-    # allows us to change the type of the array to run the benchmark on the GPU.
-    if parallel isa Bool
-        system = fluid_system
-        nhs = neighborhood_search
-    else
-        system = PointNeighbors.Adapt.adapt(parallel, fluid_system)
-        nhs = PointNeighbors.Adapt.adapt(parallel, neighborhood_search)
-    end
+    system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
+    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
 
-    v = PointNeighbors.Adapt.adapt(parallel, vcat(fluid.velocity, fluid.density'))
-    u = PointNeighbors.Adapt.adapt(parallel, coordinates)
+    v = PointNeighbors.Adapt.adapt(parallelization_backend,
+                                   vcat(fluid.velocity, fluid.density'))
+    u = PointNeighbors.Adapt.adapt(parallelization_backend, coordinates)
     dv = zero(v)
 
     # Initialize the system
@@ -117,7 +105,8 @@ A benchmark of the right-hand side of a full real-life Total Lagrangian
 Smoothed Particle Hydrodynamics (TLSPH) simulation with TrixiParticles.jl.
 This method is used to simulate an elastic structure.
 """
-function benchmark_tlsph(neighborhood_search, coordinates; parallel = true)
+function benchmark_tlsph(neighborhood_search, coordinates;
+                         parallelization_backend = default_backend(coordinates))
     material = (density = 1000.0, E = 1.4e6, nu = 0.4)
     solid = InitialCondition(; coordinates, density = material.density, mass = 0.1)
 
