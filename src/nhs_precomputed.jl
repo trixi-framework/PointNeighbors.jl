@@ -118,8 +118,9 @@ end
         pos_diff = point_coords - neighbor_coords
         distance2 = dot(pos_diff, pos_diff)
 
-        pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
-                                                        periodic_box)
+        pos_diff,
+        distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                              periodic_box)
 
         distance = sqrt(distance2)
 
