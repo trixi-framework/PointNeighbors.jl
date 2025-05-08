@@ -222,7 +222,9 @@ function max_points_per_cell(cells)
     return 100
 end
 
-@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Tuple)
+@inline function check_cell_bounds(cell_list::FullGridCellList{<:DynamicVectorOfVectors{<:Any,
+                                                                                        <:Array}},
+                                   cell::Tuple)
     (; linear_indices) = cell_list
 
     # Make sure that points are not added to the outer padding layer, which is needed
@@ -235,10 +237,10 @@ end
     end
 end
 
-# On GPUs, we can't throw a proper error message because string interpolation is not allowed
-@inline function check_cell_bounds(cell_list::FullGridCellList{<:DynamicVectorOfVectors{<:Any,
-                                                                                        <:AbstractGPUArray}},
-                                   cell::Tuple)
+# On GPUs, we can't throw a proper error message because string interpolation is not
+# allowed. Note that we cannot dispatch on `AbstractGPUArray`, as we are inside a kernel,
+# so the array types are something like `CuDeviceArray`, which is not an `AbstractGPUArray`.
+@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Tuple)
     (; linear_indices) = cell_list
 
     # Make sure that points are not added to the outer padding layer, which is needed
