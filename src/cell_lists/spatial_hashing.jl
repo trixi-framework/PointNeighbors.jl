@@ -49,8 +49,8 @@ function construct_backend(::Type{SpatialHashingCellList},
                            max_points_per_cell) where {T}
     cells = DynamicVectorOfVectors{T}(max_outer_length = size,
                                       max_inner_length = max_points_per_cell)
-    # Do I still need that resize?                                  
-    resize!(cells, prod(size))
+    # Do I still need that resize?  
+    resize!(cells, size)
 
     return cells
 end
