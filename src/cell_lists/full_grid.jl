@@ -246,22 +246,6 @@ end
     # Make sure that points are not added to the outer padding layer, which is needed
     # to ensure that neighboring cells in all directions of all non-empty cells exist.
     if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
-        size_ = [2:(size(linear_indices, i) - 1) for i in eachindex(cell)]
-        print_size_ = "[$(join(size_, ", "))]"
-        error("particle coordinates are NaN or outside the domain bounds of the cell list\n" *
-              "cell $cell is out of bounds for cell grid of size $print_size_")
-    end
-end
-
-# On GPUs, we can't throw a proper error message because string interpolation is not allowed
-@inline function check_cell_bounds(cell_list::FullGridCellList{<:DynamicVectorOfVectors{<:Any,
-                                                                                        <:AbstractGPUArray}},
-                                   cell::Tuple)
-    (; linear_indices) = cell_list
-
-    # Make sure that points are not added to the outer padding layer, which is needed
-    # to ensure that neighboring cells in all directions of all non-empty cells exist.
-    if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
         error("particle coordinates are NaN or outside the domain bounds of the cell list")
     end
 end
