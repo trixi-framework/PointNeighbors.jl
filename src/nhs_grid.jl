@@ -307,7 +307,7 @@ end
 # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                                  SemiParallelUpdate},
-                                     y, parallelization_backend) where {T}
+                                     y, parallelization_backend)
     (; cell_list) = neighborhood_search
 
     # `each_cell_index(cell_list)` might return a `KeySet`, which has to be `collect`ed
@@ -320,7 +320,7 @@ end
 
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                                  SerialIncrementalUpdate},
-                                     y, _) where {T}
+                                     y, _)
     (; cell_list) = neighborhood_search
 
     # Ignore the parallelization backend here for `SerialIncrementalUpdate`.
