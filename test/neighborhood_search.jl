@@ -184,7 +184,11 @@
                                                                            max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
-                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points)
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = PointNeighbors.P4estCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius))
             ]
 
             names = [
@@ -195,7 +199,8 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelIncrementalUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
-                "`PrecomputedNeighborhoodSearch`"
+                "`PrecomputedNeighborhoodSearch`",
+                "`GridNeighborhoodSearch` with `P4estCellList`"
             ]
 
             # Also test copied templates
@@ -214,7 +219,9 @@
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
-                PrecomputedNeighborhoodSearch{NDIMS}()
+                PrecomputedNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(cell_list = PointNeighbors.P4estCellList(; min_corner,
+                                                                           max_corner))
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
