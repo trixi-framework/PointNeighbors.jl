@@ -14,8 +14,8 @@ function benchmark_wcsph(neighborhood_search, coordinates;
     density = 1000.0
     fluid = InitialCondition(; coordinates, density, mass = 0.1)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
@@ -45,7 +45,9 @@ function benchmark_wcsph(neighborhood_search, coordinates;
 
     # Initialize the system
     TrixiParticles.initialize!(system, nhs)
-    TrixiParticles.compute_pressure!(system, v)
+    # Note that the third argument is supposed to be the semidiscretization, but it is only
+    # used for `@threaded`, so we can just pass `v` instead.
+    TrixiParticles.compute_pressure!(system, v, v)
 
     return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
 end
@@ -61,8 +63,9 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
     density = 1000.0f0
     fluid = InitialCondition(; coordinates, density, mass = 0.1f0)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = convert(Float32, PointNeighbors.search_radius(neighborhood_search))
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = convert(Float32,
+                               PointNeighbors.search_radius(neighborhood_search) / 2)
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
@@ -110,8 +113,8 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     material = (density = 1000.0, E = 1.4e6, nu = 0.4)
     solid = InitialCondition(; coordinates, density = material.density, mass = 0.1)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
