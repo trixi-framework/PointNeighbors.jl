@@ -2,6 +2,7 @@
 # after running only this file.
 using Test: @test, @testset, @test_throws
 using PointNeighbors
+import P4estTypes
 
 """
     @trixi_testset "name of the testset" #= code to test #=
