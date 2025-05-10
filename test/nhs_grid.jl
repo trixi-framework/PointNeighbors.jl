@@ -7,7 +7,7 @@
         @test_throws "ParallelUpdate() $error_str" GridNeighborhoodSearch{2}(update_strategy = ParallelUpdate())
 
         nhs = GridNeighborhoodSearch{3}(update_strategy = SerialUpdate())
-        nhs2 = @test_nowarn_mod PointNeighbors.Adapt.adapt_structure(Array, nhs)
+        nhs2 = @trixi_test_nowarn PointNeighbors.Adapt.adapt_structure(Array, nhs)
 
         @test nhs2.update_strategy == nhs.update_strategy
     end

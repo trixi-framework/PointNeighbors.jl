@@ -29,11 +29,11 @@
             @test_throws error_string initialize!(nhs, y, y)
 
             y[1, 7] = 0.0
-            @test_nowarn_mod initialize!(nhs, y, y)
-            @test_nowarn_mod update!(nhs, y, y)
+            @trixi_test_nowarn initialize!(nhs, y, y)
+            @trixi_test_nowarn update!(nhs, y, y)
 
             y[1, 7] = 10.0
-            @test_nowarn_mod update!(nhs, y, y)
+            @trixi_test_nowarn update!(nhs, y, y)
 
             y[1, 7] = NaN
             @test_throws error_string update!(nhs, y, y)
