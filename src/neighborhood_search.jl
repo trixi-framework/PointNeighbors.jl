@@ -253,3 +253,9 @@ end
 @inline function periodic_coords(coords, periodic_box::Nothing)
     return coords
 end
+
+function CellListMapNeighborhoodSearch(NDIMS; search_radius = 1.0,
+                                       points_equal_neighbors = false)
+    error("CellListMap.jl has to be imported to use `CellListMapNeighborhoodSearch`. " *
+          "If you did import CellListMap.jl, please try `]instantiate`.")
+end
