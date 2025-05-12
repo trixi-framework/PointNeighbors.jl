@@ -19,7 +19,7 @@
         end
 
         @testset verbose=true "`benchmark_wcsph_fp32`" begin
-            @test_nowarn_mod plot_benchmarks(benchmark_wcsph_fp32, size, 2)
+            @trixi_test_nowarn plot_benchmarks(benchmark_wcsph_fp32, size, 2)
         end
 
         @testset verbose=true "`benchmark_tlsph`" begin
