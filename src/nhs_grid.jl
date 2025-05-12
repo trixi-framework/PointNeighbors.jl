@@ -421,8 +421,8 @@ end
 
     cell = cell_coords(point_coords, neighborhood_search)
 
-    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
-        neighbor_cell = Tuple(neighbor_cell_)
+    for neighbor_cell in neighboring_cells(cell, neighborhood_search)
+        # neighbor_cell = Tuple(neighbor_cell_)
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
 
         for neighbor_ in eachindex(neighbors)
@@ -452,6 +452,10 @@ end
 end
 
 @inline function neighboring_cells(cell, neighborhood_search)
+    return neighboring_cells(cell, neighborhood_search, neighborhood_search.cell_list)
+end
+
+@inline function neighboring_cells(cell, neighborhood_search, _)
     NDIMS = ndims(neighborhood_search)
 
     # For `cell = (x, y, z)`, this returns Cartesian indices
