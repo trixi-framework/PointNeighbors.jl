@@ -30,10 +30,16 @@ end
 
 @inline Base.ndims(::TrivialNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
-@inline initialize!(search::TrivialNeighborhoodSearch, x, y) = search
+@inline requires_update(::TrivialNeighborhoodSearch) = (false, false)
+
+@inline function initialize!(search::TrivialNeighborhoodSearch, x, y;
+                             parallelization_backend = default_backend(x))
+    return search
+end
 
 @inline function update!(search::TrivialNeighborhoodSearch, x, y;
-                         points_moving = (true, true), parallelization_backend = x)
+                         points_moving = (true, true),
+                         parallelization_backend = default_backend(x))
     return search
 end
 

@@ -123,11 +123,11 @@
         ]
 
         seeds = [1, 2]
-        name(size, seed) = "$(length(size))D with $(prod(size)) Particles " *
-                           "($(seed == 1 ? "`initialize!`" : "`update!`"))"
+        name(size,
+             seed) = "$(length(size))D with $(prod(size)) Particles " *
+                     "($(seed == 1 ? "`initialize!`" : "`update!`"))"
         @testset verbose=true "$(name(cloud_size, seed)))" for cloud_size in cloud_sizes,
                                                                seed in seeds
-
             coords = point_cloud(cloud_size, seed = seed)
             NDIMS = length(cloud_size)
             n_points = size(coords, 2)
@@ -145,8 +145,10 @@
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
             foreach_point_neighbor(coords, coords, trivial_nhs,
-                                   parallel = false) do point, neighbor,
-                                                        pos_diff, distance
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbor,
+                                                                                 pos_diff,
+                                                                                 distance
                 append!(neighbors_expected[point], neighbor)
             end
 
@@ -159,12 +161,19 @@
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               update_strategy = SemiParallelUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              update_strategy = SerialIncrementalUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               update_strategy = SerialUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            search_radius),
                                               update_strategy = ParallelUpdate()),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius),
+                                              update_strategy = ParallelIncrementalUpdate()),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
@@ -180,8 +189,10 @@
 
             names = [
                 "`GridNeighborhoodSearch` with `SemiParallelUpdate`",
+                "`GridNeighborhoodSearch` with `SerialIncrementalUpdate`",
                 "`GridNeighborhoodSearch` with `SerialUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelUpdate`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelIncrementalUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`"
@@ -190,9 +201,13 @@
             # Also test copied templates
             template_nhs = [
                 GridNeighborhoodSearch{NDIMS}(),
+                GridNeighborhoodSearch{NDIMS}(update_strategy = SerialIncrementalUpdate()),
                 GridNeighborhoodSearch{NDIMS}(update_strategy = SerialUpdate()),
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner)),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner),
+                                              update_strategy = ParallelIncrementalUpdate()),
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner),
                                               update_strategy = SemiParallelUpdate()),
@@ -223,8 +238,10 @@
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
                 foreach_point_neighbor(coords, coords, nhs,
-                                       parallel = false) do point, neighbor,
-                                                            pos_diff, distance
+                                       parallelization_backend = SerialBackend()) do point,
+                                                                                     neighbor,
+                                                                                     pos_diff,
+                                                                                     distance
                     append!(neighbors[point], neighbor)
                 end
 

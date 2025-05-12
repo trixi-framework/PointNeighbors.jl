@@ -3,7 +3,18 @@ abstract type AbstractNeighborhoodSearch end
 @inline search_radius(search::AbstractNeighborhoodSearch) = search.search_radius
 
 """
-    initialize!(search::AbstractNeighborhoodSearch, x, y)
+    requires_update(search::AbstractNeighborhoodSearch)
+
+Returns a tuple `(x_changed, y_changed)` indicating if this type of neighborhood search
+requires an update when the coordinates of the points in `x` or `y` change.
+"""
+function requires_update(::AbstractNeighborhoodSearch)
+    error("`requires_update` not implemented for this neighborhood search.")
+end
+
+"""
+    initialize!(search::AbstractNeighborhoodSearch, x, y;
+                parallelization_backend = default_backend(x))
 
 Initialize a neighborhood search with the two coordinate arrays `x` and `y`.
 
@@ -12,19 +23,27 @@ all points in `y` whose distances to that point are smaller than the search radi
 `x` and `y` are expected to be matrices, where the `i`-th column contains the coordinates
 of point `i`. Note that `x` and `y` can be identical.
 
+If the neighborhood search type supports parallelization, the keyword argument
+`parallelization_backend` can be used to specify a parallelization backend.
+See [`@threaded`](@ref) for a list of available backends.
+
 See also [`update!`](@ref).
 """
-@inline initialize!(search::AbstractNeighborhoodSearch, x, y) = search
+@inline function initialize!(search::AbstractNeighborhoodSearch, x, y;
+                             parallelization_backend = default_backend(x))
+    return search
+end
 
 """
-    update!(search::AbstractNeighborhoodSearch, x, y; points_moving = (true, true))
+    update!(search::AbstractNeighborhoodSearch, x, y; points_moving = (true, true),
+            parallelization_backend = default_backend(x))
 
 Update an already initialized neighborhood search with the two coordinate arrays `x` and `y`.
 
-Like [`initialize!`](@ref), but reusing the existing data structures of the already
-initialized neighborhood search.
+Like [`initialize!`](@ref), but potentially reusing the existing data structures
+of the already initialized neighborhood search.
 When the points only moved a small distance since the last `update!` or `initialize!`,
-this is significantly faster than `initialize!`.
+this can be significantly faster than `initialize!`.
 
 Not all implementations support incremental updates.
 If incremental updates are not possible for an implementation, `update!` will fall back
@@ -36,20 +55,15 @@ in this case to avoid unnecessary updates.
 The first flag in `points_moving` indicates if points in `x` are moving.
 The second flag indicates if points in `y` are moving.
 
-!!! warning "Experimental Feature: Backend Specification"
-    The keyword argument `parallelization_backend` allows users to specify the
-    multithreading backend. This feature is currently considered experimental!
-
-    Possible parallelization backends are:
-    - [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
-    - [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
-    - [`PolyesterBackend`](@ref) to use `Polyester.@batch`
-    - `KernelAbstractions.Backend` to launch a GPU kernel
+If the neighborhood search type supports parallelization, the keyword argument
+`parallelization_backend` can be used to specify a parallelization backend.
+See [`@threaded`](@ref) for a list of available backends.
 
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
-                         points_moving = (true, true), parallelization_backend = x)
+                         points_moving = (true, true),
+                         parallelization_backend = default_backend(x))
     return search
 end
 
@@ -109,7 +123,8 @@ end
 
 """
     foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search;
-                           points = axes(system_coords, 2), parallel = true)
+                           parallelization_backend = default_backend(system_coords),
+                           points = axes(system_coords, 2))
 
 Loop for each point in `system_coords` over all points in `neighbor_coords` whose distances
 to that point are smaller than the search radius and execute the function `f(i, j, pos_diff, d)`,
@@ -120,10 +135,12 @@ where
   (`system_coords[:, i]`) and ``y`` the coordinates of the neighbor (`neighbor_coords[:, j]`),
 - `d` the distance between `x` and `y`.
 
-The `neighborhood_search` must have been initialized or updated with `system_coords`
-as first coordinate array and `neighbor_coords` as second coordinate array.
-
 Note that `system_coords` and `neighbor_coords` can be identical.
+
+!!! warning
+    The `neighborhood_search` must have been initialized or updated with `system_coords`
+    as first coordinate array and `neighbor_coords` as second coordinate array.
+    This can be skipped for certain implementations. See [`requires_update`](@ref).
 
 # Arguments
 - `f`: The function explained above.
@@ -135,40 +152,26 @@ Note that `system_coords` and `neighbor_coords` can be identical.
 
 # Keywords
 - `points`: Loop over these point indices. By default all columns of `system_coords`.
-- `parallel=true`: Run the outer loop over `points` thread-parallel.
+- `parallelization_backend`: Run the outer loop over `points` in parallel with the
+                             specified backend. By default, the backend is selected
+                             automatically based on the type of `system_coords`.
+                             See [`@threaded`](@ref) for a list of available backends.
 
 See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
-                                parallel::Union{Bool, ParallelizationBackend} = true,
+                                parallelization_backend::ParallelizationBackend = default_backend(system_coords),
                                 points = axes(system_coords, 2)) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
     # and heavily impact performance.
     # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
-    if parallel isa Bool
-        # When `false` is passed, run serially. When `true` is passed, run either a
-        # threaded loop with `Polyester.@batch`, or, when `system_coords` is a GPU array,
-        # launch the loop as a kernel on the GPU.
-        parallel_ = Val(parallel)
-    elseif parallel isa ParallelizationBackend
-        # When a `KernelAbstractions.Backend` is passed, launch the loop as a GPU kernel
-        # on this backend. This is useful to test the GPU code on the CPU by passing
-        # `parallel = KernelAbstractions.CPU()`, even though `system_coords isa Array`.
-        parallel_ = parallel
-    end
 
-    foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search, points,
-                           parallel_)
-end
-
-@inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
-                                        neighborhood_search, points, parallel::Val{true})
     # Explicit bounds check before the hot loop (or GPU kernel)
     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
-    @threaded system_coords for point in points
-        # Now we can assume that `point` is inbounds
+    @threaded parallelization_backend for point in points
+        # Now we can safely assume that `point` is inbounds
         @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
                                    neighborhood_search, point)
     end
@@ -176,51 +179,41 @@ end
     return nothing
 end
 
-# When a `KernelAbstractions.Backend` is passed, launch a GPU kernel on this backend
-@inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
-                                        neighborhood_search, points,
-                                        backend::ParallelizationBackend)
-    # Explicit bounds check before the hot loop (or GPU kernel)
-    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+@propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
+                                              neighborhood_search::AbstractNeighborhoodSearch,
+                                              point;
+                                              search_radius = search_radius(neighborhood_search))
+    # Due to https://github.com/JuliaLang/julia/issues/30411, we cannot just remove
+    # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
+    # We have to use `@propagate_inbounds`, which will also remove boundschecks
+    # in the neighbor loop, which is not safe (see comment below).
+    # To avoid this, we have to use a function barrier to disable the `@inbounds` again.
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
 
-    @threaded backend for point in points
-        # Now we can assume that `point` is inbounds
-        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
-                                   neighborhood_search, point)
-    end
-
-    return nothing
+    foreach_neighbor(f, neighbor_system_coords, neighborhood_search,
+                     point, point_coords, search_radius)
 end
 
-@inline function foreach_point_neighbor(f, system_coords, neighbor_coords,
-                                        neighborhood_search, points, parallel::Val{false})
-    # Explicit bounds check before the hot loop
-    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
-
-    for point in points
-        # Now we can assume that `point` is inbounds
-        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
-                                   neighborhood_search, point)
-    end
-
-    return nothing
-end
-
-@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
-                                  neighborhood_search, point;
-                                  search_radius = search_radius(neighborhood_search))
+# This is the generic function that is called for `TrivialNeighborhoodSearch`.
+# For `GridNeighborhoodSearch`, a specialized function is used for slightly better
+# performance. `PrecomputedNeighborhoodSearch` can skip the distance check altogether.
+@inline function foreach_neighbor(f, neighbor_system_coords,
+                                  neighborhood_search::AbstractNeighborhoodSearch,
+                                  point, point_coords, search_radius)
     (; periodic_box) = neighborhood_search
 
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
     for neighbor in eachneighbor(point_coords, neighborhood_search)
+        # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
+        # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
         neighbor_coords = extract_svector(neighbor_system_coords,
                                           Val(ndims(neighborhood_search)), neighbor)
 
         pos_diff = point_coords - neighbor_coords
         distance2 = dot(pos_diff, pos_diff)
 
-        pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
-                                                        periodic_box)
+        pos_diff,
+        distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                              periodic_box)
 
         if distance2 <= search_radius^2
             distance = sqrt(distance2)
