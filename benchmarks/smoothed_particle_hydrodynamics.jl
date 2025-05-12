@@ -2,6 +2,24 @@ using PointNeighbors
 using TrixiParticles
 using BenchmarkTools
 
+# Create a dummy semidiscretization type to be able to use a specific neighborhood search
+struct DummySemidiscretization{N, P}
+    neighborhood_search     :: N
+    parallelization_backend :: P
+end
+
+@inline function PointNeighbors.parallel_foreach(f, iterator, semi::DummySemidiscretization)
+    PointNeighbors.parallel_foreach(f, iterator, semi.parallelization_backend)
+end
+
+@inline function TrixiParticles.get_neighborhood_search(_, _, semi::DummySemidiscretization)
+    return semi.neighborhood_search
+end
+
+@inline function TrixiParticles.get_neighborhood_search(_, semi::DummySemidiscretization)
+    return semi.neighborhood_search
+end
+
 """
     benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
 
@@ -14,8 +32,8 @@ function benchmark_wcsph(neighborhood_search, coordinates;
     density = 1000.0
     fluid = InitialCondition(; coordinates, density, mass = 0.1)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
@@ -37,6 +55,7 @@ function benchmark_wcsph(neighborhood_search, coordinates;
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
+    semi = DummySemidiscretization(nhs, parallelization_backend)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
                                    vcat(fluid.velocity, fluid.density'))
@@ -44,10 +63,10 @@ function benchmark_wcsph(neighborhood_search, coordinates;
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(system, nhs)
-    TrixiParticles.compute_pressure!(system, v)
+    TrixiParticles.initialize!(system, semi)
+    TrixiParticles.compute_pressure!(system, v, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
 end
 
 """
@@ -61,8 +80,9 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
     density = 1000.0f0
     fluid = InitialCondition(; coordinates, density, mass = 0.1f0)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = convert(Float32, PointNeighbors.search_radius(neighborhood_search))
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = convert(Float32,
+                               PointNeighbors.search_radius(neighborhood_search) / 2)
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
@@ -80,11 +100,13 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
     fluid_system = WeaklyCompressibleSPHSystem(fluid, fluid_density_calculator,
                                                state_equation, smoothing_kernel,
                                                smoothing_length, viscosity = viscosity,
-                                               acceleration = (0.0f0, 0.0f0, 0.0f0),
+                                               acceleration = ntuple(_ -> 0.0f0,
+                                                                     Val(ndims(neighborhood_search))),
                                                density_diffusion = density_diffusion)
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
+    semi = DummySemidiscretization(nhs, parallelization_backend)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
                                    vcat(fluid.velocity, fluid.density'))
@@ -92,10 +114,10 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(system, nhs)
-    TrixiParticles.compute_pressure!(system, v)
+    TrixiParticles.initialize!(system, semi)
+    TrixiParticles.compute_pressure!(system, v, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
 end
 
 """
@@ -110,8 +132,8 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     material = (density = 1000.0, E = 1.4e6, nu = 0.4)
     solid = InitialCondition(; coordinates, density = material.density, mass = 0.1)
 
-    # Compact support == smoothing length for the Wendland kernel
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search)
+    # Compact support == 2 * smoothing length for these kernels
+    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
@@ -120,14 +142,15 @@ function benchmark_tlsph(neighborhood_search, coordinates;
 
     solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
                                             material.E, material.nu)
+    semi = DummySemidiscretization(neighborhood_search, parallelization_backend)
 
     v = copy(solid.velocity)
     u = copy(solid.coordinates)
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(solid_system, neighborhood_search)
+    TrixiParticles.initialize!(solid_system, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $neighborhood_search,
-                                              $solid_system, $solid_system)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u,
+                                              $solid_system, $solid_system, $semi)
 end
