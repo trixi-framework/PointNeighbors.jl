@@ -61,7 +61,7 @@ function initialize!(search::PrecomputedNeighborhoodSearch,
     initialize!(neighborhood_search, x, y; eachindex_y, parallelization_backend)
 
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                               parallelization_backend)
+                               parallelization_backend, eachindex_y)
 end
 
 # WARNING! Experimental feature:
