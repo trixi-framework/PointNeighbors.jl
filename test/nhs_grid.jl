@@ -7,7 +7,7 @@
         @test_throws "ParallelUpdate() $error_str" GridNeighborhoodSearch{2}(update_strategy = ParallelUpdate())
 
         nhs = GridNeighborhoodSearch{3}(update_strategy = SerialUpdate())
-        nhs2 = @test_nowarn_mod PointNeighbors.Adapt.adapt_structure(Array, nhs)
+        nhs2 = @trixi_test_nowarn PointNeighbors.Adapt.adapt_structure(Array, nhs)
 
         @test nhs2.update_strategy == nhs.update_strategy
     end
@@ -167,8 +167,7 @@
         coordinates2 = coordinates1 .+ [1.4, -3.5, 0.8]
 
         # Update neighborhood search
-        coords_fun2(i) = coordinates2[:, i]
-        update_grid!(nhs1, coords_fun2)
+        update_grid!(nhs1, coordinates2)
 
         # Get each neighbor for updated NHS
         neighbors2 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs1)))

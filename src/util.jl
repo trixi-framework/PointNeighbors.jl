@@ -36,6 +36,13 @@ end
 abstract type AbstractThreadingBackend end
 
 """
+    SerialBackend()
+
+Pass as first argument to the [`@threaded`](@ref) macro to run the loop serially.
+"""
+struct SerialBackend <: AbstractThreadingBackend end
+
+"""
     PolyesterBackend()
 
 Pass as first argument to the [`@threaded`](@ref) macro to make the loop multithreaded
@@ -63,32 +70,41 @@ struct ThreadsStaticBackend <: AbstractThreadingBackend end
 const ParallelizationBackend = Union{AbstractThreadingBackend, KernelAbstractions.Backend}
 
 """
-    @threaded x for ... end
+    default_backend(x)
 
-Run either a threaded CPU loop or launch a kernel on the GPU, depending on the type of `x`.
+Select the recommended backend for an array `x`.
+This allows to write generic code that works for both CPU and GPU arrays.
+
+The default backend for CPU arrays is currently `PolyesterBackend()`.
+For GPU arrays, the respective `KernelAbstractions.Backend` is returned.
+"""
+@inline default_backend(::AbstractArray) = PolyesterBackend()
+@inline default_backend(x::AbstractGPUArray) = KernelAbstractions.get_backend(x)
+@inline default_backend(x::DynamicVectorOfVectors) = default_backend(x.backend)
+
+"""
+    @threaded backend for ... end
+
+Run either a threaded CPU loop or launch a kernel on the GPU, depending on the `backend`.
 Semantically the same as `Threads.@threads` when iterating over a `AbstractUnitRange`
 but without guarantee that the underlying implementation uses `Threads.@threads`
 or works for more general `for` loops.
 
-The first argument must either be a parallelization backend (see below) or an array from
-which the backend can be derived to determine if the loop must be run threaded on the CPU
-or launched as a kernel on the GPU. Passing `KernelAbstractions.CPU()` will run the GPU
-kernel on the CPU.
-
 Possible parallelization backends are:
+- [`SerialBackend`](@ref) to disable multithreading
 - [`PolyesterBackend`](@ref) to use `Polyester.@batch`
 - [`ThreadsDynamicBackend`](@ref) to use `Threads.@threads :dynamic`
 - [`ThreadsStaticBackend`](@ref) to use `Threads.@threads :static`
-- `KernelAbstractions.Backend` to execute the loop as a GPU kernel
+- Any `KernelAbstractions.Backend` to execute the loop as a GPU kernel
 
-In particular, the underlying threading capabilities might be provided by other packages
-such as [Polyester.jl](https://github.com/JuliaSIMD/Polyester.jl).
+Use `default_backend(x)` to select the recommended backend for an array `x`.
+This allows to write generic code that works for both CPU and GPU arrays.
 
 !!! warning "Warning"
     This macro does not necessarily work for general `for` loops. For example,
     it does not necessarily support general iterables such as `eachline(filename)`.
 """
-macro threaded(system, expr)
+macro threaded(backend, expr)
     # Reverse-engineer the for loop.
     # `expr.args[1]` is the head of the for loop, like `i = eachindex(x)`.
     # So, `expr.args[1].args[2]` is the iterator `eachindex(x)`
@@ -100,37 +116,42 @@ macro threaded(system, expr)
     # Assemble the `for` loop again as a call to `parallel_foreach`, using `$i` to use the
     # same loop variable as used in the for loop.
     return esc(quote
-                   PointNeighbors.parallel_foreach($iterator, $system) do $i
+                   PointNeighbors.parallel_foreach($iterator, $backend) do $i
                        $inner_loop
                    end
                end)
 end
 
-# Use `Polyester.@batch` for low-overhead threading
-# This is currently the default when x::Array
-@inline function parallel_foreach(f, iterator, x)
+# Serial loop
+@inline function parallel_foreach(f, iterator, ::SerialBackend)
+    for i in iterator
+        @inline f(i)
+    end
+end
+
+# Use `Polyester.@batch`
+@inline function parallel_foreach(f, iterator, ::PolyesterBackend)
     Polyester.@batch for i in iterator
         @inline f(i)
     end
 end
 
 # Use `Threads.@threads :dynamic`
-@inline function parallel_foreach(f, iterator, x::ThreadsDynamicBackend)
+@inline function parallel_foreach(f, iterator, ::ThreadsDynamicBackend)
     Threads.@threads :dynamic for i in iterator
         @inline f(i)
     end
 end
 
 # Use `Threads.@threads :static`
-@inline function parallel_foreach(f, iterator, x::ThreadsStaticBackend)
+@inline function parallel_foreach(f, iterator, ::ThreadsStaticBackend)
     Threads.@threads :static for i in iterator
         @inline f(i)
     end
 end
 
 # On GPUs, execute `f` inside a GPU kernel with KernelAbstractions.jl
-@inline function parallel_foreach(f, iterator,
-                                  x::Union{AbstractGPUArray, KernelAbstractions.Backend})
+@inline function parallel_foreach(f, iterator, backend::KernelAbstractions.Backend)
     # On the GPU, we can only loop over `1:N`. Therefore, we loop over `1:length(iterator)`
     # and index with `iterator[eachindex(iterator)[i]]`.
     # Note that this only works with vector-like iterators that support arbitrary indexing.
@@ -139,8 +160,6 @@ end
 
     # Skip empty loops
     ndrange == 0 && return
-
-    backend = KernelAbstractions.get_backend(x)
 
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.

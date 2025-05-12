@@ -131,11 +131,11 @@
         ]
 
         seeds = [1, 2]
-        name(size, seed) = "$(length(size))D with $(prod(size)) Particles " *
-                           "($(seed == 1 ? "`initialize!`" : "`update!`"))"
+        name(size,
+             seed) = "$(length(size))D with $(prod(size)) Particles " *
+                     "($(seed == 1 ? "`initialize!`" : "`update!`"))"
         @testset verbose=true "$(name(cloud_size, seed)))" for cloud_size in cloud_sizes,
                                                                seed in seeds
-
             coords = point_cloud(cloud_size, seed = seed)
             NDIMS = length(cloud_size)
             n_points = size(coords, 2)
@@ -153,8 +153,10 @@
             neighbors_expected = [Int[] for _ in axes(coords, 2)]
 
             foreach_point_neighbor(coords, coords, trivial_nhs,
-                                   parallel = false) do point, neighbor,
-                                                        pos_diff, distance
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbor,
+                                                                                 pos_diff,
+                                                                                 distance
                 append!(neighbors_expected[point], neighbor)
             end
 
@@ -250,8 +252,10 @@
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
                 foreach_point_neighbor(coords, coords, nhs,
-                                       parallel = false) do point, neighbor,
-                                                            pos_diff, distance
+                                       parallelization_backend = SerialBackend()) do point,
+                                                                                     neighbor,
+                                                                                     pos_diff,
+                                                                                     distance
                     append!(neighbors[point], neighbor)
                 end
 
