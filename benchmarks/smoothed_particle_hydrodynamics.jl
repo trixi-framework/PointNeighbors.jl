@@ -63,11 +63,10 @@ function benchmark_wcsph(neighborhood_search, coordinates;
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(system, nhs)
+    TrixiParticles.initialize!(system, semi)
     TrixiParticles.compute_pressure!(system, v, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs,
-                                              $system, $system, $semi)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
 end
 
 """
@@ -114,10 +113,10 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(system, nhs)
+    TrixiParticles.initialize!(system, semi)
     TrixiParticles.compute_pressure!(system, v, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
 end
 
 """
@@ -149,8 +148,8 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(solid_system, neighborhood_search)
+    TrixiParticles.initialize!(solid_system, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $neighborhood_search,
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u,
                                               $solid_system, $solid_system, $semi)
 end
