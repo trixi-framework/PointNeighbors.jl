@@ -100,7 +100,8 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
     fluid_system = WeaklyCompressibleSPHSystem(fluid, fluid_density_calculator,
                                                state_equation, smoothing_kernel,
                                                smoothing_length, viscosity = viscosity,
-                                               acceleration = (0.0f0, 0.0f0, 0.0f0),
+                                               acceleration = ntuple(_ -> 0.0f0,
+                                                                     Val(ndims(neighborhood_search))),
                                                density_diffusion = density_diffusion)
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
