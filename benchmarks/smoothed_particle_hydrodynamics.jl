@@ -2,6 +2,24 @@ using PointNeighbors
 using TrixiParticles
 using BenchmarkTools
 
+# Create a dummy semidiscretization type to be able to use a specific neighborhood search
+struct DummySemidiscretization{N, P}
+    neighborhood_search     :: N
+    parallelization_backend :: P
+end
+
+@inline function PointNeighbors.parallel_foreach(f, iterator, semi::DummySemidiscretization)
+    PointNeighbors.parallel_foreach(f, iterator, semi.parallelization_backend)
+end
+
+@inline function TrixiParticles.get_neighborhood_search(_, _, semi::DummySemidiscretization)
+    return semi.neighborhood_search
+end
+
+@inline function TrixiParticles.get_neighborhood_search(_, semi::DummySemidiscretization)
+    return semi.neighborhood_search
+end
+
 """
     benchmark_wcsph(neighborhood_search, coordinates; parallel = true)
 
@@ -37,6 +55,7 @@ function benchmark_wcsph(neighborhood_search, coordinates;
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
+    semi = DummySemidiscretization(nhs, parallelization_backend)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
                                    vcat(fluid.velocity, fluid.density'))
@@ -45,11 +64,10 @@ function benchmark_wcsph(neighborhood_search, coordinates;
 
     # Initialize the system
     TrixiParticles.initialize!(system, nhs)
-    # Note that the third argument is supposed to be the semidiscretization, but it is only
-    # used for `@threaded`, so we can just pass `v` instead.
-    TrixiParticles.compute_pressure!(system, v, v)
+    TrixiParticles.compute_pressure!(system, v, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
+    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs,
+                                              $system, $system, $semi)
 end
 
 """
@@ -88,6 +106,7 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
+    semi = DummySemidiscretization(nhs, parallelization_backend)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
                                    vcat(fluid.velocity, fluid.density'))
@@ -96,7 +115,7 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
 
     # Initialize the system
     TrixiParticles.initialize!(system, nhs)
-    TrixiParticles.compute_pressure!(system, v)
+    TrixiParticles.compute_pressure!(system, v, semi)
 
     return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $nhs, $system, $system)
 end
@@ -123,6 +142,7 @@ function benchmark_tlsph(neighborhood_search, coordinates;
 
     solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
                                             material.E, material.nu)
+    semi = DummySemidiscretization(neighborhood_search, parallelization_backend)
 
     v = copy(solid.velocity)
     u = copy(solid.coordinates)
@@ -132,5 +152,5 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     TrixiParticles.initialize!(solid_system, neighborhood_search)
 
     return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $neighborhood_search,
-                                              $solid_system, $solid_system)
+                                              $solid_system, $solid_system, $semi)
 end

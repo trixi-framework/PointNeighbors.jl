@@ -18,6 +18,10 @@
             @test_nowarn_mod plot_benchmarks(benchmark_wcsph, size, 2)
         end
 
+        @testset verbose=true "`benchmark_wcsph_fp32`" begin
+            @test_nowarn_mod plot_benchmarks(benchmark_wcsph_fp32, size, 2)
+        end
+
         @testset verbose=true "`benchmark_tlsph`" begin
             @test_nowarn_mod plot_benchmarks(benchmark_tlsph, size, 2)
         end
