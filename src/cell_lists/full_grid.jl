@@ -72,32 +72,6 @@ function FullGridCellList(; min_corner, max_corner,
     return FullGridCellList(cells, linear_indices, min_corner, max_corner)
 end
 
-function construct_backend(::Type{FullGridCellList}, ::Type{Vector{Vector{T}}}, size,
-                           max_points_per_cell) where {T}
-    return [T[] for _ in 1:prod(size)]
-end
-
-function construct_backend(::Type{FullGridCellList}, ::Type{DynamicVectorOfVectors{T}},
-                           size,
-                           max_points_per_cell) where {T}
-    cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size),
-                                      max_inner_length = max_points_per_cell)
-    resize!(cells, prod(size))
-
-    return cells
-end
-
-# When `typeof(cell_list.cells)` is passed, we don't pass the type
-# `DynamicVectorOfVectors{T}`, but a type `DynamicVectorOfVectors{T1, T2, T3, T4}`.
-# While `A{T} <: A{T1, T2}`, this doesn't hold for the types.
-# `Type{A{T}} <: Type{A{T1, T2}}` is NOT true.
-function construct_backend(cell_list::Type{<:AbstractCellList},
-                           ::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, size,
-                           max_points_per_cell) where {T1, T2, T3, T4}
-    return construct_backend(cell_list, DynamicVectorOfVectors{T1}, size,
-                             max_points_per_cell)
-end
-
 @inline function cell_coords(coords, periodic_box::Nothing, cell_list::FullGridCellList,
                              cell_size)
     (; min_corner) = cell_list
@@ -253,10 +227,4 @@ end
     if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
         error("particle coordinates are NaN or outside the domain bounds of the cell list")
     end
-end
-
-@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Integer)
-    (; cells) = cell_list
-
-    checkbounds(cells, cell)
 end

@@ -39,22 +39,6 @@ function SpatialHashingCellList{NDIMS}(list_size,
                                   typeof(collisions)}(cells, coords, collisions, list_size)
 end
 
-function construct_backend(::Type{SpatialHashingCellList}, ::Type{Vector{Vector{T}}}, size,
-                           max_points_per_cell) where {T}
-    return [T[] for _ in 1:size]
-end
-
-function construct_backend(::Type{SpatialHashingCellList},
-                           ::Type{DynamicVectorOfVectors{T}}, size,
-                           max_points_per_cell) where {T}
-    cells = DynamicVectorOfVectors{T}(max_outer_length = size,
-                                      max_inner_length = max_points_per_cell)
-    # Do I still need that resize?  
-    resize!(cells, size)
-
-    return cells
-end
-
 function Base.empty!(cell_list::SpatialHashingCellList)
     (; list_size) = cell_list
     NDIMS = ndims(cell_list)
@@ -76,8 +60,8 @@ function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     NDIMS = ndims(cell_list)
     hash_key = spatial_hash(cell, list_size)
 
-    # Do I need that @boundscheck?
-    # @boundscheck check_cell_bounds(cell_list, cell)
+    # Correct to use hash key? 
+    @boundscheck check_cell_bounds(cell_list, hash_key)
     @inbounds pushat!(cells, hash_key, point)
 
     cell_coord = coords[hash_key]
