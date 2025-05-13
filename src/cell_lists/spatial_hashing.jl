@@ -17,6 +17,14 @@ struct SpatialHashingCellList{NDIMS, CL, CI, CF} <: AbstractCellList
     coords     :: CI
     collisions :: CF
     list_size  :: Int
+
+    # This constructor is necessary for Adapt.jl to work with this struct
+    function SpatialHashingCellList(cells, coords::AbstractVector{<:NTuple{NDIMS}},
+                                    collisions, list_size) where {NDIMS}
+        return new{NDIMS, typeof(cells),
+                   typeof(coords), typeof(collisions)}(cells, coords,
+                                                       collisions, list_size)
+    end
 end
 
 @inline index_type(::SpatialHashingCellList) = Int32
@@ -35,8 +43,7 @@ function SpatialHashingCellList{NDIMS}(list_size,
     collisions = [false for _ in 1:list_size]
     coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
 
-    return SpatialHashingCellList{NDIMS, typeof(cells), typeof(coords),
-                                  typeof(collisions)}(cells, coords, collisions, list_size)
+    return SpatialHashingCellList(cells, coords, collisions, list_size)
 end
 
 function Base.empty!(cell_list::SpatialHashingCellList)
