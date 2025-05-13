@@ -314,7 +314,7 @@ end
     # Use chunks (usually one per thread) to index into the update buffer.
     # We cannot use `Iterators.partition` here, since the resulting iterator does not
     # support indexing and therefore cannot be used in a threaded loop.
-    chunk_length = div(length(eachcell), length(update_buffer))
+    chunk_length = div(length(eachcell), length(update_buffer), RoundUp)
 
     @threaded parallelization_backend for chunk_id in 1:length(update_buffer)
         # Manual partitioning of `eachcell`
