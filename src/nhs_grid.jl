@@ -215,7 +215,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     @boundscheck checkbounds(y, eachindex_y)
 
     # Ignore the parallelization backend here. This cannot be parallelized.
-    for point in axes(y, 2)
+    for point in eachindex_y
         # Get cell index of the point's cell
         point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
         cell = cell_coords(point_coords, neighborhood_search)
@@ -267,7 +267,11 @@ function update!(neighborhood_search::GridNeighborhoodSearch,
 end
 
 # Update only with neighbor coordinates
-function update_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
+function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
+                                                                        SerialIncrementalUpdate},
+                                                 GridNeighborhoodSearch{<:Any,
+                                                                        SemiParallelUpdate}},
+                      y::AbstractMatrix;
                       parallelization_backend = default_backend(y),
                       eachindex_y = axes(y, 2))
     (; cell_list, update_buffer) = neighborhood_search
