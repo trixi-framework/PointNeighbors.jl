@@ -51,7 +51,7 @@
             cell2_hash = PointNeighbors.spatial_hash(cell2, n_points)
             points1 = nhs.cell_list[cell1]
             points2 = nhs.cell_list[cell2]
-            
+
             @test points1 == points2 == [1, 2]
             @test cell1_hash == cell2_hash
         end

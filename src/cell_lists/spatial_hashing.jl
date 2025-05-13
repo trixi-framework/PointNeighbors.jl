@@ -3,9 +3,9 @@
 
 A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells, 
 and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell 
-[as described by Ihmsen et al. (2001)](@cite Ihmsen2003). By using a hash map, which only stores non-empty cells, 
-the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles to balance memory consumption  
-against the likelihood of hash collisions.
+[as described by Ihmsen et al. (2001)](@cite Ihmsen2003). By using a hash map that stores entries only for non-empty cells, 
+the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles
+to balance memory consumption against the likelihood of hash collisions.
 
 # Arguments
 - `NDIMS::Int`: Number of spatial dimensions (e.g., `2` or `3`).
