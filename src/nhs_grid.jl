@@ -267,9 +267,9 @@ function update!(neighborhood_search::GridNeighborhoodSearch,
 end
 
 # Update only with neighbor coordinates
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS}, y::AbstractMatrix;
+function update_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
                       parallelization_backend = default_backend(y),
-                      eachindex_y = axes(y, 2)) where {NDIMS}
+                      eachindex_y = axes(y, 2))
     (; cell_list, update_buffer) = neighborhood_search
 
     if eachindex_y != axes(y, 2)
@@ -316,19 +316,30 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS}, y::Abs
     return neighborhood_search
 end
 
-# The type annotation is to make Julia specialize on the type of the function.
-# Otherwise, unspecialized code will cause a lot of allocations and heavily impact performance.
-# See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
 @inline function mark_changed_cells!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                                  SemiParallelUpdate},
                                      y, parallelization_backend)
-    (; cell_list) = neighborhood_search
+    (; cell_list, update_buffer) = neighborhood_search
 
     # `each_cell_index(cell_list)` might return a `KeySet`, which has to be `collect`ed
-    # first to be able to be used in a threaded loop. This function takes care of that.
-    @threaded parallelization_backend for cell_index in
-                                          each_cell_index_threadable(cell_list)
-        mark_changed_cell!(neighborhood_search, cell_index, y)
+    # first to support indexing.
+    eachcell = each_cell_index_threadable(cell_list)
+
+    # Use chunks (usually one per thread) to index into the update buffer.
+    # We cannot use `Iterators.partition` here, since the resulting iterator does not
+    # support indexing and therefore cannot be used in a threaded loop.
+    chunk_length = div(length(eachcell), length(update_buffer), RoundUp)
+
+    @threaded parallelization_backend for chunk_id in 1:length(update_buffer)
+        # Manual partitioning of `eachcell`
+        start = (chunk_length * (chunk_id - 1)) + 1
+        end_ = min(chunk_length * chunk_id, length(eachcell))
+
+        for i in start:end_
+            cell_index = eachcell[i]
+
+            mark_changed_cell!(neighborhood_search, cell_index, y, chunk_id)
+        end
     end
 end
 
@@ -339,11 +350,12 @@ end
 
     # Ignore the parallelization backend here for `SerialIncrementalUpdate`.
     for cell_index in each_cell_index(cell_list)
-        mark_changed_cell!(neighborhood_search, cell_index, y)
+        # `chunk_id` is always `1` for `SerialIncrementalUpdate`
+        mark_changed_cell!(neighborhood_search, cell_index, y, 1)
     end
 end
 
-@inline function mark_changed_cell!(neighborhood_search, cell_index, y)
+@inline function mark_changed_cell!(neighborhood_search, cell_index, y, chunk_id)
     (; cell_list, update_buffer) = neighborhood_search
 
     for point in cell_list[cell_index]
@@ -355,7 +367,7 @@ end
         # These can be identical (see `DictionaryCellList`).
         if !is_correct_cell(cell_list, cell, cell_index)
             # Mark this cell and continue with the next one
-            pushat!(update_buffer, Threads.threadid(), cell_index)
+            pushat!(update_buffer, chunk_id, cell_index)
             break
         end
     end
