@@ -145,7 +145,7 @@
         @test neighbors5 == [36, 37, 38, 43, 44, 45]
     end
 
-    @testset "Rectangular Point Cloud 3D" begin
+    @testset verbose=true "Rectangular Point Cloud 3D" begin
         #### Setup
         # Rectangle of equidistantly spaced points
         # from (x, y, z) = (-0.25, -0.25, -0.25) to (x, y, z) = (0.35, 0.35, 0.35).
@@ -188,6 +188,36 @@
         @test neighbors3 ==
               [115, 116, 117, 122, 123, 124, 129, 130, 131, 164, 165, 166, 171, 172,
             173, 178, 179, 180, 213, 214, 215, 220, 221, 222, 227, 228, 229]
+
+        update_strategies = (SerialUpdate(), ParallelUpdate())
+        @testset verbose=true "eachindex_y $update_strategy" for update_strategy in
+                                                                 update_strategies
+            # Test that `eachindex_y` is passed correctly to the neighborhood search.
+            # This requires `SerialUpdate` or `ParallelUpdate`.
+            min_corner = min.(minimum(coordinates1, dims = 2),
+                              minimum(coordinates2, dims = 2))
+            max_corner = max.(maximum(coordinates1, dims = 2),
+                              maximum(coordinates2, dims = 2))
+            cell_list = FullGridCellList(; min_corner, max_corner, search_radius)
+            nhs2 = GridNeighborhoodSearch{3}(; search_radius, n_points, update_strategy,
+                                             cell_list)
+
+            # Initialize with all points
+            initialize!(nhs2, coordinates1, coordinates1)
+
+            # Update with a subset of points
+            update!(nhs2, coordinates2, coordinates2; eachindex_y = 120:220)
+
+            neighbors2 = sort(collect(PointNeighbors.eachneighbor(point_position1, nhs2)))
+            neighbors3 = sort(collect(PointNeighbors.eachneighbor(point_position2, nhs2)))
+
+            # Check that the neighbors are the intersection of the previous neighbors
+            # with the `eachindex_y` range.
+            @test neighbors2 == Int[]
+            @test neighbors3 ==
+                  [122, 123, 124, 129, 130, 131, 164, 165, 166, 171, 172, 173,
+                178, 179, 180, 213, 214, 215, 220]
+        end
     end
 
     @testset verbose=true "Periodicity" begin

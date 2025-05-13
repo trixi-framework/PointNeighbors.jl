@@ -14,7 +14,8 @@ end
 
 """
     initialize!(search::AbstractNeighborhoodSearch, x, y;
-                parallelization_backend = default_backend(x))
+                parallelization_backend = default_backend(x),
+                eachindex_y = axes(y, 2))
 
 Initialize a neighborhood search with the two coordinate arrays `x` and `y`.
 
@@ -27,16 +28,21 @@ If the neighborhood search type supports parallelization, the keyword argument
 `parallelization_backend` can be used to specify a parallelization backend.
 See [`@threaded`](@ref) for a list of available backends.
 
+Optionally, when points in `y` are to be ignored, the keyword argument `eachindex_y` can be
+passed to specify the indices of the points in `y` that are to be used.
+
 See also [`update!`](@ref).
 """
 @inline function initialize!(search::AbstractNeighborhoodSearch, x, y;
-                             parallelization_backend = default_backend(x))
+                             parallelization_backend = default_backend(x),
+                             eachindex_y = axes(y, 2))
     return search
 end
 
 """
     update!(search::AbstractNeighborhoodSearch, x, y; points_moving = (true, true),
-            parallelization_backend = default_backend(x))
+            parallelization_backend = default_backend(x),
+            eachindex_y = axes(y, 2))
 
 Update an already initialized neighborhood search with the two coordinate arrays `x` and `y`.
 
@@ -59,11 +65,15 @@ If the neighborhood search type supports parallelization, the keyword argument
 `parallelization_backend` can be used to specify a parallelization backend.
 See [`@threaded`](@ref) for a list of available backends.
 
+Optionally, when points in `y` are to be ignored, the keyword argument `eachindex_y` can be
+passed to specify the indices of the points in `y` that are to be used.
+
 See also [`initialize!`](@ref).
 """
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
                          points_moving = (true, true),
-                         parallelization_backend = default_backend(x))
+                         parallelization_backend = default_backend(x),
+                         eachindex_y = axes(y, 2))
     return search
 end
 
