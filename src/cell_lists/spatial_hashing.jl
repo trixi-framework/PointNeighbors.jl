@@ -32,7 +32,7 @@ end
 @inline Base.ndims(::SpatialHashingCellList{NDIMS}) where {NDIMS} = NDIMS
 
 function supported_update_strategies(::SpatialHashingCellList)
-    return (SerialUpdate,)
+    return (SerialUpdate, ParallelUpdate)
 end
 
 function SpatialHashingCellList{NDIMS}(list_size,
@@ -80,6 +80,28 @@ function push_cell!(cell_list::SpatialHashingCellList, cell, point)
         collisions[hash_key] = true
     end
 end
+
+function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
+    (; cells, coords, collisions, list_size) = cell_list
+    NDIMS = ndims(cell_list)
+    hash_key = spatial_hash(cell, list_size)
+
+    # Correct to use hash key? 
+    @boundscheck check_cell_bounds(cell_list, hash_key)
+    @inbounds pushat_atomic!(cells, hash_key, point)
+
+    cell_coord = coords[hash_key]
+    if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
+        # If this cell is not used yet, set cell coordinates
+        # Atomix.@atomic coords[hash_key] = cell
+        coords[hash_key] = cell
+    elseif cell_coord != cell
+        # If it is already used by a different cell, mark as collision
+        # Atomix.@atomic collisions[hash_key] = true
+        collisions[hash_key] = true
+    end
+end
+
 
 function deleteat_cell!(cell_list::SpatialHashingCellList, cell, i)
     deleteat!(cell_list[cell], i)
