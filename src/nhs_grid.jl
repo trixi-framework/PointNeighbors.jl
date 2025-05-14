@@ -376,6 +376,10 @@ end
     end
 end
 
+# TODO `cell_list.cells.lengths` and `cell_list.cells.backend` are hardcoded
+# for `FullGridCellList` and `SpatialHashingCellList`, which are currently
+# the only implementations supporting this update strategy.
+
 # Fully parallel update with atomic push.
 # See the warning above. `parallelization_backend = nothing` will use `Polyester.@batch`.
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
