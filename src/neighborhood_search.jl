@@ -35,7 +35,7 @@ See also [`update!`](@ref).
 """
 @inline function initialize!(search::AbstractNeighborhoodSearch, x, y;
                              parallelization_backend = default_backend(x),
-                             eachindex_y = axes(y, 2))
+                             eachindex_y = axes(y, 2), points_active = nothing)
     return search
 end
 
@@ -73,7 +73,7 @@ See also [`initialize!`](@ref).
 @inline function update!(search::AbstractNeighborhoodSearch, x, y;
                          points_moving = (true, true),
                          parallelization_backend = default_backend(x),
-                         eachindex_y = axes(y, 2))
+                         eachindex_y = axes(y, 2), points_active = nothing)
     return search
 end
 
