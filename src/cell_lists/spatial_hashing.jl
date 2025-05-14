@@ -102,7 +102,6 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
     end
 end
 
-
 function deleteat_cell!(cell_list::SpatialHashingCellList, cell, i)
     deleteat!(cell_list[cell], i)
 end
