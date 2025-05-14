@@ -54,14 +54,14 @@ end
 function initialize!(search::PrecomputedNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
-                     eachindex_y = axes(y, 2))
+                     eachindex_y = axes(y, 2), points_active = nothing)
     (; neighborhood_search, neighbor_lists) = search
 
     # Initialize grid NHS
     initialize!(neighborhood_search, x, y; eachindex_y, parallelization_backend)
 
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                               parallelization_backend, eachindex_y)
+                               parallelization_backend, eachindex_y, points_active)
 end
 
 # WARNING! Experimental feature:
