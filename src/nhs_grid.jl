@@ -219,7 +219,8 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
         # This check is optimized away when `points_active` is `nothing`
         if point_active(points_active, point)
             # Get cell index of the point's cell
-            point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+            point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)),
+                                                     point)
             cell = cell_coords(point_coords, neighborhood_search)
 
             # Add point to corresponding cell
@@ -250,7 +251,8 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
         # This check is optimized away when `points_active` is `nothing`
         if point_active(points_active, point)
             # Get cell index of the point's cell
-            point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+            point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)),
+                                                     point)
             cell = cell_coords(point_coords, neighborhood_search)
 
             # Add point to corresponding cell

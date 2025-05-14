@@ -186,7 +186,7 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
         if point_active(points_active, point)
             # After the explicit boundscheck, we can safely assume that `point` is inbounds
             @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
-                                    neighborhood_search, point)
+                                       neighborhood_search, point)
         end
     end
 
