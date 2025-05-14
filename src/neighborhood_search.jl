@@ -171,7 +171,8 @@ See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
-                                points = axes(system_coords, 2)) where {T}
+                                points = axes(system_coords, 2),
+                                points_active = nothing) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
     # and heavily impact performance.
@@ -181,13 +182,19 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     @threaded parallelization_backend for point in points
-        # Now we can safely assume that `point` is inbounds
-        @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
-                                   neighborhood_search, point)
+        # This check is optimized away when `points_active` is `nothing`
+        if point_active(points_active, point)
+            # After the explicit boundscheck, we can safely assume that `point` is inbounds
+            @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+                                    neighborhood_search, point)
+        end
     end
 
     return nothing
 end
+
+@inline point_active(::Nothing, _) = true
+@inline point_active(points_active, point) = points_active[point]
 
 @propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
                                               neighborhood_search::AbstractNeighborhoodSearch,
