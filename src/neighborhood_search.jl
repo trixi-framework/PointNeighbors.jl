@@ -194,7 +194,7 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
 end
 
 @inline point_active(::Nothing, _) = true
-@inline point_active(points_active, point) = points_active[point]
+@inline point_active(points_active, point) = points_active[point] == true
 
 @propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
                                               neighborhood_search::AbstractNeighborhoodSearch,
