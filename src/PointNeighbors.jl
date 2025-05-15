@@ -22,7 +22,7 @@ include("gpu.jl")
 
 export foreach_point_neighbor, foreach_neighbor
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
-export DictionaryCellList, FullGridCellList
+export DictionaryCellList, FullGridCellList, SpatialHashingCellList
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
 export requires_update
