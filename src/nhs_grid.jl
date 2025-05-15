@@ -195,8 +195,9 @@ end
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
-                     eachindex_y = axes(y, 2))
-    initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
+                     eachindex_y = axes(y, 2), points_active = nothing)
+    initialize_grid!(neighborhood_search, y; parallelization_backend,
+                     eachindex_y, points_active)
 end
 
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
