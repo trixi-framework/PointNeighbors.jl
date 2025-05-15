@@ -132,11 +132,10 @@
 
         seeds = [1, 2]
         name(size,
-        seed) = "$(length(size))D with $(prod(size)) Particles " *
-                "($(seed == 1 ? "`initialize!`" : "`update!`"))"
+             seed) = "$(length(size))D with $(prod(size)) Particles " *
+                     "($(seed == 1 ? "`initialize!`" : "`update!`"))"
         @testset verbose=true "$(name(cloud_size, seed)))" for cloud_size in cloud_sizes,
                                                                seed in seeds
-
             coords = point_cloud(cloud_size, seed = seed)
             NDIMS = length(cloud_size)
             n_points = size(coords, 2)

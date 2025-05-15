@@ -397,12 +397,13 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
     # We can work around this by using the old lengths.
     # TODO this is hardcoded for the `FullGridCellList`
     @threaded parallelization_backend for i in eachindex(update_buffer,
-                                                         cell_list.cells.lengths)
+                                                    cell_list.cells.lengths)
         update_buffer[i] = cell_list.cells.lengths[i]
     end
 
     # Add points to new cells
-    @threaded parallelization_backend for cell_index in each_cell_index_threadable(cell_list)
+    @threaded parallelization_backend for cell_index in
+                                          each_cell_index_threadable(cell_list)
         for i in 1:update_buffer[cell_index]
             point = cell_list.cells.backend[i, cell_index]
             point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
@@ -416,7 +417,8 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
     end
 
     # Remove points from old cells
-    @threaded parallelization_backend for cell_index in each_cell_index_threadable(cell_list)
+    @threaded parallelization_backend for cell_index in
+                                          each_cell_index_threadable(cell_list)
         points = cell_list[cell_index]
 
         # WARNING!!!
