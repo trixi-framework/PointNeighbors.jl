@@ -190,8 +190,7 @@
             173, 178, 179, 180, 213, 214, 215, 220, 221, 222, 227, 228, 229]
 
         update_strategies = (SerialUpdate(), ParallelUpdate())
-        @testset verbose=true "eachindex_y $update_strategy" for update_strategy in
-                                                                 update_strategies
+        @testset verbose=true "eachindex_y $update_strategy" for update_strategy in update_strategies
             # Test that `eachindex_y` is passed correctly to the neighborhood search.
             # This requires `SerialUpdate` or `ParallelUpdate`.
             min_corner = min.(minimum(coordinates1, dims = 2),
