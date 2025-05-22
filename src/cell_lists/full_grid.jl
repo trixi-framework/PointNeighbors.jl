@@ -60,7 +60,7 @@ function FullGridCellList(; min_corner, max_corner,
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
         cells = construct_backend(backend, 0, max_points_per_cell)
-        linear_indices = nothing
+        linear_indices = LinearIndices(ntuple(_ -> 0, length(min_corner)))
     else
         n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius)
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
