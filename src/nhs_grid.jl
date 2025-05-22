@@ -378,6 +378,9 @@ end
 end
 
 # Fully parallel incremental update with atomic push.
+# TODO `cell_list.cells.lengths` and `cell_list.cells.backend` are hardcoded
+# for `FullGridCellList` and `SpatialHashingCellList`, which are currently
+# the only implementations supporting this update strategy.
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                   ParallelIncrementalUpdate},
                       y::AbstractMatrix; parallelization_backend = default_backend(y),

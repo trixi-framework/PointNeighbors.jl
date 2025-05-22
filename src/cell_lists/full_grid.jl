@@ -59,38 +59,17 @@ function FullGridCellList(; min_corner, max_corner,
 
     if search_radius < eps()
         # Create an empty "template" cell list to be used with `copy_cell_list`
-        cells = construct_backend(backend, 0, max_points_per_cell)
+        cells = construct_backend(FullGridCellList, backend, 0, max_points_per_cell)
         linear_indices = LinearIndices(ntuple(_ -> 0, length(min_corner)))
     else
         n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius)
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
 
-        cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
+        cells = construct_backend(FullGridCellList, backend, n_cells_per_dimension,
+                                  max_points_per_cell)
     end
 
     return FullGridCellList(cells, linear_indices, min_corner, max_corner)
-end
-
-function construct_backend(::Type{Vector{Vector{T}}}, size, max_points_per_cell) where {T}
-    return [T[] for _ in 1:prod(size)]
-end
-
-function construct_backend(::Type{DynamicVectorOfVectors{T}}, size,
-                           max_points_per_cell) where {T}
-    cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size),
-                                      max_inner_length = max_points_per_cell)
-    resize!(cells, prod(size))
-
-    return cells
-end
-
-# When `typeof(cell_list.cells)` is passed, we don't pass the type
-# `DynamicVectorOfVectors{T}`, but a type `DynamicVectorOfVectors{T1, T2, T3, T4}`.
-# While `A{T} <: A{T1, T2}`, this doesn't hold for the types.
-# `Type{A{T}} <: Type{A{T1, T2}}` is NOT true.
-function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, size,
-                           max_points_per_cell) where {T1, T2, T3, T4}
-    return construct_backend(DynamicVectorOfVectors{T1}, size, max_points_per_cell)
 end
 
 @inline function cell_coords(coords, periodic_box::Nothing, cell_list::FullGridCellList,
@@ -248,10 +227,4 @@ end
     if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
         error("particle coordinates are NaN or outside the domain bounds of the cell list")
     end
-end
-
-@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Integer)
-    (; cells) = cell_list
-
-    checkbounds(cells, cell)
 end
