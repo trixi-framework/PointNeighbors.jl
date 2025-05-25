@@ -59,10 +59,16 @@ end
 @inline function pushat!(vov::DynamicVectorOfVectors, i, value)
     (; backend, lengths) = vov
 
+    # Outer bounds check
     @boundscheck checkbounds(vov, i)
 
+    lengths[i] += 1
+
+    # Inner bounds check
+    @boundscheck check_list_bounds(vov, i)
+
     # Activate new entry in column `i`
-    backend[lengths[i] += 1, i] = value
+    backend[lengths[i], i] = value
 
     return vov
 end
@@ -76,18 +82,31 @@ end
 @inline function pushat_atomic!(vov::DynamicVectorOfVectors, i, value)
     (; backend, lengths) = vov
 
+    # Outer bounds check
     @boundscheck checkbounds(vov, i)
 
     # Increment the column length with an atomic add to avoid race conditions.
     # Store the new value since it might be changed immediately afterwards by another
     # thread.
-    new_length = Atomix.@atomic lengths[i] += 1
+    new_length = @inbounds Atomix.@atomic lengths[i] += 1
+
+    # Inner bounds check
+    @boundscheck check_list_bounds(vov, i)
 
     # We can write here without race conditions, since the atomic add guarantees
     # that `new_length` is different for each thread.
-    backend[new_length, i] = value
+    @inbounds backend[new_length, i] = value
 
     return vov
+end
+
+@inline function check_list_bounds(vov::DynamicVectorOfVectors, i)
+    (; backend, lengths) = vov
+
+    if lengths[i] > size(backend, 1)
+        Atomix.@atomic lengths[i] -= 1
+        error("cell list is full. Use a larger `max_points_per_cell`.")
+    end
 end
 
 # `deleteat!(vov[i], j)`
@@ -101,10 +120,10 @@ end
 
     # Replace value to delete by the last value in this column
     last_value = backend[lengths[i], i]
-    backend[j, i] = last_value
+    @inbounds backend[j, i] = last_value
 
     # Remove the last value in this column
-    lengths[i] -= 1
+    @inbounds lengths[i] -= 1
 
     return vov
 end
