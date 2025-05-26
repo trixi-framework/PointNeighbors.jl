@@ -95,7 +95,7 @@ function run_benchmark_default(benchmark, n_points_per_dimension, iterations; kw
     ]
 
     names = ["GridNeighborhoodSearch";;
-             "GridNeighborhoodSearch with FullGridCellList";
+             "GridNeighborhoodSearch with FullGridCellList";;
              "PrecomputedNeighborhoodSearch"]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
