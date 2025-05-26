@@ -190,6 +190,16 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                                      max_neighbors)
 end
 
+@inline function freeze_neighborhood_search(search::PrecomputedNeighborhoodSearch)
+    # Indicate that the neighborhood search is static and will not be updated anymore.
+    # For the `PrecomputedNeighborhoodSearch`, strip the inner neighborhood search,
+    # which is used only for initialization and updating.
+    return PrecomputedNeighborhoodSearch{ndims(search)}(search.neighbor_lists,
+                                                        search.search_radius,
+                                                        search.periodic_box,
+                                                        nothing)
+end
+
 # TODO move to `vector_of_vectors.jl`
 function max_inner_length(cells::DynamicVectorOfVectors, fallback)
     return size(cells.backend, 1)

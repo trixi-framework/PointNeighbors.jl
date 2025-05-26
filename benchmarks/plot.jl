@@ -68,8 +68,10 @@ function plot_benchmarks(benchmark, n_points_per_dimension, iterations;
         for i in eachindex(neighborhood_searches)
             neighborhood_search = neighborhood_searches[i]
             initialize!(neighborhood_search, coordinates, coordinates)
+            # Remove unnecessary data structures that are only used for initialization
+            neighborhood_search_ = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
 
-            time = benchmark(neighborhood_search, coordinates; parallelization_backend)
+            time = benchmark(neighborhood_search_, coordinates; parallelization_backend)
             times[iter, i] = time
             time_string = BenchmarkTools.prettytime(time * 1e9)
             println("$(neighborhood_searches_names[i])")

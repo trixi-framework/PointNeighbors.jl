@@ -28,7 +28,7 @@ function Adapt.adapt_structure(to, nhs::PrecomputedNeighborhoodSearch)
     neighbor_lists = Adapt.adapt_structure(to, nhs.neighbor_lists)
     search_radius = Adapt.adapt_structure(to, nhs.search_radius)
     periodic_box = Adapt.adapt_structure(to, nhs.periodic_box)
-    neighborhood_search = nothing# Adapt.adapt_structure(to, nhs.neighborhood_search)
+    neighborhood_search = Adapt.adapt_structure(to, nhs.neighborhood_search)
 
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(neighbor_lists, search_radius,
                                                      periodic_box, neighborhood_search)
