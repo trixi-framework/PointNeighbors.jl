@@ -91,7 +91,7 @@ function run_benchmark_default(benchmark, n_points_per_dimension, iterations; kw
         GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
                                       cell_list = FullGridCellList(; search_radius = 0.0f0,
                                                                    min_corner, max_corner)),
-        PrecomputedNeighborhoodSearch{NDIMS}(),
+        PrecomputedNeighborhoodSearch{NDIMS}()
     ]
 
     names = ["GridNeighborhoodSearch";;
