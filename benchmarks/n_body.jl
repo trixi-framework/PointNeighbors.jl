@@ -2,7 +2,8 @@ using PointNeighbors
 using BenchmarkTools
 
 """
-    benchmark_n_body(neighborhood_search, coordinates; parallel = true)
+    benchmark_n_body(neighborhood_search, coordinates;
+                     parallelization_backend = default_backend(coordinates))
 
 A simple neighborhood search benchmark, computing the right-hand side of an n-body
 simulation with a cutoff (corresponding to the search radius of `neighborhood_search`).
@@ -16,7 +17,6 @@ function benchmark_n_body(neighborhood_search, coordinates_;
                           parallelization_backend = default_backend(coordinates_))
     # Passing a different backend like `CUDA.CUDABackend`
     # allows us to change the type of the array to run the benchmark on the GPU.
-    # Passing `parallel = true` or `parallel = false` will not change anything here.
     coordinates = PointNeighbors.Adapt.adapt(parallelization_backend, coordinates_)
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
 
