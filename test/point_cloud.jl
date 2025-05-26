@@ -18,6 +18,7 @@ function point_cloud(n_points_per_dimension;
     # corresponds to a standard deviation of 2 in the number of neighbors for a 300 x 100
     # grid, 1.6 for a 600 x 200 grid and 1.26 for a 1200 x 400 grid.
     # This is consistent with the standard deviation in a vortex street simulation.
+    # The benchmark results are also consistent with the timer output of the simulation.
     perturb!(coordinates, perturbation_factor_position * 0.05)
 
     return coordinates

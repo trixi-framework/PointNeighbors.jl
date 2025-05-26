@@ -57,7 +57,7 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
         coordinates ./= domain_size
 
         # Make this Float32 to make sure that Float32 benchmarks use Float32 exclusively
-        search_radius = 3.0f0 / domain_size
+        search_radius = 4.0f0 / domain_size
         n_particles = size(coordinates, 2)
 
         neighborhood_searches_copy = copy_neighborhood_search.(neighborhood_searches,
