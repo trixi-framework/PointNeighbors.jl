@@ -12,12 +12,12 @@ end
 
 # We need the prod() because FullGridCellList's size is a tuple of cells per dimension whereas
 # SpatialHashingCellList's size is an Integer for the number of cells in total.
-function construct_backend(::Type{<:AbstractCellList}, ::Type{Vector{Vector{T}}}, size,
+function construct_backend(::Any, ::Type{Vector{Vector{T}}}, size,
                            max_points_per_cell) where {T}
     return [T[] for _ in 1:prod(size)]
 end
 
-function construct_backend(::Type{<:AbstractCellList}, ::Type{DynamicVectorOfVectors{T}},
+function construct_backend(::Any, ::Type{DynamicVectorOfVectors{T}},
                            size,
                            max_points_per_cell) where {T}
     cells = DynamicVectorOfVectors{T}(max_outer_length = prod(size),
@@ -31,7 +31,7 @@ end
 # `DynamicVectorOfVectors{T}`, but a type `DynamicVectorOfVectors{T1, T2, T3, T4}`.
 # While `A{T} <: A{T1, T2}`, this doesn't hold for the types.
 # `Type{A{T}} <: Type{A{T1, T2}}` is NOT true.
-function construct_backend(cell_list::Type{<:AbstractCellList},
+function construct_backend(cell_list::Any,
                            ::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, size,
                            max_points_per_cell) where {T1, T2, T3, T4}
     return construct_backend(cell_list, DynamicVectorOfVectors{T1}, size,
