@@ -11,7 +11,6 @@ Adapt.@adapt_structure FullGridCellList
 Adapt.@adapt_structure SpatialHashingCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
 Adapt.@adapt_structure GridNeighborhoodSearch
-Adapt.@adapt_structure PrecomputedNeighborhoodSearch
 
 # `adapt(CuArray, ::SVector)::SVector`, but `adapt(Array, ::SVector)::Vector`.
 # We don't want to change the type of the `SVector` here.
@@ -23,4 +22,14 @@ end
 # We don't want to change the type of the `UnitRange` here.
 function Adapt.adapt_structure(to::typeof(Array), range::UnitRange)
     return range
+end
+
+function Adapt.adapt_structure(to, nhs::PrecomputedNeighborhoodSearch)
+    neighbor_lists = Adapt.adapt_structure(to, nhs.neighbor_lists)
+    search_radius = Adapt.adapt_structure(to, nhs.search_radius)
+    periodic_box = Adapt.adapt_structure(to, nhs.periodic_box)
+    neighborhood_search = nothing# Adapt.adapt_structure(to, nhs.neighborhood_search)
+
+    return PrecomputedNeighborhoodSearch{ndims(nhs)}(neighbor_lists, search_radius,
+                                                     periodic_box, neighborhood_search)
 end

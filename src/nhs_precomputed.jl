@@ -43,23 +43,32 @@ struct PrecomputedNeighborhoodSearch{NDIMS, NL, ELTYPE, PB, NHS} <:
     periodic_box        :: PB
     neighborhood_search :: NHS
 
-    function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
-                                                  periodic_box = nothing,
-                                                  update_strategy = nothing,
-                                                  update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(;
-                                                                                                             search_radius,
-                                                                                                             n_points,
-                                                                                                             periodic_box,
-                                                                                                             update_strategy),
-                                                  backend = DynamicVectorOfVectors{Int32},
-                                                  max_neighbors = 4 * NDIMS^4) where {NDIMS}
-        neighbor_lists = construct_backend(nothing, backend, n_points, max_neighbors)
-
-        new{NDIMS, typeof(neighbor_lists),
-            typeof(search_radius), typeof(periodic_box),
-            typeof(update_neighborhood_search)}(neighbor_lists, search_radius,
-                                                periodic_box, update_neighborhood_search)
+    function PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
+                                                  periodic_box,
+                                                  update_neighborhood_search) where {NDIMS}
+        return new{NDIMS, typeof(neighbor_lists),
+                   typeof(search_radius),
+                   typeof(periodic_box),
+                   typeof(update_neighborhood_search)}(neighbor_lists, search_radius,
+                                                       periodic_box,
+                                                       update_neighborhood_search)
     end
+end
+
+function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
+                                              periodic_box = nothing,
+                                              update_strategy = nothing,
+                                              update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(;
+                                                                                                         search_radius,
+                                                                                                         n_points,
+                                                                                                         periodic_box,
+                                                                                                         update_strategy),
+                                              backend = DynamicVectorOfVectors{Int32},
+                                              max_neighbors = 4 * NDIMS^4) where {NDIMS}
+    neighbor_lists = construct_backend(nothing, backend, n_points, max_neighbors)
+
+    PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
+                                         periodic_box, update_neighborhood_search)
 end
 
 @inline Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
