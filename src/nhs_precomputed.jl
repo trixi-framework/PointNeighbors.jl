@@ -127,10 +127,15 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
                                     neighborhood_search, x, y, parallelization_backend)
     resize!(neighbor_lists, size(x, 2))
 
+    # `Base.empty!.(neighbor_lists)`, but for all backends
+    @threaded parallelization_backend for i in eachindex(neighbor_lists)
+        emptyat!(neighbor_lists, i)
+    end
+
     # Fill neighbor lists
     foreach_point_neighbor(x, y, neighborhood_search;
                            parallelization_backend) do point, neighbor, _, _
-        push!(neighbor_lists[point], neighbor)
+        pushat!(neighbor_lists, point, neighbor)
     end
 end
 
