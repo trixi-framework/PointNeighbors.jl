@@ -192,15 +192,6 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
                             max_points_per_cell = max_points_per_cell(cell_list.cells))
 end
 
-function max_points_per_cell(cells::DynamicVectorOfVectors)
-    return size(cells.backend, 1)
-end
-
-# Fallback when backend is a `Vector{Vector{T}}`. Only used for copying the cell list.
-function max_points_per_cell(cells)
-    return 100
-end
-
 @inline function check_cell_bounds(cell_list::FullGridCellList{<:DynamicVectorOfVectors{<:Any,
                                                                                         <:Array}},
                                    cell::Tuple)

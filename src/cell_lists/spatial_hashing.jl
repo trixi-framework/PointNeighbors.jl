@@ -40,12 +40,15 @@ end
 
 @inline Base.ndims(::SpatialHashingCellList{NDIMS}) where {NDIMS} = NDIMS
 
-function supported_update_strategies(::SpatialHashingCellList{<:DynamicVectorOfVectors})
+function supported_update_strategies(::SpatialHashingCellList{NDIMS, CL, CI, CF}) where {NDIMS,
+                                                                                         CL <:
+                                                                                         DynamicVectorOfVectors,
+                                                                                         CI,
+                                                                                         CF}
     return (ParallelUpdate, SerialUpdate)
 end
-
 function supported_update_strategies(::SpatialHashingCellList)
-    return (SerialUpdate)
+    return (SerialUpdate;)
 end
 
 function SpatialHashingCellList{NDIMS}(list_size,
@@ -60,15 +63,15 @@ function SpatialHashingCellList{NDIMS}(list_size,
 end
 
 function Base.empty!(cell_list::SpatialHashingCellList)
-    (; list_size) = cell_list
+    (; cells) = cell_list
     NDIMS = ndims(cell_list)
 
     # `Base.empty!.(cells)`, but for all backends
-    for i in eachindex(cell_list.cells)
-        emptyat!(cell_list.cells, i)
+    @threaded default_backend(cells) for i in eachindex(cells)
+        emptyat!(cells, i)
     end
 
-    cell_list.coords .= [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
+    fill!(cell_list.coords, ntuple(_->typemin(Int), NDIMS))
     cell_list.collisions .= false
     return cell_list
 end
@@ -102,15 +105,15 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
     @boundscheck check_cell_bounds(cell_list, hash_key)
     @inbounds pushat_atomic!(cells, hash_key, point)
 
-    cell_coord = coords[hash_key]
+    cell_coord = @inbounds coords[hash_key]
     if cell_coord == ntuple(_ -> typemin(Int), NDIMS)
+        # Throws `bitcast: value not a primitive type`-error
+        # @inbounds Atomix.@atomic coords[hash_key] = cell
         # If this cell is not used yet, set cell coordinates
-        # Atomix.@atomic coords[hash_key] = cell
-        coords[hash_key] = cell
+        @inbounds coords[hash_key] = cell
     elseif cell_coord != cell
         # If it is already used by a different cell, mark as collision
-        # Atomix.@atomic collisions[hash_key] = true
-        collisions[hash_key] = true
+        @inbounds Atomix.@atomic collisions[hash_key] = true
     end
 end
 
@@ -125,8 +128,6 @@ function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
     (; list_size) = cell_list
     NDIMS = ndims(cell_list)
 
-    # Here I'm using max_points_per_cell which is defined in src/cell_lists/full_grid.jl 
-    # Think about putting it somewhere all cell list can access it or copying it here
     return SpatialHashingCellList{NDIMS}(list_size, typeof(cell_list.cells),
                                          max_points_per_cell(cell_list.cells))
 end

@@ -12,7 +12,7 @@ end
 
 # We need the prod() because FullGridCellList's size is a tuple of cells per dimension whereas
 # SpatialHashingCellList's size is an Integer for the number of cells in total.
-function construct_backend(::Type{<:AbstractCellList}, ::Type{Vector{Vector{T}}},
+function construct_backend(::Type{Vector{Vector{T}}},
                            max_outer_length,
                            max_inner_length) where {T}
     return [T[] for _ in 1:max_outer_length]
@@ -39,7 +39,15 @@ function construct_backend(cell_list::Type{<:AbstractCellList},
                              max_inner_length)
 end
 
+function max_points_per_cell(cells::DynamicVectorOfVectors)
+    return size(cells.backend, 1)
+end
+
+# Fallback when backend is a `Vector{Vector{T}}`. Only used for copying the cell list.
+function max_points_per_cell(cells)
+    return 100
+end
+
 include("dictionary.jl")
 include("full_grid.jl")
 include("spatial_hashing.jl")
-include("cell_lists_util.jl")

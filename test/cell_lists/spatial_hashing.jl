@@ -52,7 +52,7 @@
             points1 = nhs.cell_list[cell1]
             points2 = nhs.cell_list[cell2]
 
-            @test points1 == points2 == [1, 2]
+            @test sort(points1) == sort(points2) == [1, 2]
             @test cell1_hash == cell2_hash
         end
 
