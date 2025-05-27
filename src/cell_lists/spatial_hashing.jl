@@ -1,5 +1,7 @@
 """
-    SpatialHashingCellList{NDIMS}(; list_size)
+    SpatialHashingCellList{NDIMS}(; list_size, 
+                                    backend = DynamicVectorOfVectors{Int32},
+                                    max_points_per_cell = 100)
 
 A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells, 
 and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell, 
@@ -9,7 +11,14 @@ to balance memory consumption against the likelihood of hash collisions.
 
 # Arguments
 - `NDIMS::Int`: Number of spatial dimensions (e.g., `2` or `3`).
-- `list_size::Int`: Size of the hash map (e.g., `2 * n_points`) .
+- `list_size::Int`: Size of the hash map (e.g., `2 * n_points`).
+- `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the actual
+    cell lists. Can be
+    - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
+    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits.
+- `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
+                               allocate the `DynamicVectorOfVectors`. It is not used with
+                               the `Vector{Vector{Int32}}` backend.
 """
 
 struct SpatialHashingCellList{NDIMS, CL, CI, CF} <: AbstractCellList
@@ -31,8 +40,12 @@ end
 
 @inline Base.ndims(::SpatialHashingCellList{NDIMS}) where {NDIMS} = NDIMS
 
+function supported_update_strategies(::SpatialHashingCellList{<:DynamicVectorOfVectors})
+    return (ParallelUpdate, SerialUpdate)
+end
+
 function supported_update_strategies(::SpatialHashingCellList)
-    return (SerialUpdate, ParallelUpdate)
+    return (SerialUpdate)
 end
 
 function SpatialHashingCellList{NDIMS}(list_size,
@@ -86,7 +99,6 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
     NDIMS = ndims(cell_list)
     hash_key = spatial_hash(cell, list_size)
 
-    # Correct to use hash key? 
     @boundscheck check_cell_bounds(cell_list, hash_key)
     @inbounds pushat_atomic!(cells, hash_key, point)
 
@@ -147,4 +159,8 @@ function spatial_hash(cell::NTuple{3, Real}, list_size)
     i, j, k = cell
 
     return mod(xor(i * 73856093, j * 19349663, k * 83492791), list_size) + 1
+end
+
+@inline function check_cell_bounds(cell_list::SpatialHashingCellList, cell::Tuple)
+    check_cell_bounds(cell_list, spatial_hash(cell, cell_list.list_size))
 end

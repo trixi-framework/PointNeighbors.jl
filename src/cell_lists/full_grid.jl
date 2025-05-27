@@ -65,7 +65,7 @@ function FullGridCellList(; min_corner, max_corner,
         n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius)
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
 
-        cells = construct_backend(FullGridCellList, backend, n_cells_per_dimension,
+        cells = construct_backend(FullGridCellList, backend, prod(n_cells_per_dimension),
                                   max_points_per_cell)
     end
 
