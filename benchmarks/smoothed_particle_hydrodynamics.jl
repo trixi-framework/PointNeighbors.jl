@@ -115,7 +115,8 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     solid = InitialCondition(; coordinates, density = material.density, mass = 0.1)
 
     # Compact support == 2 * smoothing length for these kernels
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
+    smoothing_length_ = PointNeighbors.search_radius(neighborhood_search) / 2
+    smoothing_length = convert(typeof(material.E), smoothing_length_)
     if ndims(neighborhood_search) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
