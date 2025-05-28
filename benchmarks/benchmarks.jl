@@ -3,4 +3,4 @@ include("n_body.jl")
 include("smoothed_particle_hydrodynamics.jl")
 include("update.jl")
 
-include("plot.jl")
+include("run_benchmarks.jl")
