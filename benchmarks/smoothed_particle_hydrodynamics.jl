@@ -54,7 +54,9 @@ function benchmark_wcsph(neighborhood_search, coordinates;
                                                density_diffusion = density_diffusion)
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
-    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
+    # Remove unnecessary data structures that are only used for initialization
+    neighborhood_search_ = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
+    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search_)
     semi = DummySemidiscretization(nhs, parallelization_backend)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
@@ -105,7 +107,9 @@ function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
                                                density_diffusion = density_diffusion)
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
-    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
+    # Remove unnecessary data structures that are only used for initialization
+    neighborhood_search_ = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
+    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search_)
     semi = DummySemidiscretization(nhs, parallelization_backend)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
