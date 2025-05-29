@@ -227,21 +227,18 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
-# Initialize for StaticVectorOfVectors, since we don't support push()
-function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE,
-                                                                      PB, UB},
+# CompactVectorOfVectors
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate,
+                                                                      <:FullGridCellList{<:CompactVectorOfVectors}},
                           y::AbstractMatrix;
                           parallelization_backend = default_backend(y),
-                          eachindex_y = axes(y, 2)) where {C <: StaticVectorOfVectors,
-                                                           LI, MINC, MAXC,
-                                                           CL <:
-                                                           FullGridCellList{C, LI, MINC,
-                                                                            MAXC},
-                                                           NDIMS, US, ELTYPE, PB, UB}
-    @info "initialize_grid! with StaticVectorOfVectors"
-
+                          eachindex_y = axes(y, 2))
     (; cell_list) = neighborhood_search
-    (; cells) = cell_list
+
+    if eachindex_y != axes(y, 2)
+        # Incremental update doesn't support inactive points
+        error("this neighborhood search/update strategy does not support inactive points")
+    end
 
     if neighborhood_search.search_radius < eps()
         # Cannot initialize with zero search radius.
@@ -249,15 +246,8 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS, US,
         return neighborhood_search
     end
 
-    @boundscheck checkbounds(y, eachindex_y)
-    points = collect(eachindex_y)
-
-    function point_to_cell(point)
-        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
-        return cell_coords(point_coords, neighborhood_search)
-    end
-    update!(cells, point_to_cell)
-
+    resize!(cell_list.cells.values, size(y, 2))
+    cell_list.cells.values .= eachindex_y
     return neighborhood_search
 end
 
@@ -486,6 +476,25 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
     initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
 end
 
+# CompactVectorOfVectors
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate,
+                                                                  <:FullGridCellList{<:CompactVectorOfVectors}},
+                      y::AbstractMatrix; parallelization_backend = default_backend(y),
+                      eachindex_y = axes(y, 2))
+    if eachindex_y != axes(y, 2)
+        # Incremental update doesn't support inactive points
+        error("this neighborhood search/update strategy does not support inactive points")
+    end
+
+    @inline function point_to_cell(point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+        return PointNeighbors.cell_index(neighborhood_search.cell_list, cell)
+    end
+
+    update!(neighborhood_search.cell_list.cells, point_to_cell)
+end
+
 function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
     # This is only relevant for the `SpatialHashingCellList`
     return false
@@ -540,7 +549,6 @@ end
 
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
-
             # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
             # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
             neighbor_coords = extract_svector(neighbor_system_coords,

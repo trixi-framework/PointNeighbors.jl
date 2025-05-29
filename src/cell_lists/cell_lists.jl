@@ -10,25 +10,18 @@ abstract type AbstractCellList end
     checkbounds(cells, cell)
 end
 
-function construct_backend(::Type{<:AbstractCellList}, ::Type{Vector{Vector{T}}},
+function construct_backend(_, ::Type{Vector{Vector{T}}},
                            max_outer_length,
                            max_inner_length) where {T}
     return [T[] for _ in 1:max_outer_length]
 end
 
-function construct_backend(::Type{<:AbstractCellList}, ::Type{StaticVectorOfVectors{T}},
-                           max_outer_length,
-                           n_points) where {T}
-    cells = StaticVectorOfVectors{T}(n_values = n_points,
-                                     n_bins = max_outer_length)
-    # resize!(cells, max_outer_length)
-
-    return cells
+function construct_backend(_, ::Type{CompactVectorOfVectors{T}},
+                           max_outer_length, _) where {T}
+    return CompactVectorOfVectors{T}(n_bins = max_outer_length)
 end
 
-
-
-function construct_backend(::Type{<:AbstractCellList}, ::Type{DynamicVectorOfVectors{T}},
+function construct_backend(_, ::Type{DynamicVectorOfVectors{T}},
                            max_outer_length,
                            max_inner_length) where {T}
     cells = DynamicVectorOfVectors{T}(max_outer_length = max_outer_length,
@@ -42,10 +35,17 @@ end
 # `DynamicVectorOfVectors{T}`, but a type `DynamicVectorOfVectors{T1, T2, T3, T4}`.
 # While `A{T} <: A{T1, T2}`, this doesn't hold for the types.
 # `Type{A{T}} <: Type{A{T1, T2}}` is NOT true.
-function construct_backend(cell_list::Type{<:AbstractCellList},
-                           ::Type{DynamicVectorOfVectors{T1, T2, T3, T4}}, max_outer_length,
+function construct_backend(cell_list, ::Type{DynamicVectorOfVectors{T1, T2, T3, T4}},
+                           max_outer_length,
                            max_inner_length) where {T1, T2, T3, T4}
     return construct_backend(cell_list, DynamicVectorOfVectors{T1}, max_outer_length,
+                             max_inner_length)
+end
+
+function construct_backend(cell_list, ::Type{CompactVectorOfVectors{T1, T2, T3, T4}},
+                           max_outer_length,
+                           max_inner_length) where {T1, T2, T3, T4}
+    return construct_backend(cell_list, CompactVectorOfVectors{T1}, max_outer_length,
                              max_inner_length)
 end
 

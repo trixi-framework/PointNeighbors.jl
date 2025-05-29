@@ -41,6 +41,10 @@ function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors
             SerialIncrementalUpdate, SerialUpdate)
 end
 
+function supported_update_strategies(::FullGridCellList{<:CompactVectorOfVectors})
+    return (ParallelUpdate, SerialUpdate)
+end
+
 function supported_update_strategies(::FullGridCellList)
     return (SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate)
 end
@@ -186,7 +190,6 @@ end
 
 function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box)
     (; min_corner, max_corner) = cell_list
-
     return FullGridCellList(; min_corner, max_corner, search_radius,
                             backend = typeof(cell_list.cells),
                             max_points_per_cell = max_points_per_cell(cell_list.cells))
