@@ -57,6 +57,12 @@
                                                                            max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int32}})),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              periodic_box = periodic_boxes[i],
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                                      periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
@@ -70,6 +76,7 @@
                 "`GridNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `CompactVectorOfVectors`",
                 "`PrecomputedNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList`"
             ]
@@ -85,6 +92,10 @@
                                               cell_list = FullGridCellList(min_corner = periodic_boxes[i].min_corner,
                                                                            max_corner = periodic_boxes[i].max_corner,
                                                                            backend = Vector{Vector{Int32}})),
+                GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
+                                              cell_list = FullGridCellList(min_corner = periodic_boxes[i].min_corner,
+                                                                           max_corner = periodic_boxes[i].max_corner,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
                                               cell_list = SpatialHashingCellList{NDIMS}(2 *
@@ -101,6 +112,11 @@
                 nhs = neighborhood_searches[j]
 
                 initialize!(nhs, coords, coords)
+
+                if nhs isa GridNeighborhoodSearch && nhs.cell_list isa FullGridCellList &&
+                   nhs.cell_list.cells isa PointNeighbors.CompactVectorOfVectors
+                    update!(nhs, coords, coords)
+                end
 
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
@@ -121,7 +137,6 @@
             end
         end
     end
-
     @testset verbose=true "Compare Against `TrivialNeighborhoodSearch`" begin
         cloud_sizes = [
             (10, 11),
@@ -192,6 +207,11 @@
                                                                            max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = SpatialHashingCellList{NDIMS}(2 *
@@ -206,6 +226,7 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelIncrementalUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `CompactVectorOfVectors`",
                 "`PrecomputedNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList`"
             ]
@@ -226,6 +247,9 @@
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
                 GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(2 *
                                                                                         n_points))
@@ -245,7 +269,9 @@
                 # For other seeds, update with the correct coordinates.
                 # This way, we test only `initialize!` when `seed == 1`,
                 # and `initialize!` plus `update!` else.
-                if seed != 1
+                if seed != 1 ||
+                   (nhs isa GridNeighborhoodSearch && nhs.cell_list isa FullGridCellList &&
+                    nhs.cell_list.cells isa PointNeighbors.CompactVectorOfVectors)
                     update!(nhs, coords, coords)
                 end
 
