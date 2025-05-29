@@ -83,7 +83,6 @@ function push_cell!(cell_list::SpatialHashingCellList, cell, point)
     NDIMS = ndims(cell_list)
     hash_key = spatial_hash(cell, list_size)
 
-    # Correct to use hash key? 
     @boundscheck check_cell_bounds(cell_list, hash_key)
     @inbounds pushat!(cells, hash_key, point)
 

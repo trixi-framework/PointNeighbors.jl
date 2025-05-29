@@ -161,3 +161,69 @@ end
 
     return vov
 end
+
+# As opposed to `DynamicVectorOfVectors`, this data structure does not support
+# modifying operations like `push!`.
+# It can be updated by assigning each contained integer value a new bin index.
+mutable struct StaticVectorOfVectors{T, V, L, I}
+    backend         :: V # Vector{Int} containing all values sorted by bin
+    n_bins          :: L # Ref{Int32}: Number of bins
+    first_bin_index :: I # Vector{Int} containing the first index in `values` of each bin
+
+    # This constructor is necessary for Adapt.jl to work with this struct.
+    # See the comments in gpu.jl for more details.
+    function StaticVectorOfVectors(backend::V, n_bins::L, first_bin_index::I) where {T, V, L, I}
+        new{T,V,L,I}(backend, n_bins, first_bin_index)
+    end
+end
+
+# Outer constructor that only takes n_values and n_bins, leaves backend = nothing
+function StaticVectorOfVectors{T}(; n_bins::Int) where {T}
+    fbi = Vector{Int}(undef, n_bins)
+    fbi[1] = 1 # required for the update
+    backend = nothing
+    n_bins = Ref{Int32}(n_bins)
+
+    return StaticVectorOfVectors{T, typeof(backend), typeof(n_bins), typeof(first_bin_index)}(
+        backend,                # backend
+        n_bins,                 # n_bins
+        fbi                     # first_bin_index
+    )
+end
+
+@inline Base.size(vov::StaticVectorOfVectors) = (vov.n_bins[],)
+
+@inline function Base.getindex(vov::StaticVectorOfVectors, i)
+    (; backend, first_bin_index) = vov
+    
+    start = first_bin_index[i]
+
+    if i == length(first_bin_index)
+        return view(backend, start:length(backend))
+    end
+
+    stop = first_bin_index[i + 1] - 1
+
+    return view(backend, start:stop)
+end
+
+# Used to initialize the data 
+@inline function initialize!(vov::StaticVectorOfVectors, values)
+    vov.backend = values
+    return vov
+end
+
+@inline function update!(vov::StaticVectorOfVectors, f)
+    (; backend, first_bin_index, n_bins) = vov
+
+    # TODO figure out how to do that fast and on the GPU
+    sort!(backend, by = f)
+
+    # TODO figure out how to do that fast and on the GPU
+    n_particles_per_cell = [count(x -> f(x) == j, backend) for j in 1:n_bins[]]
+    # Add 1 since first_bin_index starts at 1
+    n_particles_per_cell[1] += 1
+
+    # TODO avoid allocations
+    first_bin_index[2:(end - 1)] .= cumsum(n_particles_per_cell)[1:(end - 1)]
+end

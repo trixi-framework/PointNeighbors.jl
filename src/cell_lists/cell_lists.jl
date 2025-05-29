@@ -10,13 +10,23 @@ abstract type AbstractCellList end
     checkbounds(cells, cell)
 end
 
-# We need the prod() because FullGridCellList's size is a tuple of cells per dimension whereas
-# SpatialHashingCellList's size is an Integer for the number of cells in total.
-function construct_backend(::Type{Vector{Vector{T}}},
+function construct_backend(::Type{<:AbstractCellList}, ::Type{Vector{Vector{T}}},
                            max_outer_length,
                            max_inner_length) where {T}
     return [T[] for _ in 1:max_outer_length]
 end
+
+function construct_backend(::Type{<:AbstractCellList}, ::Type{StaticVectorOfVectors{T}},
+                           max_outer_length,
+                           n_points) where {T}
+    cells = StaticVectorOfVectors{T}(n_values = n_points,
+                                     n_bins = max_outer_length)
+    # resize!(cells, max_outer_length)
+
+    return cells
+end
+
+
 
 function construct_backend(::Type{<:AbstractCellList}, ::Type{DynamicVectorOfVectors{T}},
                            max_outer_length,

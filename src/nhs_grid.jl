@@ -227,6 +227,40 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
+# Initialize for StaticVectorOfVectors, since we don't support push()
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE,
+                                                                      PB, UB},
+                          y::AbstractMatrix;
+                          parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2)) where {C <: StaticVectorOfVectors,
+                                                           LI, MINC, MAXC,
+                                                           CL <:
+                                                           FullGridCellList{C, LI, MINC,
+                                                                            MAXC},
+                                                           NDIMS, US, ELTYPE, PB, UB}
+    @info "initialize_grid! with StaticVectorOfVectors"
+
+    (; cell_list) = neighborhood_search
+    (; cells) = cell_list
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @boundscheck checkbounds(y, eachindex_y)
+    points = collect(eachindex_y)
+
+    function point_to_cell(point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        return cell_coords(point_coords, neighborhood_search)
+    end
+    update!(cells, point_to_cell)
+
+    return neighborhood_search
+end
+
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                       ParallelUpdate},
                           y::AbstractMatrix; parallelization_backend = default_backend(y),
