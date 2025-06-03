@@ -2,7 +2,8 @@ using PointNeighbors
 using BenchmarkTools
 
 """
-    benchmark_count_neighbors(neighborhood_search, coordinates; parallel = true)
+    benchmark_count_neighbors(neighborhood_search, coordinates;
+                              parallelization_backend = default_backend(coordinates))
 
 A very cheap and simple neighborhood search benchmark, only counting the neighbors of each
 point. For each point-neighbor pair, only an array entry is incremented.
