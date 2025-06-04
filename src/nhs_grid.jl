@@ -227,7 +227,6 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
-# CompactVectorOfVectors
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate,
                                                                       <:FullGridCellList{<:CompactVectorOfVectors}},
                           y::AbstractMatrix;
@@ -248,6 +247,10 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Par
 
     resize!(cell_list.cells.values, size(y, 2))
     cell_list.cells.values .= eachindex_y
+
+    point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
+    update!(cell_list.cells, point_to_cell)
+
     return neighborhood_search
 end
 
@@ -476,7 +479,6 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
     initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
 end
 
-# CompactVectorOfVectors
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate,
                                                                   <:FullGridCellList{<:CompactVectorOfVectors}},
                       y::AbstractMatrix; parallelization_backend = default_backend(y),
@@ -486,12 +488,7 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
         error("this neighborhood search/update strategy does not support inactive points")
     end
 
-    @inline function point_to_cell(point)
-        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
-        cell = cell_coords(point_coords, neighborhood_search)
-        return PointNeighbors.cell_index(neighborhood_search.cell_list, cell)
-    end
-
+    point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
     update!(neighborhood_search.cell_list.cells, point_to_cell)
 end
 
@@ -645,4 +642,13 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_
     return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
                                               cell_list,
                                               update_strategy = nhs.update_strategy)
+end
+
+@inline function point_to_cell_wrapper(neighborhood_search, y)
+    @inline function point_to_cell(point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+        return PointNeighbors.cell_index(neighborhood_search.cell_list, cell)
+    end
+    return point_to_cell        
 end
