@@ -172,8 +172,8 @@ struct CompactVectorOfVectors{T, V, L, I}
 
     # This constructor is necessary for Adapt.jl to work with this struct.
     # See the comments in gpu.jl for more details.
-    function CompactVectorOfVectors{T}(values, n_bins, first_bin_index) where {T}
-        new{T, typeof(values), typeof(n_bins), typeof(first_bin_index)}(values, n_bins,
+    function CompactVectorOfVectors(values, n_bins, first_bin_index)
+        new{eltype(values), typeof(values), typeof(n_bins), typeof(first_bin_index)}(values, n_bins,
                                                                         first_bin_index)
     end
 end
@@ -184,8 +184,8 @@ function CompactVectorOfVectors{T}(; n_bins::Int) where {T}
     values = Vector{T}(undef, 0)
     n_bins = Ref{Int32}(n_bins)
 
-    return CompactVectorOfVectors{T}(values,                # backend Array{T}(...)
-                                     n_bins,                 # n_bins
+    return CompactVectorOfVectors(values,
+                                     n_bins,
                                      first_bin_index)
 end
 
@@ -203,11 +203,14 @@ end
 @inline function update!(vov::CompactVectorOfVectors, f)
     (; values, first_bin_index, n_bins) = vov
 
+    # Main.@infiltrate
+
     # TODO figure out how to do that fast and on the GPU
     sort!(values, by = f)
 
     # TODO figure out how to do that fast and on the GPU
     n_particles_per_cell = [count(x -> f(x) == j, values) for j in 1:n_bins[]]
+    # Add 1 since first_bin_index starts at 1
     # Add 1 since first_bin_index starts at 1
     n_particles_per_cell[1] += 1
 
