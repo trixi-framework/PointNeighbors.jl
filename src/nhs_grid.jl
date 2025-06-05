@@ -650,5 +650,5 @@ end
         cell = cell_coords(point_coords, neighborhood_search)
         return PointNeighbors.cell_index(neighborhood_search.cell_list, cell)
     end
-    return point_to_cell        
+    return point_to_cell
 end
