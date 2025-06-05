@@ -113,11 +113,6 @@
 
                 initialize!(nhs, coords, coords)
 
-                if nhs isa GridNeighborhoodSearch && nhs.cell_list isa FullGridCellList &&
-                   nhs.cell_list.cells isa PointNeighbors.CompactVectorOfVectors
-                    update!(nhs, coords, coords)
-                end
-
                 neighbors = [Int[] for _ in axes(coords, 2)]
 
                 foreach_point_neighbor(coords, coords, nhs,
@@ -269,9 +264,7 @@
                 # For other seeds, update with the correct coordinates.
                 # This way, we test only `initialize!` when `seed == 1`,
                 # and `initialize!` plus `update!` else.
-                if seed != 1 ||
-                   (nhs isa GridNeighborhoodSearch && nhs.cell_list isa FullGridCellList &&
-                    nhs.cell_list.cells isa PointNeighbors.CompactVectorOfVectors)
+                if seed != 1
                     update!(nhs, coords, coords)
                 end
 
