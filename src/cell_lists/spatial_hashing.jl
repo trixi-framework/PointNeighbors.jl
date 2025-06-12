@@ -54,7 +54,7 @@ end
 function SpatialHashingCellList{NDIMS}(list_size,
                                        backend = DynamicVectorOfVectors{Int32},
                                        max_points_per_cell = 100) where {NDIMS}
-    cells = construct_backend(SpatialHashingCellList, backend, list_size,
+    cells = construct_backend(backend, list_size,
                               max_points_per_cell)
     collisions = [false for _ in 1:list_size]
     coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]

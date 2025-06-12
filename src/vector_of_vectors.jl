@@ -203,13 +203,11 @@ end
 
 @inline function update!(vov::CompactVectorOfVectors, f)
     (; values, first_bin_index, n_bins) = vov
+
     # TODO figure out how to do that fast and on the GPU
     sort!(values, by = f)
 
     # TODO figure out how to do that fast and on the GPU
-
-    # n_particles_per_cell = [count(x -> f(x) == j, values) for j in 1:n_bins[]]
-
     n_particles_per_cell = zeros(n_bins[])
     for val in values
         n_particles_per_cell[f(val)] += 1
