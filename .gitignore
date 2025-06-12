@@ -16,3 +16,6 @@ out/*
 LocalPreferences.toml
 
 benchmarks/plot.jl
+benchmarks/benchmark_initialize.jl
+gpu_env
+Project.toml
