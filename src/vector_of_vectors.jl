@@ -208,10 +208,8 @@ end
 
     # TODO figure out how to do that fast and on the GPU
 
-    # @info "[count(x ...)]"
     # n_particles_per_cell = [count(x -> f(x) == j, values) for j in 1:n_bins[]]
 
-    @info "for val in values"
     n_particles_per_cell = zeros(n_bins[])
     for val in values
         n_particles_per_cell[f(val)] += 1
