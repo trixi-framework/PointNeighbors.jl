@@ -34,7 +34,10 @@ function Adapt.adapt_structure(to, nhs::GridNeighborhoodSearch)
 end
 
 function Adapt.adapt_structure(to, cell_list::SpatialHashingCellList{NDIMS}) where {NDIMS}
-    (; cells, coords, collisions, list_size) = cell_list
+    (; list_size) = cell_list
+    cells = Adapt.adapt_structure(to, cell_list.cells)
+    coords = Adapt.adapt_structure(to, cell_list.coords)
+    collisions = Adapt.adapt_structure(to, cell_list.collisions)
 
-    # return SpatialHashingCellList{NDIMS}
+    return SpatialHashingCellList(NDIMS, cells, coords, collisions, list_size)
 end
