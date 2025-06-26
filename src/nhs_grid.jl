@@ -461,7 +461,6 @@ end
 # with the `SpatialHashingCellList` if this cell has a collision.
 function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
                          cell_list::SpatialHashingCellList, nhs)
-    (; list_size, collisions, coords) = cell_list
     neighbor_cell = periodic_cell_index(Tuple(neighbor_cell_), nhs)
 
     return neighbor_cell != cell_coords(neighbor_coords, nhs)
@@ -485,7 +484,8 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
     # `collisions[hash] == false` means points from only one cells are in this list.
     # We could still have a collision though, if this one cell is not `neighbor_cell`,
     # which is possible when `neighbor_cell` is empty.
-    return collisions[hash] || coords[hash] != neighbor_cell
+    return collisions[hash] ||
+           coords[hash] != PointNeighbors.coordinates_hash(neighbor_cell)
 end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster

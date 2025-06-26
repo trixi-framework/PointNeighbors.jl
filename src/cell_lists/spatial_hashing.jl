@@ -28,8 +28,7 @@ struct SpatialHashingCellList{NDIMS, CL, CI, CF} <: AbstractCellList
     list_size  :: Int
 
     # This constructor is necessary for Adapt.jl to work with this struct
-    function SpatialHashingCellList(cells, coords::AbstractVector{<:NTuple{NDIMS}},
-                                    collisions, list_size) where {NDIMS}
+    function SpatialHashingCellList(NDIMS, cells, coords, collisions, list_size)
         return new{NDIMS, typeof(cells),
                    typeof(coords), typeof(collisions)}(cells, coords,
                                                        collisions, list_size)
@@ -40,8 +39,7 @@ end
 
 @inline Base.ndims(::SpatialHashingCellList{NDIMS}) where {NDIMS} = NDIMS
 
-function supported_update_strategies(::SpatialHashingCellList{T1, <:DynamicVectorOfVectors,
-                                                              T2, T3}) where {T1, T2, T3}
+function supported_update_strategies(::SpatialHashingCellList{T1, <:DynamicVectorOfVectors}) where {T1}
     return (ParallelUpdate, SerialUpdate)
 end
 
@@ -55,9 +53,9 @@ function SpatialHashingCellList{NDIMS}(list_size,
     cells = construct_backend(backend, list_size,
                               max_points_per_cell)
     collisions = [false for _ in 1:list_size]
-    coords = [ntuple(_ -> typemin(Int), NDIMS) for _ in 1:list_size]
+    coords = [typemin(Int) for _ in 1:list_size]
 
-    return SpatialHashingCellList(cells, coords, collisions, list_size)
+    return SpatialHashingCellList(NDIMS, cells, coords, collisions, list_size)
 end
 
 function Base.empty!(cell_list::SpatialHashingCellList)
@@ -69,7 +67,7 @@ function Base.empty!(cell_list::SpatialHashingCellList)
         emptyat!(cells, i)
     end
 
-    fill!(cell_list.coords, ntuple(_->typemin(Int), Val(NDIMS)))
+    fill!(cell_list.coords, typemin(Int))
     cell_list.collisions .= false
     return cell_list
 end
@@ -83,12 +81,12 @@ function push_cell!(cell_list::SpatialHashingCellList, cell, point)
 
     @boundscheck check_cell_bounds(cell_list, hash_key)
     @inbounds pushat!(cells, hash_key, point)
-
+    cell_coord_hash = coordinates_hash(cell)
     cell_coord = coords[hash_key]
-    if cell_coord == ntuple(_ -> typemin(Int), Val(NDIMS))
+    if cell_coord == typemin(Int)
         # If this cell is not used yet, set cell coordinates
-        coords[hash_key] = cell
-    elseif cell_coord != cell
+        coords[hash_key] = cell_coord_hash
+    elseif cell_coord != cell_coord_hash
         # If it is already used by a different cell, mark as collision
         collisions[hash_key] = true
     end
@@ -99,6 +97,9 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
     NDIMS = ndims(cell_list)
     hash_key = spatial_hash(cell, list_size)
 
+    @info cell
+    cell_coord_hash = coordinates_hash(cell)
+
     @boundscheck check_cell_bounds(cell_list, hash_key)
     @inbounds pushat_atomic!(cells, hash_key, point)
 
@@ -107,8 +108,8 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
         # Throws `bitcast: value not a primitive type`-error
         # @inbounds Atomix.@atomic coords[hash_key] = cell
         # If this cell is not used yet, set cell coordinates
-        @inbounds coords[hash_key] = cell
-    elseif cell_coord != cell
+        @inbounds coords[hash_key] = cell_coord_hash
+    elseif cell_coord != cell_coord_hash
         # If it is already used by a different cell, mark as collision
         @inbounds Atomix.@atomic collisions[hash_key] = true
     end
@@ -162,3 +163,47 @@ end
 @inline function check_cell_bounds(cell_list::SpatialHashingCellList, cell::Tuple)
     check_cell_bounds(cell_list, spatial_hash(cell, cell_list.list_size))
 end
+
+function coordinates_hash(cell_coordinate)
+    # Check the dimensionality of the coordinate since we can not stuff more the 3 UInt32 in a UInt128
+    @assert length(cell_coordinate <= 4)
+
+    function coords2uint(hash::UInt128, coord::Int, n::Int)
+        ua = reinterpret(UInt32, Int32(coord))
+        return (UInt128(ua) << (n * 32)) | hash
+    end
+
+    hash = UInt128(0)
+    for (i, coord) in enumerate(cell_coordinate)
+        hash = coords2uint(hash, coord, i-1)
+    end
+    return hash
+end
+
+# function coordinates_hash_10(cell_coordinate)
+#     shift10 = 0
+#     hash = Int128(0)
+
+#     function shift_by_10(x, n::Int)
+#         @assert n >= 0
+#         x = Int128(x)
+#         for _ in 1:n
+#             # multiply by 10 with binary shift operations
+#             x = (x << 3) + (x << 1)
+#         end
+#         return x
+#     end
+
+#     for i in reverse(1:length(cell_coordinate))
+#         coord = cell_coordinate[i]
+
+#         # shift coord `shift` many times by 10 and add up
+#         hash = hash + shift_by_10(coord, shift10)
+
+#         # compute the shift for the next iteration
+#         shift10 += length(string(abs(coord)))
+
+#     end
+
+#     return Int(hash)
+# end
