@@ -97,7 +97,6 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
     NDIMS = ndims(cell_list)
     hash_key = spatial_hash(cell, list_size)
 
-    @info cell
     cell_coord_hash = coordinates_hash(cell)
 
     @boundscheck check_cell_bounds(cell_list, hash_key)
@@ -106,9 +105,9 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
     cell_coord = @inbounds coords[hash_key]
     if cell_coord == ntuple(_ -> typemin(Int), Val(NDIMS))
         # Throws `bitcast: value not a primitive type`-error
-        # @inbounds Atomix.@atomic coords[hash_key] = cell
+        @inbounds Atomix.@atomic coords[hash_key] = cell_coord_hash
         # If this cell is not used yet, set cell coordinates
-        @inbounds coords[hash_key] = cell_coord_hash
+        # @inbounds coords[hash_key] = cell_coord_hash
     elseif cell_coord != cell_coord_hash
         # If it is already used by a different cell, mark as collision
         @inbounds Atomix.@atomic collisions[hash_key] = true
@@ -166,7 +165,7 @@ end
 
 function coordinates_hash(cell_coordinate)
     # Check the dimensionality of the coordinate since we can not stuff more the 3 UInt32 in a UInt128
-    @assert length(cell_coordinate <= 4)
+    @assert length(cell_coordinate) <= 4
 
     function coords2uint(hash::UInt128, coord::Int, n::Int)
         ua = reinterpret(UInt32, Int32(coord))
