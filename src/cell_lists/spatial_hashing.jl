@@ -104,10 +104,8 @@ function push_cell_atomic!(cell_list::SpatialHashingCellList, cell, point)
 
     cell_coord = @inbounds coords[hash_key]
     if cell_coord == ntuple(_ -> typemin(Int), Val(NDIMS))
-        # Throws `bitcast: value not a primitive type`-error
         @inbounds Atomix.@atomic coords[hash_key] = cell_coord_hash
         # If this cell is not used yet, set cell coordinates
-        # @inbounds coords[hash_key] = cell_coord_hash
     elseif cell_coord != cell_coord_hash
         # If it is already used by a different cell, mark as collision
         @inbounds Atomix.@atomic collisions[hash_key] = true
@@ -163,46 +161,16 @@ end
     check_cell_bounds(cell_list, spatial_hash(cell, cell_list.list_size))
 end
 
+# Compute a compact 128-bit hash by reinterpreting each coordinate as a UInt32
+# and bit-shifting them into a UInt128 slot.
 function coordinates_hash(cell_coordinate)
-    # Check the dimensionality of the coordinate since we can not stuff more the 3 UInt32 in a UInt128
-    @assert length(cell_coordinate) <= 4
-
-    function coords2uint(hash::UInt128, coord::Int, n::Int)
-        ua = reinterpret(UInt32, Int32(coord))
-        return (UInt128(ua) << (n * 32)) | hash
-    end
+    # size check
+    @assert length(cell_coordinate) <= 3
 
     hash = UInt128(0)
     for (i, coord) in enumerate(cell_coordinate)
-        hash = coords2uint(hash, coord, i-1)
+        ucoord = reinterpret(UInt32, Int32(coord))
+        hash = (UInt128(ucoord) << ((i-1) * 32)) | hash
     end
     return hash
 end
-
-# function coordinates_hash_10(cell_coordinate)
-#     shift10 = 0
-#     hash = Int128(0)
-
-#     function shift_by_10(x, n::Int)
-#         @assert n >= 0
-#         x = Int128(x)
-#         for _ in 1:n
-#             # multiply by 10 with binary shift operations
-#             x = (x << 3) + (x << 1)
-#         end
-#         return x
-#     end
-
-#     for i in reverse(1:length(cell_coordinate))
-#         coord = cell_coordinate[i]
-
-#         # shift coord `shift` many times by 10 and add up
-#         hash = hash + shift_by_10(coord, shift10)
-
-#         # compute the shift for the next iteration
-#         shift10 += length(string(abs(coord)))
-
-#     end
-
-#     return Int(hash)
-# end
