@@ -66,4 +66,47 @@
         @test neighbors[1] == [1]
         @test neighbors[2] == [2]
     end
+
+    @testset "Cell Coordinates Hash Function" begin
+        # 1D coordinates
+        @test coordinates_hash((1)) == UInt128(reinterpret(UInt32, Int32(1)))
+        @test coordinates_hash((-1)) == UInt128(reinterpret(UInt32, Int32(-1)))
+        @test coordinates_hash((0)) == Int128(0)
+
+        # 2D coordinates
+        coord2 = (-1, 1)
+        hash2 = (UInt128(reinterpret(UInt32, Int32(coord2[2]))) << 32) |
+                UInt128(reinterpret(UInt32, Int32(coord2[1])))
+        @test coordinates_hash(coord2) == hash2
+
+        # 3D coordinates
+        coord3 = (1, 0, -1)
+        hash3 = (UInt128(reinterpret(UInt32, Int32(coord3[3]))) << 64) |
+                (UInt128(reinterpret(UInt32, Int32(coord3[2]))) << 32) |
+                UInt128(reinterpret(UInt32, Int32(coord3[1])))
+        @test coordinates_hash(coord3) == hash3
+
+        # Extreme Int32 bounds
+        max_val = Int32(typemax(Int32))
+        min_val = Int32(typemin(Int32))
+        @test coordinates_hash((max_val)) == UInt128(reinterpret(UInt32, max_val))
+        @test coordinates_hash((min_val)) == UInt128(reinterpret(UInt32, min_val))
+
+        # 3D extreme Int32 bounds
+        coord_ex = (min_val, max_val, Int32(0))
+        hash_ex = (UInt128(reinterpret(UInt32, coord_ex[3])) << (2*32)) |
+                  (UInt128(reinterpret(UInt32, coord_ex[2])) << 32) |
+                  UInt128(reinterpret(UInt32, coord_ex[1]))
+        @test coordinates_hash(coord_ex) == hash_ex
+
+        # Passing non-Int32-coercible should error
+        large_val = typemax(Int32) + 1
+        @test_throws InexactError coordinates_hash([large_val])
+
+        small_val = typemin(Int32) - 1
+        @test_throws InexactError coordinates_hash([small_val])
+
+        # Too many dimensions should throw assertion
+        @test_throws AssertionError coordinates_hash([1, 2, 3, 4])
+    end
 end
