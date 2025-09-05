@@ -1,6 +1,7 @@
 """
-    FullGridCellList(; min_corner, max_corner, search_radius = 0.0,
-                     periodicity = false, backend = DynamicVectorOfVectors{Int32},
+    FullGridCellList(; min_corner, max_corner,
+                     search_radius = zero(eltype(min_corner)),
+                     backend = DynamicVectorOfVectors{Int32},
                      max_points_per_cell = 100)
 
 A simple cell list implementation where each (empty or non-empty) cell of a rectangular
@@ -15,12 +16,8 @@ See [`copy_neighborhood_search`](@ref) for more details.
 # Keywords
 - `min_corner`: Coordinates of the domain corner in negative coordinate directions.
 - `max_corner`: Coordinates of the domain corner in positive coordinate directions.
-- `search_radius = 0.0`: Search radius of the neighborhood search, which will determine the
-                         cell size. Use the default of `0.0` to create a template (see above).
-- `periodicity = false`: Set to `true` when using a [`PeriodicBox`](@ref) with the
-                         neighborhood search. When using [`copy_neighborhood_search`](@ref),
-                         this option can be ignored an will be set automatically depending
-                         on the periodicity of the neighborhood search.
+- `search_radius`: Search radius of the neighborhood search, which will determine the
+                   cell size. Use the default of zero to create a template (see above).
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the actual
     cell lists. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
