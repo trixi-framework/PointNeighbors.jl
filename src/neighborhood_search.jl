@@ -131,6 +131,8 @@ struct PeriodicBox{NDIMS, ELTYPE}
     end
 end
 
+@inline Base.eltype(::PeriodicBox{<:Any, ELTYPE}) where {ELTYPE} = ELTYPE
+
 """
     foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search;
                            parallelization_backend = default_backend(system_coords),

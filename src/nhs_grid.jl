@@ -53,6 +53,13 @@ since not sorting makes our implementation a lot faster (although less paralleli
   "A Parallel SPH Implementation on Multi-Core CPUs".
   In: Computer Graphics Forum 30.1 (2011), pages 99–112.
   [doi: 10.1111/J.1467-8659.2010.01832.X](https://doi.org/10.1111/J.1467-8659.2010.01832.X)
+
+!!! note "Note"
+    The type of `search_radius` determines the type used for the internals of the
+    neighborhood search.
+    When working with single precision, the `search_radius` must be `Float32` in order
+    to avoid the use of double precision values (for example when working with GPUs).
+    When using a `periodic_box`, its type must match the type of the `search_radius`.
 """
 struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighborhoodSearch
     cell_list       :: CL
@@ -84,6 +91,11 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         n_cells = ntuple(_ -> -1, Val(NDIMS))
         cell_size = ntuple(_ -> search_radius, Val(NDIMS))
     else
+        if typeof(search_radius) != eltype(periodic_box)
+            throw(ArgumentError("the `search_radius` and the `PeriodicBox` must have " *
+                                "the same element type"))
+        end
+
         # Round up search radius so that the grid fits exactly into the domain without
         # splitting any cells. This might impact performance slightly, since larger
         # cells mean that more potential neighbors are considered than necessary.
