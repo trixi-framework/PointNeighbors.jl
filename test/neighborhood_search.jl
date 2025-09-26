@@ -61,8 +61,8 @@
                                                      periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i],
-                                              cell_list = SpatialHashingCellList{NDIMS}(2 *
-                                                                                        n_points))
+                                              cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
+                                                                                                    n_points))
             ]
 
             names = [
@@ -87,8 +87,8 @@
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
-                                              cell_list = SpatialHashingCellList{NDIMS}(2 *
-                                                                                        n_points))
+                                              cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
+                                                                                                    n_points))
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
@@ -194,8 +194,12 @@
                                                                            backend = Vector{Vector{Int}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
-                                              cell_list = SpatialHashingCellList{NDIMS}(2 *
-                                                                                        n_points))
+                                              cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
+                                                                                                    n_points)),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
+                                                                                                    n_points,
+                                                                                        backend = Vector{Vector{Int32}}))
             ]
 
             names = [
@@ -207,7 +211,8 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
-                "`GridNeighborhoodSearch` with `SpatialHashingCellList`"
+                "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `DynamicVectorOfVectors`",
+                "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `Vector{Vector}`"
             ]
 
             # Also test copied templates
@@ -227,8 +232,11 @@
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
-                GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(2 *
-                                                                                        n_points))
+                GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
+                                                                                                    n_points)),
+                GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
+                                                                                                    n_points,
+                                                                                        backend = Vector{Vector{Int32}}))
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
