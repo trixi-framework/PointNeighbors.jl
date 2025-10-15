@@ -504,6 +504,7 @@ end
                                   point, point_coords, search_radius)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
+    ELTYPE = eltype(neighborhood_search)
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
@@ -521,7 +522,7 @@ end
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
-            pos_diff = point_coords - neighbor_coords
+            pos_diff = convert.(ELTYPE, point_coords - neighbor_coords)
             distance2 = dot(pos_diff, pos_diff)
 
             pos_diff,

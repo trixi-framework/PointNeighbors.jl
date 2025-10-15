@@ -1,6 +1,7 @@
 abstract type AbstractNeighborhoodSearch end
 
 @inline search_radius(search::AbstractNeighborhoodSearch) = search.search_radius
+@inline Base.eltype(search::AbstractNeighborhoodSearch) = eltype(search_radius(search))
 
 """
     requires_update(search::AbstractNeighborhoodSearch)
