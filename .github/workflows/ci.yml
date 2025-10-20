@@ -43,7 +43,7 @@ jobs:
         version:
           # Don't use 'min' version, which will ignore hotfixes, i.e. 1.10.0 will be used instead of e.g. 1.10.8.
           - '1.10'
-          - '1'   # the latest stable 1.x release
+          - '1.11'   # the latest stable 1.x release
         os:
           - ubuntu-latest
           - windows-latest
@@ -71,20 +71,20 @@ jobs:
         with:
           annotate: true
           # Only run coverage in one Job (Ubuntu and latest Julia version)
-          coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '1' }}
+          coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '1.11' }}
         env:
           POINTNEIGHBORS_TEST: unit
 
       - name: Process coverage results
         # Only run coverage in one Job (Ubuntu and latest Julia version)
-        if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
+        if: matrix.os == 'ubuntu-latest' && matrix.version == '1.11'
         uses: julia-actions/julia-processcoverage@v1
         with:
           directories: src,test
 
       - name: Upload coverage report to Codecov
         # Only run coverage in one Job (Ubuntu and latest Julia version)
-        if: matrix.os == 'ubuntu-latest' && matrix.version == '1'
+        if: matrix.os == 'ubuntu-latest' && matrix.version == '1.11'
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info
