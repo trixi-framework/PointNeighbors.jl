@@ -537,10 +537,9 @@ end
             pos_diff = @inbounds calc_pos_diff(point, neighbor, cell, neighbor_cell, point_coords,
                                      neighbor_system_coords, neighborhood_search.cell_size, cell_list)
 
-            # neighbor_coords = convert.(ELTYPE, neighbor_coords_)
             # neighbor_coords = @inbounds extract_svector(neighbor_system_coords,
-            #                                 Val(ndims(point_coords)), neighbor)
-            # pos_diff = convert.(ELTYPE, point_coords .- neighbor_coords)
+            #                                 Val(ndims(neighborhood_search)), neighbor)
+            # pos_diff = convert.(ELTYPE, point_coords - neighbor_coords)
             distance2 = dot(pos_diff, pos_diff)
 
             # pos_diff,
@@ -580,17 +579,17 @@ end
                          neighbor_system_coords, cell_size, nothing)
 end
 
-@fastmath @propagate_inbounds function calc_pos_diff(point, neighbor, cell, neighbor_cell, point_coords,
+@fastmath @propagate_inbounds function calc_pos_diff(point, neighbor, cell::NTuple{NDIMS}, neighbor_cell, point_coords,
                                            neighbor_system_coords, cell_size,
-                                           cell_list::FullGridCellList)
+                                           cell_list::FullGridCellList) where NDIMS
     (; relative_coordinates) = cell_list
 
     # Use relative coordinates stored in the cell list to avoid
     # working with double precision values.
     cell_diff = cell .- neighbor_cell
     # TODO this only works if both points are from the same system
-    point_rel_coords = extract_svector(relative_coordinates, Val(ndims(point_coords)), point)
-    neighbor_rel_coords = extract_svector(relative_coordinates, Val(ndims(point_coords)), neighbor)
+    point_rel_coords = extract_svector(relative_coordinates, Val(NDIMS), point)
+    neighbor_rel_coords = extract_svector(relative_coordinates, Val(NDIMS), neighbor)
 
     return point_rel_coords .- neighbor_rel_coords .+ cell_diff .* cell_size
 end
