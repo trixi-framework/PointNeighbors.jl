@@ -26,11 +26,12 @@ See [`copy_neighborhood_search`](@ref) for more details.
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.
 """
-struct FullGridCellList{C, LI, MINC, MAXC} <: AbstractCellList
+struct FullGridCellList{C, RC, LI, MINC, MAXC} <: AbstractCellList
     cells          :: C
     linear_indices :: LI
     min_corner     :: MINC
     max_corner     :: MAXC
+    relative_coordinates :: RC
 end
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
@@ -45,7 +46,8 @@ end
 function FullGridCellList(; min_corner, max_corner,
                           search_radius = zero(eltype(min_corner)),
                           backend = DynamicVectorOfVectors{Int32},
-                          max_points_per_cell = 100)
+                          max_points_per_cell = 100,
+                          relative_coordinates = nothing)
     # Add one layer in each direction to make sure neighbor cells exist.
     # Also pad domain a little more to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
@@ -61,11 +63,12 @@ function FullGridCellList(; min_corner, max_corner,
     else
         n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius)
         linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
+        # linear_indices = Int32.(Tuple(n_cells_per_dimension))
 
         cells = construct_backend(backend, n_cells_per_dimension, max_points_per_cell)
     end
 
-    return FullGridCellList(cells, linear_indices, min_corner, max_corner)
+    return FullGridCellList(cells, linear_indices, min_corner, max_corner, relative_coordinates)
 end
 
 function construct_backend(::Type{Vector{Vector{T}}}, size, max_points_per_cell) where {T}
@@ -96,7 +99,15 @@ end
 
     # Subtract `min_corner` to offset coordinates so that the min corner of the grid
     # corresponds to the (1, 1, 1) cell.
-    return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
+    return @fastmath Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
+end
+
+@inline function cell_min_corner(cell_coords, periodic_box::Nothing,
+                                 cell_list::FullGridCellList, cell_size)
+    (; min_corner) = cell_list
+
+    # Get the minimum corner of the cell
+    return (cell_coords .- 1) .* cell_size .+ min_corner
 end
 
 @inline function cell_coords(coords, periodic_box::PeriodicBox, cell_list::FullGridCellList,
@@ -110,13 +121,40 @@ end
     # just like without using a periodic box.
     # This is not needed for finding neighbor cells, but to make the bounds check
     # work the same way as without a periodic box.
-    return Tuple(floor_to_int.(offset_coords ./ cell_size)) .+ 2
+    return @fastmath Tuple(floor_to_int.(offset_coords ./ cell_size)) .+ 2
+end
+
+@inline function cell_min_corner(cell_coords, periodic_box::PeriodicBox,
+                                 cell_list::FullGridCellList, cell_size)
+    # Get the minimum corner of the cell
+    return (cell_coords .- 2) .* cell_size .+ periodic_box.min_corner
 end
 
 @inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells,
                                      cell_list::FullGridCellList)
     # 2-based modulo to match the indexing of the periodic box explained above.
     return mod.(cell_index .- 2, n_cells) .+ 2
+end
+
+@inline function store_relative_coordinates!(cell_list::FullGridCellList{<:Any, Nothing},
+                                             point, point_coords, cell, cell_size)
+    return cell_list
+end
+
+@inline function store_relative_coordinates!(cell_list::FullGridCellList,
+                                             point, point_coords, cell, cell_size)
+    (; relative_coordinates) = cell_list
+
+    periodic_box = nothing
+
+    cell_min = cell_min_corner(cell, periodic_box, cell_list, cell_size)
+    relative_coords = point_coords .- cell_min
+
+    for i in eachindex(relative_coords)
+        relative_coordinates[point, i] = relative_coords[i]
+    end
+
+    return cell_list
 end
 
 function Base.empty!(cell_list::FullGridCellList)
@@ -138,10 +176,10 @@ end
 function push_cell!(cell_list::FullGridCellList, cell, particle)
     (; cells) = cell_list
 
-    @boundscheck check_cell_bounds(cell_list, cell)
+    # @boundscheck check_cell_bounds(cell_list, cell)
 
     # `push!(cell_list[cell], particle)`, but for all backends
-    @inbounds pushat!(cells, cell_index(cell_list, cell), particle)
+    pushat!(cells, cell_index(cell_list, cell), particle)
 
     return cell_list
 end
@@ -159,7 +197,7 @@ end
     # `push!(cell_list[cell], particle)`, but for all backends.
     # The atomic version of `pushat!` uses atomics to avoid race conditions when `pushat!`
     # is used in a parallel loop.
-    @inbounds pushat_atomic!(cells, cell_index(cell_list, cell), particle)
+    pushat_atomic!(cells, cell_index(cell_list, cell), particle)
 
     return cell_list
 end
@@ -183,7 +221,13 @@ end
 @propagate_inbounds function cell_index(cell_list::FullGridCellList, cell::Tuple)
     (; linear_indices) = cell_list
 
-    return linear_indices[cell...]
+    return linear_index(linear_indices, cell...,)
+end
+
+@propagate_inbounds linear_index(linear_indices::LinearIndices, cell...) = linear_indices[cell...]
+
+@propagate_inbounds function linear_index(size::Tuple, cell_x, cell_y)
+    return (cell_y - 1) * size[1] + cell_x
 end
 
 @inline cell_index(::FullGridCellList, cell::Integer) = cell
@@ -202,12 +246,15 @@ end
 
 @inline index_type(::FullGridCellList) = Int32
 
-function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box)
+function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box, n_points)
     (; min_corner, max_corner) = cell_list
+
+    relative_coordinates = Array{typeof(search_radius)}(undef, n_points, length(min_corner))
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
                             backend = typeof(cell_list.cells),
-                            max_points_per_cell = max_points_per_cell(cell_list.cells))
+                            max_points_per_cell = max_points_per_cell(cell_list.cells),
+                            relative_coordinates)
 end
 
 function max_points_per_cell(cells::DynamicVectorOfVectors)

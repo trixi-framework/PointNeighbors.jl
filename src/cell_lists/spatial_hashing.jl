@@ -1,10 +1,10 @@
 """
     SpatialHashingCellList{NDIMS}(; list_size)
 
-A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells, 
-and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell, 
-as described by Ihmsen et al. (2011)(@cite Ihmsen2011). By using a hash map that stores entries only for non-empty cells, 
-the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles 
+A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells,
+and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell,
+as described by Ihmsen et al. (2011)(@cite Ihmsen2011). By using a hash map that stores entries only for non-empty cells,
+the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles
 to balance memory consumption against the likelihood of hash collisions.
 
 # Arguments
@@ -70,7 +70,7 @@ end
 @inline each_cell_index(cell_list::SpatialHashingCellList) = eachindex(cell_list.points)
 
 function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
-                        periodic_box)
+                        periodic_box, n_points)
     (; list_size) = cell_list
     NDIMS = ndims(cell_list)
 

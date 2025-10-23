@@ -54,6 +54,12 @@ Like [`benchmark_wcsph`](@ref), but using single precision floating point number
 function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
                               parallelization_backend = default_backend(coordinates_))
     coordinates = convert(Matrix{Float32}, coordinates_)
+    benchmark_wcsph_mixed_precision(neighborhood_search, coordinates;
+                                    parallelization_backend)
+end
+
+function benchmark_wcsph_mixed_precision(neighborhood_search, coordinates;
+                                         parallelization_backend = default_backend(coordinates))
     density = 1000.0f0
     particle_spacing = PointNeighbors.search_radius(neighborhood_search) / 3
     fluid = InitialCondition(; coordinates, density, mass = 0.1f0, particle_spacing)
@@ -89,16 +95,23 @@ function __benchmark_wcsph_inner(neighborhood_search, initial_condition, state_e
     semi = DummySemidiscretization(nhs, parallelization_backend)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
-                                   vcat(initial_condition.velocity,
-                                        initial_condition.density'))
-    u = PointNeighbors.Adapt.adapt(parallelization_backend, initial_condition.coordinates)
+                                   permutedims(vcat(initial_condition.velocity,
+                                    initial_condition.density')))
+    u = PointNeighbors.Adapt.adapt(parallelization_backend, permutedims(initial_condition.coordinates))
     dv = zero(v)
 
     # Initialize the system
     TrixiParticles.initialize!(system, semi)
     TrixiParticles.compute_pressure!(system, v, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
+    # @info "" typeof(neighborhood_search)
+    # CUDA.@device_code_llvm TrixiParticles.interact!(dv, v, u, v, u, system, system, semi)
+    CUDA.@profile external=true begin
+        TrixiParticles.interact!(dv, v, u, v, u, system, system, semi)
+    end
+    # # @device_code_llvm TrixiParticles.interact!(dv, v, u, v, u, system, system, semi)
+    # return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
+    return 1
 end
 
 """

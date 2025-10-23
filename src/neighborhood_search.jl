@@ -174,14 +174,14 @@ See also [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
-                                points = axes(system_coords, 2)) where {T}
+                                points = axes(system_coords, 1)) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
     # and heavily impact performance.
     # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
 
     # Explicit bounds check before the hot loop (or GPU kernel)
-    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+    @boundscheck checkbounds(system_coords, points, ndims(neighborhood_search))
 
     @threaded parallelization_backend for point in points
         # Now we can safely assume that `point` is inbounds

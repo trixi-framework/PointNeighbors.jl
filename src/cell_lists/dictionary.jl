@@ -85,6 +85,6 @@ end
 @inline index_type(::DictionaryCellList{NDIMS}) where {NDIMS} = NTuple{NDIMS, Int}
 
 function copy_cell_list(::DictionaryCellList{NDIMS}, search_radius,
-                        periodic_box) where {NDIMS}
+                        periodic_box, n_points) where {NDIMS}
     return DictionaryCellList{NDIMS}()
 end

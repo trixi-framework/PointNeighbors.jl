@@ -10,6 +10,7 @@ using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
+using CUDA: CUDA
 
 include("vector_of_vectors.jl")
 include("util.jl")

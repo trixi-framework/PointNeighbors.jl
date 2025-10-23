@@ -207,14 +207,14 @@ end
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
-                     eachindex_y = axes(y, 2))
+                     eachindex_y = axes(y, 1))
     initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
 end
 
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
                           parallelization_backend = default_backend(y),
-                          eachindex_y = axes(y, 2))
-    (; cell_list) = neighborhood_search
+                          eachindex_y = axes(y, 1))
+    (; cell_list, cell_size) = neighborhood_search
 
     empty!(cell_list)
 
@@ -224,7 +224,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
         return neighborhood_search
     end
 
-    @boundscheck checkbounds(y, eachindex_y)
+    @boundscheck checkbounds(y, eachindex_y, ndims(neighborhood_search))
 
     # Ignore the parallelization backend here. This cannot be parallelized.
     for point in eachindex_y
@@ -234,16 +234,21 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
         # Add point to corresponding cell
         push_cell!(cell_list, cell, point)
+
+        # Optionally store the relative coordinates of the point within its cell
+        store_relative_coordinates!(cell_list, point, point_coords, cell, cell_size)
     end
 
     return neighborhood_search
 end
 
+@inline store_relative_coordinates!(cell_list, point, point_coords, cell, cell_size) = cell_list
+
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                       ParallelUpdate},
                           y::AbstractMatrix; parallelization_backend = default_backend(y),
-                          eachindex_y = axes(y, 2))
-    (; cell_list) = neighborhood_search
+                          eachindex_y = axes(y, 1))
+    (; cell_list, cell_size) = neighborhood_search
 
     empty!(cell_list)
 
@@ -253,7 +258,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
         return neighborhood_search
     end
 
-    @boundscheck checkbounds(y, eachindex_y)
+    @boundscheck checkbounds(y, eachindex_y, ndims(neighborhood_search))
 
     @threaded parallelization_backend for point in eachindex_y
         # Get cell index of the point's cell
@@ -262,6 +267,9 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
 
         # Add point to corresponding cell
         push_cell_atomic!(cell_list, cell, point)
+
+        # Optionally store the relative coordinates of the point within its cell
+        store_relative_coordinates!(cell_list, point, point_coords, cell, cell_size)
     end
 
     return neighborhood_search
@@ -499,46 +507,56 @@ end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
-@inline function foreach_neighbor(f, neighbor_system_coords,
+@fastmath @inline function foreach_neighbor(f, neighbor_system_coords,
                                   neighborhood_search::GridNeighborhoodSearch,
                                   point, point_coords, search_radius)
+    # Coordinate buffer in local memory
+    # local_coords = KernelAbstractions.@localmem Float64 (2, KernelAbstractions.@groupsize()[1])
+    # tid = @index(Local)
+    # local_coords[:, tid] = point_coords
+
+    # KernelAbstractions.@synchronize()
+
     (; cell_list, periodic_box) = neighborhood_search
-    cell = cell_coords(point_coords, neighborhood_search)
     ELTYPE = eltype(neighborhood_search)
+    cell = cell_coords(point_coords, neighborhood_search)
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
-        neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+        neighbors = @inbounds points_in_cell(neighbor_cell, neighborhood_search)
 
         # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
-        cell_collision = check_cell_collision(neighbor_cell_,
-                                              cell_list, neighborhood_search)
+        # cell_collision = check_cell_collision(neighbor_cell_,
+        #                                       cell_list, neighborhood_search)
 
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
 
             # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
             # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_coords = extract_svector(neighbor_system_coords,
-                                              Val(ndims(neighborhood_search)), neighbor)
+            pos_diff = @inbounds calc_pos_diff(point, neighbor, cell, neighbor_cell, point_coords,
+                                     neighbor_system_coords, neighborhood_search.cell_size, cell_list)
 
-            pos_diff = convert.(ELTYPE, point_coords - neighbor_coords)
+            # neighbor_coords = convert.(ELTYPE, neighbor_coords_)
+            # neighbor_coords = @inbounds extract_svector(neighbor_system_coords,
+            #                                 Val(ndims(point_coords)), neighbor)
+            # pos_diff = convert.(ELTYPE, point_coords .- neighbor_coords)
             distance2 = dot(pos_diff, pos_diff)
 
-            pos_diff,
-            distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                  search_radius, periodic_box)
+            # pos_diff,
+            # distance2 = compute_periodic_distance(pos_diff, distance2,
+            #                                       search_radius, periodic_box)
 
             if distance2 <= search_radius^2
-                distance = sqrt(distance2)
+                distance = @fastmath sqrt(distance2)
 
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
-                if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_coords, cell_list,
-                                   neighborhood_search)
-                    continue
-                end
+                # if cell_collision &&
+                #    check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                #                    neighborhood_search)
+                #     continue
+                # end
 
                 # Inline to avoid loss of performance
                 # compared to not using `foreach_point_neighbor`.
@@ -546,6 +564,35 @@ end
             end
         end
     end
+end
+
+@propagate_inbounds function calc_pos_diff(point, neighbor, cell, neighbor_cell, point_coords,
+                                           neighbor_system_coords, cell_size, cell_list)
+    neighbor_coords = extract_svector(neighbor_system_coords,
+                                      Val(ndims(point_coords)), neighbor)
+    return point_coords - neighbor_coords
+end
+
+@propagate_inbounds function calc_pos_diff(point, neighbor, cell, neighbor_cell, point_coords,
+                                           neighbor_system_coords, cell_size,
+                                           cell_list::FullGridCellList{<:Any, Nothing})
+    return calc_pos_diff(point, neighbor, cell, neighbor_cell, point_coords,
+                         neighbor_system_coords, cell_size, nothing)
+end
+
+@fastmath @propagate_inbounds function calc_pos_diff(point, neighbor, cell, neighbor_cell, point_coords,
+                                           neighbor_system_coords, cell_size,
+                                           cell_list::FullGridCellList)
+    (; relative_coordinates) = cell_list
+
+    # Use relative coordinates stored in the cell list to avoid
+    # working with double precision values.
+    cell_diff = cell .- neighbor_cell
+    # TODO this only works if both points are from the same system
+    point_rel_coords = extract_svector(relative_coordinates, Val(ndims(point_coords)), point)
+    neighbor_rel_coords = extract_svector(relative_coordinates, Val(ndims(point_coords)), neighbor)
+
+    return point_rel_coords .- neighbor_rel_coords .+ cell_diff .* cell_size
 end
 
 @inline function neighboring_cells(cell, neighborhood_search)
@@ -590,7 +637,7 @@ end
 end
 
 @inline function cell_coords(coords, periodic_box::Nothing, cell_list, cell_size)
-    return Tuple(floor_to_int.(coords ./ cell_size))
+    return Tuple(floor_to_int.(cell_size ./ coords))
 end
 
 @inline function cell_coords(coords, periodic_box::PeriodicBox, cell_list, cell_size)
@@ -608,7 +655,7 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_
                                   eachpoint = 1:n_points)
     (; periodic_box) = nhs
 
-    cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box)
+    cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box, n_points)
 
     return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
                                               cell_list,

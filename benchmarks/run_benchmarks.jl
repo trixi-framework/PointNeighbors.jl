@@ -79,7 +79,29 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
 
         for i in eachindex(neighborhood_searches_copy)
             neighborhood_search = neighborhood_searches_copy[i]
-            PointNeighbors.initialize!(neighborhood_search, coordinates, coordinates)
+
+            # @info "" PointNeighbors.search_radius(neighborhood_search)
+            # @info "" neighborhood_search.cell_size
+
+            cell_coords_ = zeros(Int, size(coordinates))
+            for particle in axes(coordinates, 2)
+                cell_coords_[:, particle] .= PointNeighbors.cell_coords(PointNeighbors.extract_svector(coordinates', Val(2), particle),
+                                                                    neighborhood_search)
+            end
+            @info "" coordinates
+            @info "" cell_coords_
+            sorted = sort(axes(coordinates, 2), by = p -> (cell_coords_[2, p], cell_coords_[1, p]))
+            @info "" sorted'
+            coordinates = coordinates[:, sorted]
+            for particle in axes(coordinates, 2)
+                cell_coords_[:, particle] .= PointNeighbors.cell_coords(PointNeighbors.extract_svector(coordinates', Val(2), particle),
+                                                                    neighborhood_search)
+            end
+            @info "" coordinates
+            @info "" cell_coords_
+
+            coords_ = permutedims(coordinates)
+            PointNeighbors.initialize!(neighborhood_search, coords_, coords_)
 
             time = benchmark(neighborhood_search, coordinates; parallelization_backend)
             times[iter, i] = time

@@ -1,10 +1,10 @@
 # Return the `i`-th column of the array `A` as an `SVector`.
 @inline function extract_svector(A, ::Val{NDIMS}, i) where {NDIMS}
     # Explicit bounds check, which can be removed by calling this function with `@inbounds`
-    @boundscheck checkbounds(A, NDIMS, i)
+    @boundscheck checkbounds(A, i, NDIMS)
 
     # Assume inbounds access now
-    return SVector(ntuple(@inline(dim->@inbounds A[dim, i]), NDIMS))
+    return SVector(ntuple(@inline(dim->@inbounds A[i, dim]), NDIMS))
 end
 
 # When particles end up with coordinates so big that the cell coordinates
@@ -163,14 +163,42 @@ end
 
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.
-    generic_kernel(backend)(ndrange = ndrange) do i
+    generic_kernel(backend, 128)(ndrange = ndrange) do i
         @inbounds @inline f(iterator[indices[i]])
     end
 
     KernelAbstractions.synchronize(backend)
 end
 
+@inline function parallel_foreach(f, iterator, backend::CUDA.CUDABackend)
+    # On the GPU, we can only loop over `1:N`. Therefore, we loop over `1:length(iterator)`
+    # and index with `iterator[eachindex(iterator)[i]]`.
+    # Note that this only works with vector-like iterators that support arbitrary indexing.
+    indices = eachindex(iterator)
+    ndrange = length(indices)
+
+    # Skip empty loops
+    ndrange == 0 && return
+
+    # Call the generic kernel that is defined below, which only calls a function with
+    # the global GPU index.
+    @inline function f2(i)
+        @inbounds @inline f(iterator[indices[i]])
+        return nothing
+    end
+    block_size = 128
+    numblocks = ceil(Int, ndrange / block_size)
+    CUDA.@cuda threads=block_size blocks=numblocks fastmath=true generic_kernel_cuda(f2)
+
+    KernelAbstractions.synchronize(backend)
+end
+
 @kernel function generic_kernel(f)
     i = @index(Global)
+    @inline f(i)
+end
+
+function generic_kernel_cuda(f)
+    i = (CUDA.blockIdx().x - 1) * CUDA.blockDim().x + CUDA.threadIdx().x
     @inline f(i)
 end
