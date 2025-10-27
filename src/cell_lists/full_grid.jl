@@ -21,7 +21,8 @@ See [`copy_neighborhood_search`](@ref) for more details.
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the actual
     cell lists. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
-    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits.
+    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits
+                                       and GPU compatible.
 - `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.

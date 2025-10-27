@@ -108,6 +108,14 @@ GridNeighborhoodSearch{2, Float64, ...}(...)
     return nothing
 end
 
+@inline function freeze_neighborhood_search(search::AbstractNeighborhoodSearch)
+    # Indicate that the neighborhood search is static and will not be updated anymore.
+    # Some implementations might use this to strip unnecessary data structures for updating.
+    # Notably, this is used for the `PrecomputedNeighborhoodSearch` to strip a potentially
+    # not GPU-compatible inner neighborhood search that is used only for initialization.
+    return search
+end
+
 """
     PeriodicBox(; min_corner, max_corner)
 
