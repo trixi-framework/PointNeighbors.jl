@@ -1,4 +1,4 @@
-@testset verbose=true "All VectorOfVectors Datastructures" begin 
+@testset verbose=true "All VectorOfVectors Datastructures" begin
     @testset verbose=true "`DynamicVectorOfVectors`" begin
         # Test different types by defining a function to convert to this type
         types = [Int32, Float64, i -> (i, i)]

@@ -132,7 +132,7 @@
             end
         end
     end
-    
+
     @testset verbose=true "Compare Against `TrivialNeighborhoodSearch`" begin
         cloud_sizes = [
             (10, 11),
