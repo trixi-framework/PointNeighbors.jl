@@ -24,7 +24,7 @@ initialization and update.
                             `GridNeighborhoodSearch`. See [`GridNeighborhoodSearch`](@ref)
                             for available options.
 """
-struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB}
+struct PrecomputedNeighborhoodSearch{NDIMS, NHS, NL, PB} <: AbstractNeighborhoodSearch
     neighborhood_search :: NHS
     neighbor_lists      :: NL
     periodic_box        :: PB
@@ -45,35 +45,48 @@ end
 
 @inline Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 
+@inline requires_update(::PrecomputedNeighborhoodSearch) = (true, true)
+
 @inline function search_radius(search::PrecomputedNeighborhoodSearch)
     return search_radius(search.neighborhood_search)
 end
 
 function initialize!(search::PrecomputedNeighborhoodSearch,
-                     x::AbstractMatrix, y::AbstractMatrix)
+                     x::AbstractMatrix, y::AbstractMatrix;
+                     parallelization_backend = default_backend(x),
+                     eachindex_y = axes(y, 2))
     (; neighborhood_search, neighbor_lists) = search
 
     # Initialize grid NHS
-    initialize!(neighborhood_search, x, y)
+    initialize!(neighborhood_search, x, y; eachindex_y, parallelization_backend)
 
-    initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+    initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                               parallelization_backend, eachindex_y)
 end
 
+# WARNING! Experimental feature:
+# By default, determine the parallelization backend from the type of `x`.
+# Optionally, pass a `KernelAbstractions.Backend` to run the KernelAbstractions.jl code
+# on this backend. This can be useful to run GPU kernels on the CPU by passing
+# `parallelization_backend = KernelAbstractions.CPU()`, even though `x isa Array`.
 function update!(search::PrecomputedNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
-                 points_moving = (true, true))
+                 points_moving = (true, true), parallelization_backend = default_backend(x),
+                 eachindex_y = axes(y, 2))
     (; neighborhood_search, neighbor_lists) = search
 
     # Update grid NHS
-    update!(neighborhood_search, x, y, points_moving = points_moving)
+    update!(neighborhood_search, x, y; eachindex_y, points_moving, parallelization_backend)
 
     # Skip update if both point sets are static
     if any(points_moving)
-        initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+        initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                                   parallelization_backend, eachindex_y)
     end
 end
 
-function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
+function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                                    parallelization_backend, eachindex_y)
     # Initialize neighbor lists
     empty!(neighbor_lists)
     resize!(neighbor_lists, size(x, 2))
@@ -82,27 +95,32 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y)
     end
 
     # Fill neighbor lists
-    foreach_point_neighbor(x, y, neighborhood_search) do point, neighbor, _, _
+    foreach_point_neighbor(x, y, neighborhood_search; parallelization_backend,
+                           points = eachindex_y) do point, neighbor, _, _
         push!(neighbor_lists[point], neighbor)
     end
 end
 
-@inline function foreach_neighbor(f, system_coords, neighbor_system_coords,
+@inline function foreach_neighbor(f, neighbor_system_coords,
                                   neighborhood_search::PrecomputedNeighborhoodSearch,
-                                  point; search_radius = nothing)
+                                  point, point_coords, search_radius)
     (; periodic_box, neighbor_lists) = neighborhood_search
-    (; search_radius) = neighborhood_search.neighborhood_search
 
-    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
-    for neighbor in neighbor_lists[point]
+    neighbors = @inbounds neighbor_lists[point]
+    for neighbor_ in eachindex(neighbors)
+        neighbor = @inbounds neighbors[neighbor_]
+
+        # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
+        # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
         neighbor_coords = extract_svector(neighbor_system_coords,
                                           Val(ndims(neighborhood_search)), neighbor)
 
         pos_diff = point_coords - neighbor_coords
         distance2 = dot(pos_diff, pos_diff)
 
-        pos_diff, distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
-                                                        periodic_box)
+        pos_diff,
+        distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                              periodic_box)
 
         distance = sqrt(distance2)
 
