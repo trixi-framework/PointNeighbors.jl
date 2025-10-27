@@ -10,6 +10,9 @@ slower [`update!`](@ref).
 A [`GridNeighborhoodSearch`](@ref) is used internally to compute the neighbor lists during
 initialization and update.
 
+When used on the GPU, use `freeze_neighborhood_search` after the initialization
+to strip the internal neighborhood search, which is not needed anymore.
+
 # Arguments
 - `NDIMS`: Number of dimensions.
 
@@ -182,6 +185,9 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
     update_neighborhood_search = copy_neighborhood_search(nhs.neighborhood_search,
                                                           search_radius, n_points;
                                                           eachpoint)
+
+    # For `Vector{Vector}` backend use `4 * ndims(nhs)^4` as fallback.
+    # This should never be used because this backend doesn't require a `max_neighbors`.
     max_neighbors = max_inner_length(nhs.neighbor_lists, 4 * ndims(nhs)^4)
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                                      periodic_box = nhs.periodic_box,
@@ -198,14 +204,4 @@ end
                                                         search.search_radius,
                                                         search.periodic_box,
                                                         nothing)
-end
-
-# TODO move to `vector_of_vectors.jl`
-function max_inner_length(cells::DynamicVectorOfVectors, fallback)
-    return size(cells.backend, 1)
-end
-
-# Fallback when backend is a `Vector{Vector{T}}`. Only used for copying the cell list.
-function max_inner_length(::Any, fallback)
-    return fallback
 end

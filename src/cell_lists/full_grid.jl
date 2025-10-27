@@ -187,7 +187,8 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
 
     return FullGridCellList(; min_corner, max_corner, search_radius,
                             backend = typeof(cell_list.cells),
-                            max_points_per_cell = max_points_per_cell(cell_list.cells))
+                            max_points_per_cell = max_inner_length(cell_list.cells.backend,
+                                                                   100))
 end
 
 @inline function check_cell_bounds(cell_list::FullGridCellList{<:DynamicVectorOfVectors{<:Any,
