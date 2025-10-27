@@ -53,6 +53,13 @@ since not sorting makes our implementation a lot faster (although less paralleli
   "A Parallel SPH Implementation on Multi-Core CPUs".
   In: Computer Graphics Forum 30.1 (2011), pages 99–112.
   [doi: 10.1111/J.1467-8659.2010.01832.X](https://doi.org/10.1111/J.1467-8659.2010.01832.X)
+
+!!! note "Note"
+    The type of `search_radius` determines the type used for the internals of the
+    neighborhood search.
+    When working with single precision, the `search_radius` must be `Float32` in order
+    to avoid the use of double precision values (for example when working with GPUs).
+    When using a `periodic_box`, its type must match the type of the `search_radius`.
 """
 struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighborhoodSearch
     cell_list       :: CL
@@ -84,6 +91,11 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         n_cells = ntuple(_ -> -1, Val(NDIMS))
         cell_size = ntuple(_ -> search_radius, Val(NDIMS))
     else
+        if typeof(search_radius) != eltype(periodic_box)
+            throw(ArgumentError("the `search_radius` and the `PeriodicBox` must have " *
+                                "the same element type"))
+        end
+
         # Round up search radius so that the grid fits exactly into the domain without
         # splitting any cells. This might impact performance slightly, since larger
         # cells mean that more potential neighbors are considered than necessary.
@@ -407,7 +419,6 @@ end
 # Fully parallel incremental update with atomic push.
 # TODO `cell_list.cells.lengths` and `cell_list.cells.backend` are hardcoded
 # for `FullGridCellList`, which is currently the only implementation
-# supporting this update strategy.
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                   ParallelIncrementalUpdate},
                       y::AbstractMatrix; parallelization_backend = default_backend(y),
@@ -501,7 +512,6 @@ end
 # with the `SpatialHashingCellList` if this cell has a collision.
 function check_collision(neighbor_cell_::CartesianIndex, neighbor_coords,
                          cell_list::SpatialHashingCellList, nhs)
-    (; list_size, collisions, coords) = cell_list
     neighbor_cell = periodic_cell_index(Tuple(neighbor_cell_), nhs)
 
     return neighbor_cell != cell_coords(neighbor_coords, nhs)
@@ -525,7 +535,8 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
     # `collisions[hash] == false` means points from only one cells are in this list.
     # We could still have a collision though, if this one cell is not `neighbor_cell`,
     # which is possible when `neighbor_cell` is empty.
-    return collisions[hash] || coords[hash] != neighbor_cell
+    return collisions[hash] ||
+           coords[hash] != PointNeighbors.coordinates_flattened(neighbor_cell)
 end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster

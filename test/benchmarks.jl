@@ -7,31 +7,38 @@
 
     @testset verbose=true "$(length(size))D" for size in [(50,), (10, 10), (5, 5, 5)]
         @testset verbose=true "`benchmark_count_neighbors`" begin
-            @trixi_test_nowarn plot_benchmarks(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_count_neighbors, size, 2)
         end
 
         @testset verbose=true "`benchmark_n_body`" begin
-            @trixi_test_nowarn plot_benchmarks(benchmark_n_body, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_n_body, size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_n_body, size, 2)
         end
 
         @testset verbose=true "`benchmark_wcsph`" begin
-            @trixi_test_nowarn plot_benchmarks(benchmark_wcsph, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_wcsph, size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_wcsph, size, 2)
         end
 
         @testset verbose=true "`benchmark_wcsph_fp32`" begin
-            @trixi_test_nowarn plot_benchmarks(benchmark_wcsph_fp32, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_wcsph_fp32, size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_wcsph_fp32, size, 2)
         end
 
         @testset verbose=true "`benchmark_tlsph`" begin
-            @trixi_test_nowarn plot_benchmarks(benchmark_tlsph, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_tlsph, size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_tlsph, size, 2)
         end
 
         @testset verbose=true "`benchmark_initialize`" begin
-            @trixi_test_nowarn plot_benchmarks(benchmark_initialize, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_initialize, size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_initialize, size, 2)
         end
 
         @testset verbose=true "`benchmark_update_alternating`" begin
-            @trixi_test_nowarn plot_benchmarks(benchmark_update_alternating, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_update_alternating, size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_update_alternating, size, 2)
         end
     end
 end;

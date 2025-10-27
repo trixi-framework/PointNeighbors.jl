@@ -33,3 +33,12 @@ function Adapt.adapt_structure(to, nhs::GridNeighborhoodSearch)
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
                                   cell_size, update_buffer, nhs.update_strategy)
 end
+
+function Adapt.adapt_structure(to, cell_list::SpatialHashingCellList{NDIMS}) where {NDIMS}
+    (; list_size) = cell_list
+    cells = Adapt.adapt_structure(to, cell_list.cells)
+    coords = Adapt.adapt_structure(to, cell_list.coords)
+    collisions = Adapt.adapt_structure(to, cell_list.collisions)
+
+    return SpatialHashingCellList(NDIMS, cells, coords, collisions, list_size)
+end
