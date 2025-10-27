@@ -65,7 +65,7 @@ function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 
                                                                                                          update_strategy),
                                               backend = DynamicVectorOfVectors{Int32},
                                               max_neighbors = 4 * NDIMS^4) where {NDIMS}
-    neighbor_lists = construct_backend(nothing, backend, n_points, max_neighbors)
+    neighbor_lists = construct_backend(backend, n_points, max_neighbors)
 
     PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
                                          periodic_box, update_neighborhood_search)
