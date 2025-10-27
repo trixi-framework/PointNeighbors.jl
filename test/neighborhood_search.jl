@@ -59,6 +59,9 @@
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                                      periodic_box = periodic_boxes[i]),
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                                     periodic_box = periodic_boxes[i],
+                                                     backend = Vector{Vector{Int32}}),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i],
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
@@ -71,6 +74,7 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
+                "`PrecomputedNeighborhoodSearch` with `Vector{Vector}`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList`"
             ]
 
@@ -86,6 +90,8 @@
                                                                            max_corner = periodic_boxes[i].max_corner,
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
+                PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
+                                                     backend = Vector{Vector{Int32}}),
                 GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points))
@@ -193,6 +199,8 @@
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
+                PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                                     backend = Vector{Vector{Int}}),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points)),
@@ -211,6 +219,7 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
                 "`PrecomputedNeighborhoodSearch`",
+                "`PrecomputedNeighborhoodSearch` with `Vector{Vector}`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `DynamicVectorOfVectors`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `Vector{Vector}`"
             ]
@@ -232,6 +241,7 @@
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
+                PrecomputedNeighborhoodSearch{NDIMS}(backend = Vector{Vector{Int32}}),
                 GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points)),
                 GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
