@@ -676,6 +676,167 @@ end
     end
 end
 
+# Another version of the above that allows for groups smaller than cells
+# # for cell in cells
+# #     for point in cell
+# #         for neighbor_cell in neighbor_cells
+
+# #             for neighbor in neighbor_cell
+# function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search::GridNeighborhoodSearch;
+#                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
+#                                 points = axes(system_coords, 2)) where {T}
+#     # The type annotation above is to make Julia specialize on the type of the function.
+#     # Otherwise, unspecialized code will cause a lot of allocations
+#     # and heavily impact performance.
+#     # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+
+#     if system_coords !== neighbor_coords
+#         foreach_point_neighbor_fallback(f, system_coords, neighbor_coords,
+#                                         neighborhood_search;
+#                                         parallelization_backend,
+#                                         points)
+#         return nothing
+#     end
+
+#     # Explicit bounds check before the GPU kernel
+#     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+
+#     linear_indices = neighborhood_search.cell_list.linear_indices
+#     cartesian_indices = CartesianIndices(size(linear_indices))
+#     lengths = Array(neighborhood_search.cell_list.cells.lengths)
+#     # max_particles_per_cell = maximum(lengths)
+#     nonempty_cells = Adapt.adapt(parallelization_backend,
+#                                  filter(index -> lengths[linear_indices[index]] > 0,
+#                                         cartesian_indices))
+
+#     # Launch: one workgroup per non-empty cell
+#     workgroupsize = 16
+#     n_groups = length(nonempty_cells)
+#     ndrange  = n_groups * workgroupsize
+
+#     kernel = foreach_neighbor_gpu(parallelization_backend, workgroupsize)
+#     kernel(f, system_coords, neighbor_coords, neighborhood_search, points, nonempty_cells, Val(workgroupsize); ndrange)
+
+#     KernelAbstractions.synchronize(parallelization_backend)
+
+#     return nothing
+# end
+
+# function foreach_point_neighbor_fallback(f::T, system_coords, neighbor_coords, neighborhood_search;
+#                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
+#                                 points = axes(system_coords, 2)) where {T}
+#     # The type annotation above is to make Julia specialize on the type of the function.
+#     # Otherwise, unspecialized code will cause a lot of allocations
+#     # and heavily impact performance.
+#     # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+
+#     # Explicit bounds check before the hot loop (or GPU kernel)
+#     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+
+#     @threaded parallelization_backend for point in points
+#         # Now we can safely assume that `point` is inbounds
+#         @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+#                                    neighborhood_search, point)
+#     end
+
+#     return nothing
+# end
+
+# @kernel function foreach_neighbor_gpu(f, system_coords, neighbor_system_coords,
+#                                       neighborhood_search::GridNeighborhoodSearch, points,
+#                                       cells, ::Val{workgroupsize}) where {workgroupsize}
+#     gid = @index(Group)
+#     lid = @index(Local)
+
+#     ELTYPE = eltype(neighborhood_search)
+
+#     # Shared (local) memory to stage one tile of neighbor attributes
+#     # 2D shown here. For 3D, add z buffer likewise.
+#     sh_x = @localmem eltype(neighbor_system_coords) (workgroupsize,)
+#     sh_y = @localmem eltype(neighbor_system_coords) (workgroupsize,)
+#     # neighbor particle indices (use Int32 if your indices are 32-bit)
+#     sh_id = @localmem Int32 (workgroupsize,)
+
+#     # Each group processes exactly one cell
+#     @assert gid <= length(cells)
+#     this_cell = @inbounds Tuple(cells[gid])
+
+#     points_in_cell_ = @inbounds points_in_cell(this_cell, neighborhood_search)
+#     @assert length(points_in_cell_) != 0
+
+#     neighboring_cells_ = neighboring_cells(this_cell, neighborhood_search)
+#     search_radius2 = search_radius(neighborhood_search)^2
+
+#     # Tile particles in cell by workgroup size
+#     n_tiles = ceil(Int, length(points_in_cell_) / workgroupsize)
+
+#     for tile_i in 1:n_tiles
+#         cell_i = (tile_i - 1) * workgroupsize + lid
+
+#         if cell_i <= length(points_in_cell_)
+#             # Load one point from this cell
+#             point = @inbounds points_in_cell_[cell_i]
+#             point_coords = @inbounds extract_svector(system_coords,
+#                                                         Val(ndims(neighborhood_search)),
+#                                                         point)
+#         else
+#             point = zero(Int32)
+#             point_coords = zero(SVector{ndims(neighborhood_search), eltype(system_coords)})
+#         end
+
+#         # Loop over neighboring cells
+#         for neighbor_cell_ in neighboring_cells_
+#             neighbor_cell = Tuple(neighbor_cell_)
+
+#             # We can use `@inbounds` here, assuming that the initialize/update steps verified
+#             # that all cells have valid neighbors.
+#             neighbors = @inbounds points_in_cell(neighbor_cell, neighborhood_search)
+#             n_neighbors = length(neighbors)
+
+#             # Tile neighbors by WG and stage to local memory
+#             j = 1
+#             # This loop should only have one iteration if workgroupsize is larger than cell size
+#             while j <= n_neighbors
+#                 # Cooperative load: each thread brings one neighbor into shared memory
+#                 lane_idx = j + (lid - 1)
+#                 if lane_idx <= n_neighbors
+#                     nb = @inbounds neighbors[lane_idx]
+#                     @inbounds sh_id[lid] = Int32(nb)
+#                     nb_coords = @inbounds extract_svector(neighbor_system_coords,
+#                                                         Val(ndims(neighborhood_search)), nb)
+#                     @inbounds sh_x[lid] = nb_coords[1]
+#                     @inbounds sh_y[lid] = nb_coords[2]
+#                 end
+
+#                 @synchronize
+
+#                 if cell_i <= length(points_in_cell_)
+#                     # Reuse the staged tile for all threads' i
+#                     # Determine how many valid neighbors were staged in this tile
+#                     tile_count = min(workgroupsize, n_neighbors - j + 1)
+
+#                     @inbounds for t in 1:tile_count
+#                         neighbor = @inbounds sh_id[t]
+#                         # Compute pairwise interaction
+#                         pos_diff1 = @inbounds convert(ELTYPE, point_coords[1] - sh_x[t])
+#                         pos_diff2 = @inbounds convert(ELTYPE, point_coords[2] - sh_y[t])
+#                         distance2 = pos_diff1 * pos_diff1 + pos_diff2 * pos_diff2
+#                         if distance2 <= search_radius2
+#                             distance = sqrt(distance2)
+
+#                             # Call the user-supplied functor
+#                             @inline f(point, neighbor, SVector(pos_diff1, pos_diff2), distance)
+#                         end
+#                     end
+#                 end
+
+#                 @synchronize
+#                 j += workgroupsize
+#             end
+#         end
+#     end
+# end
+
 @inline function neighboring_cells(cell, neighborhood_search)
     NDIMS = ndims(neighborhood_search)
 
