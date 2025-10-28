@@ -45,7 +45,7 @@ function supported_update_strategies(::SpatialHashingCellList{<:Any,
 end
 
 function supported_update_strategies(::SpatialHashingCellList)
-    return (SerialUpdate;)
+    return (SerialUpdate,)
 end
 
 function SpatialHashingCellList{NDIMS}(; list_size,
