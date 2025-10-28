@@ -8,7 +8,9 @@
 #
 # `Adapt.@adapt_structure` automatically generates the `adapt` function for our custom types.
 Adapt.@adapt_structure FullGridCellList
+Adapt.@adapt_structure SpatialHashingCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
+Adapt.@adapt_structure CompactVectorOfVectors
 
 # `adapt(CuArray, ::SVector)::SVector`, but `adapt(Array, ::SVector)::Vector`.
 # We don't want to change the type of the `SVector` here.
