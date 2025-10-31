@@ -3,9 +3,10 @@ using TrixiParticles
 using BenchmarkTools
 
 # Create a dummy semidiscretization type to be able to use a specific neighborhood search
-struct DummySemidiscretization{N, P}
+struct DummySemidiscretization{N, P, IT}
     neighborhood_search     :: N
     parallelization_backend :: P
+    integrate_tlsph         :: IT
 end
 
 @inline function PointNeighbors.parallel_foreach(f, iterator, semi::DummySemidiscretization)
@@ -86,7 +87,7 @@ function __benchmark_wcsph_inner(neighborhood_search, initial_condition, state_e
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
-    semi = DummySemidiscretization(nhs, parallelization_backend)
+    semi = DummySemidiscretization(nhs, parallelization_backend, true)
 
     v = PointNeighbors.Adapt.adapt(parallelization_backend,
                                    vcat(initial_condition.velocity,
@@ -125,7 +126,7 @@ function benchmark_tlsph(neighborhood_search, coordinates;
 
     solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
                                             material.E, material.nu)
-    semi = DummySemidiscretization(neighborhood_search, parallelization_backend)
+    semi = DummySemidiscretization(neighborhood_search, parallelization_backend, true)
 
     v = copy(solid.velocity)
     u = copy(solid.coordinates)
