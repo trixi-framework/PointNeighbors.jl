@@ -67,11 +67,24 @@ function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 
                                                                                                          periodic_box,
                                                                                                          update_strategy),
                                               backend = DynamicVectorOfVectors{Int32},
-                                              max_neighbors = 4 * NDIMS^4) where {NDIMS}
+                                              max_neighbors = max_neighbors(NDIMS)) where {NDIMS}
     neighbor_lists = construct_backend(backend, n_points, max_neighbors)
 
     PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
                                          periodic_box, update_neighborhood_search)
+end
+
+# Default values for maximum neighbor count
+function max_neighbors(NDIMS)
+    if NDIMS == 1
+        return 32
+    elseif NDIMS == 2
+        return 64
+    elseif NDIMS == 3
+        return 320
+    end
+
+    throw(ArgumentError("`NDIMS` must be 1, 2, or 3"))
 end
 
 @inline Base.ndims(::PrecomputedNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -186,9 +199,9 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                                           search_radius, n_points;
                                                           eachpoint)
 
-    # For `Vector{Vector}` backend use `4 * ndims(nhs)^4` as fallback.
+    # For `Vector{Vector}` backend use `max_neighbors(NDIMS)` as fallback.
     # This should never be used because this backend doesn't require a `max_neighbors`.
-    max_neighbors = max_inner_length(nhs.neighbor_lists, 4 * ndims(nhs)^4)
+    max_neighbors = max_inner_length(nhs.neighbor_lists, max_neighbors(ndims(nhs)))
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                                      periodic_box = nhs.periodic_box,
                                                      update_neighborhood_search,
