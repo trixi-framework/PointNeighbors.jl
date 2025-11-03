@@ -175,12 +175,12 @@ function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations; kwargs
 
     min_corner = 0.0f0 .* n_points_per_dimension
     max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
-    neighborhood_searches = [
-        GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
-                                      cell_list = FullGridCellList(; search_radius = 0.0f0,
-                                                                   min_corner, max_corner))
-        PrecomputedNeighborhoodSearch{NDIMS}(search_radius = 0.0f0)
-    ]
+    neighborhood_searches = [GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
+                                                           cell_list = FullGridCellList(;
+                                                                                        search_radius = 0.0f0,
+                                                                                        min_corner,
+                                                                                        max_corner))
+                             PrecomputedNeighborhoodSearch{NDIMS}(search_radius = 0.0f0)]
 
     names = ["GridNeighborhoodSearch with FullGridCellList";;
              "PrecomputedNeighborhoodSearch"]

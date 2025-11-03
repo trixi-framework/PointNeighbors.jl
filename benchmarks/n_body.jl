@@ -21,7 +21,7 @@ function benchmark_n_body(neighborhood_search, coordinates_;
 
     # Remove unnecessary data structures that are only used for initialization
     neighborhood_search_ = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
-    
+
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search_)
 
     # This preserves the data type of `coordinates`, which makes it work for GPU types
