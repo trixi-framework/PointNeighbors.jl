@@ -201,12 +201,12 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
 
     # For `Vector{Vector}` backend use `max_neighbors(NDIMS)` as fallback.
     # This should never be used because this backend doesn't require a `max_neighbors`.
-    max_neighbors = max_inner_length(nhs.neighbor_lists, max_neighbors(ndims(nhs)))
+    max_neighbors_ = max_inner_length(nhs.neighbor_lists, max_neighbors(ndims(nhs)))
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                                      periodic_box = nhs.periodic_box,
                                                      update_neighborhood_search,
                                                      backend = typeof(nhs.neighbor_lists),
-                                                     max_neighbors)
+                                                     max_neighbors = max_neighbors_)
 end
 
 @inline function freeze_neighborhood_search(search::PrecomputedNeighborhoodSearch)
