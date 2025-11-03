@@ -128,7 +128,7 @@ function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
 
     return SpatialHashingCellList{NDIMS}(list_size = list_size,
                                          backend = typeof(cell_list.cells),
-                                         max_points_per_cell = max_inner_length(cell_list.cells.backend,
+                                         max_points_per_cell = max_inner_length(cell_list.cells,
                                                                                 100))
 end
 
