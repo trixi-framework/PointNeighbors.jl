@@ -22,7 +22,7 @@ See [`copy_neighborhood_search`](@ref) for more details.
     cell lists. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
     - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits
-                                       and GPU compatible.
+                                       and GPU-compatible.
 - `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.
