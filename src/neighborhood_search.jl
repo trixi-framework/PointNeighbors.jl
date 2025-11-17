@@ -1,6 +1,7 @@
 abstract type AbstractNeighborhoodSearch end
 
 @inline search_radius(search::AbstractNeighborhoodSearch) = search.search_radius
+@inline Base.eltype(search::AbstractNeighborhoodSearch) = eltype(search_radius(search))
 
 """
     requires_update(search::AbstractNeighborhoodSearch)
@@ -220,7 +221,7 @@ end
         neighbor_coords = extract_svector(neighbor_system_coords,
                                           Val(ndims(neighborhood_search)), neighbor)
 
-        pos_diff = point_coords - neighbor_coords
+        pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
         distance2 = dot(pos_diff, pos_diff)
 
         pos_diff,
