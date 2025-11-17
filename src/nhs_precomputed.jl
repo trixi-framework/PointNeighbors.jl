@@ -1,6 +1,9 @@
 @doc raw"""
     PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
-                                         periodic_box = nothing, update_strategy = nothing)
+                                         periodic_box = nothing, update_strategy = nothing,
+                                         update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(),
+                                         backend = DynamicVectorOfVectors{Int32},
+                                         max_neighbors = max_neighbors(NDIMS))
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
 for each point during initialization and update.
@@ -30,6 +33,9 @@ to strip the internal neighborhood search, which is not needed anymore.
 - `update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(; periodic_box, update_strategy)`:
                             The neighborhood search used to compute the neighbor lists.
                             By default, a [`GridNeighborhoodSearch`](@ref) is used.
+                            If the precomputed NHS is to be used on the GPU, make sure to
+                            either freeze it after initialization and never update it again,
+                            or pass a GPU-compatible neighborhood search here.
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store
     the neighbor lists. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
