@@ -207,13 +207,14 @@ end
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
-                     eachindex_y = axes(y, 2))
-    initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
+                     eachindex_y = axes(y, 2), points_active = nothing)
+    initialize_grid!(neighborhood_search, y; parallelization_backend,
+                     eachindex_y, points_active)
 end
 
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::AbstractMatrix;
                           parallelization_backend = default_backend(y),
-                          eachindex_y = axes(y, 2))
+                          eachindex_y = axes(y, 2), points_active = nothing)
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -228,12 +229,16 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
 
     # Ignore the parallelization backend here. This cannot be parallelized.
     for point in eachindex_y
-        # Get cell index of the point's cell
-        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
-        cell = cell_coords(point_coords, neighborhood_search)
+        # This check is optimized away when `points_active` is `nothing`
+        if point_active(points_active, point)
+            # Get cell index of the point's cell
+            point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)),
+                                                     point)
+            cell = cell_coords(point_coords, neighborhood_search)
 
-        # Add point to corresponding cell
-        push_cell!(cell_list, cell, point)
+            # Add point to corresponding cell
+            push_cell!(cell_list, cell, point)
+        end
     end
 
     return neighborhood_search
@@ -242,7 +247,7 @@ end
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                       ParallelUpdate},
                           y::AbstractMatrix; parallelization_backend = default_backend(y),
-                          eachindex_y = axes(y, 2))
+                          eachindex_y = axes(y, 2), points_active = nothing)
     (; cell_list) = neighborhood_search
 
     empty!(cell_list)
@@ -256,12 +261,16 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
     @boundscheck checkbounds(y, eachindex_y)
 
     @threaded parallelization_backend for point in eachindex_y
-        # Get cell index of the point's cell
-        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
-        cell = cell_coords(point_coords, neighborhood_search)
+        # This check is optimized away when `points_active` is `nothing`
+        if point_active(points_active, point)
+            # Get cell index of the point's cell
+            point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)),
+                                                     point)
+            cell = cell_coords(point_coords, neighborhood_search)
 
-        # Add point to corresponding cell
-        push_cell_atomic!(cell_list, cell, point)
+            # Add point to corresponding cell
+            push_cell_atomic!(cell_list, cell, point)
+        end
     end
 
     return neighborhood_search
@@ -270,12 +279,13 @@ end
 function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
                  points_moving = (true, true), parallelization_backend = default_backend(x),
-                 eachindex_y = axes(y, 2))
+                 eachindex_y = axes(y, 2), points_active = nothing)
     # The coordinates of the first set of points are irrelevant for this NHS.
     # Only update when the second set is moving.
     points_moving[2] || return neighborhood_search
 
-    update_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
+    update_grid!(neighborhood_search, y; eachindex_y, points_active,
+                 parallelization_backend)
 end
 
 # Update only with neighbor coordinates
@@ -285,10 +295,10 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
                                                                         SemiParallelUpdate}},
                       y::AbstractMatrix;
                       parallelization_backend = default_backend(y),
-                      eachindex_y = axes(y, 2))
+                      eachindex_y = axes(y, 2), points_active = nothing)
     (; cell_list, update_buffer) = neighborhood_search
 
-    if eachindex_y != axes(y, 2)
+    if eachindex_y != axes(y, 2) || points_active !== nothing
         # Incremental update doesn't support inactive points
         error("this neighborhood search/update strategy does not support inactive points")
     end
@@ -395,10 +405,10 @@ end
 function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                   ParallelIncrementalUpdate},
                       y::AbstractMatrix; parallelization_backend = default_backend(y),
-                      eachindex_y = axes(y, 2))
+                      eachindex_y = axes(y, 2), points_active = nothing)
     (; cell_list, update_buffer) = neighborhood_search
 
-    if eachindex_y != axes(y, 2)
+    if eachindex_y != axes(y, 2) || points_active !== nothing
         # Incremental update doesn't support inactive points
         error("this neighborhood search/update strategy does not support inactive points")
     end
@@ -459,8 +469,9 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
                                                  GridNeighborhoodSearch{<:Any,
                                                                         SerialUpdate}},
                       y::AbstractMatrix; parallelization_backend = default_backend(y),
-                      eachindex_y = axes(y, 2))
-    initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
+                      eachindex_y = axes(y, 2), points_active = nothing)
+    initialize_grid!(neighborhood_search, y; parallelization_backend,
+                     eachindex_y, points_active)
 end
 
 function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
