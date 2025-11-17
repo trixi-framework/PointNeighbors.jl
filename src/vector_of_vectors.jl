@@ -161,3 +161,61 @@ end
 
     return vov
 end
+
+# As opposed to `DynamicVectorOfVectors`, this data structure does not support
+# modifying operations like `push!`.
+# It can be updated by assigning each contained integer value a new bin index.
+struct CompactVectorOfVectors{T, V, L, I}
+    values          :: V # Vector{Int} containing all values sorted by bin
+    n_bins          :: L # Ref{Int32}: Number of bins
+    first_bin_index :: I # Vector{Int} containing the first index in `values` of each bin
+
+    # This constructor is necessary for Adapt.jl to work with this struct.
+    # See the comments in gpu.jl for more details.
+    function CompactVectorOfVectors(values, n_bins, first_bin_index)
+        new{eltype(values), typeof(values), typeof(n_bins), typeof(first_bin_index)}(values,
+                                                                                     n_bins,
+                                                                                     first_bin_index)
+    end
+end
+
+function CompactVectorOfVectors{T}(; n_bins::Int) where {T}
+    first_bin_index = Vector{Int}(undef, n_bins+1)
+    first_bin_index[1] = 1 # required for the update
+    values = Vector{T}(undef, 0)
+    n_bins = Ref{Int32}(n_bins)
+
+    return CompactVectorOfVectors(values,
+                                  n_bins,
+                                  first_bin_index)
+end
+
+# Mhh should this may be changed to length(vov.values)?
+@inline Base.size(vov::CompactVectorOfVectors) = (vov.n_bins[],)
+
+@inline function Base.getindex(vov::CompactVectorOfVectors, i)
+    (; values, first_bin_index) = vov
+
+    start = first_bin_index[i]
+    stop = first_bin_index[i + 1] - 1
+    return view(values, start:stop)
+end
+
+@inline function update!(vov::CompactVectorOfVectors, f)
+    (; values, first_bin_index, n_bins) = vov
+
+    # TODO figure out how to do that fast and on the GPU
+    sort!(values, by = f)
+
+    # TODO figure out how to do that fast and on the GPU
+    n_particles_per_cell = zeros(n_bins[])
+    for val in values
+        n_particles_per_cell[f(val)] += 1
+    end
+
+    # Add 1 since first_bin_index starts at 1
+    n_particles_per_cell[1] += 1
+
+    # TODO avoid allocations
+    first_bin_index[2:end] .= cumsum(n_particles_per_cell)
+end

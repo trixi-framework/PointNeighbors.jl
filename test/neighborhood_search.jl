@@ -57,6 +57,12 @@
                                                                            max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int32}})),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              periodic_box = periodic_boxes[i],
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                                      periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
@@ -70,6 +76,7 @@
                 "`GridNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `CompactVectorOfVectors`",
                 "`PrecomputedNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList`"
             ]
@@ -85,6 +92,10 @@
                                               cell_list = FullGridCellList(min_corner = periodic_boxes[i].min_corner,
                                                                            max_corner = periodic_boxes[i].max_corner,
                                                                            backend = Vector{Vector{Int32}})),
+                GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
+                                              cell_list = FullGridCellList(min_corner = periodic_boxes[i].min_corner,
+                                                                           max_corner = periodic_boxes[i].max_corner,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i]),
                 GridNeighborhoodSearch{NDIMS}(periodic_box = periodic_boxes[i],
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
@@ -192,6 +203,11 @@
                                                                            max_corner,
                                                                            search_radius,
                                                                            backend = Vector{Vector{Int}})),
+                GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           search_radius,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(; search_radius, n_points),
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
@@ -210,6 +226,7 @@
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `ParallelIncrementalUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `DynamicVectorOfVectors` and `SemiParallelUpdate`",
                 "`GridNeighborhoodSearch` with `FullGridCellList` with `Vector{Vector}`",
+                "`GridNeighborhoodSearch` with `FullGridCellList` with `CompactVectorOfVectors`",
                 "`PrecomputedNeighborhoodSearch`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `DynamicVectorOfVectors`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `Vector{Vector}`"
@@ -231,6 +248,9 @@
                 GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
                                                                            max_corner,
                                                                            backend = Vector{Vector{Int32}})),
+                GridNeighborhoodSearch{NDIMS}(cell_list = FullGridCellList(; min_corner,
+                                                                           max_corner,
+                                                                           backend = PointNeighbors.CompactVectorOfVectors{Int32})),
                 PrecomputedNeighborhoodSearch{NDIMS}(),
                 GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points)),
