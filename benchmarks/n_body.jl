@@ -18,7 +18,11 @@ function benchmark_n_body(neighborhood_search, coordinates_;
     # Passing a different backend like `CUDA.CUDABackend`
     # allows us to change the type of the array to run the benchmark on the GPU.
     coordinates = PointNeighbors.Adapt.adapt(parallelization_backend, coordinates_)
-    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search)
+
+    # Remove unnecessary data structures that are only used for initialization
+    neighborhood_search_ = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
+
+    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search_)
 
     # This preserves the data type of `coordinates`, which makes it work for GPU types
     mass = 1e10 * (rand!(similar(coordinates, size(coordinates, 2))) .+ 1)

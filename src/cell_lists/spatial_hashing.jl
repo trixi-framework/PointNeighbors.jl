@@ -1,12 +1,12 @@
 """
-    SpatialHashingCellList{NDIMS}(; list_size, 
+    SpatialHashingCellList{NDIMS}(; list_size,
                                   backend = DynamicVectorOfVectors{Int32},
                                   max_points_per_cell = 100)
 
-A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells, 
-and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell, 
-as described by Ihmsen et al. (2011)(@cite Ihmsen2011). By using a hash map that stores entries only for non-empty cells, 
-the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles 
+A basic spatial hashing implementation. Similar to [`DictionaryCellList`](@ref), the domain is discretized into cells,
+and the particles in each cell are stored in a hash map. The hash is computed using the spatial location of each cell,
+as described by Ihmsen et al. (2011)(@cite Ihmsen2011). By using a hash map that stores entries only for non-empty cells,
+the domain is effectively infinite. The size of the hash map is recommended to be approximately twice the number of particles
 to balance memory consumption against the likelihood of hash collisions.
 
 # Arguments
@@ -128,7 +128,8 @@ function copy_cell_list(cell_list::SpatialHashingCellList, search_radius,
 
     return SpatialHashingCellList{NDIMS}(list_size = list_size,
                                          backend = typeof(cell_list.cells),
-                                         max_points_per_cell = max_points_per_cell(cell_list.cells))
+                                         max_points_per_cell = max_inner_length(cell_list.cells,
+                                                                                100))
 end
 
 @inline function Base.getindex(cell_list::SpatialHashingCellList, cell::Tuple)
