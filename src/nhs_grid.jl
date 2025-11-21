@@ -523,7 +523,7 @@ end
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
-            pos_diff = point_coords - neighbor_coords
+            pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
             distance2 = dot(pos_diff, pos_diff)
 
             pos_diff,

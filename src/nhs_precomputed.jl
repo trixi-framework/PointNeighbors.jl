@@ -179,12 +179,15 @@ end
     for neighbor_ in eachindex(neighbors)
         neighbor = @inbounds neighbors[neighbor_]
 
-        # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
-        # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
-        neighbor_coords = extract_svector(neighbor_system_coords,
-                                          Val(ndims(neighborhood_search)), neighbor)
+        # Making this `@inbounds` is not perfectly safe because
+        # `neighbor` (extracted from the neighbor list) is only guaranteed to be in bounds
+        # if the neighbor lists were constructed correctly and have not been corrupted.
+        # However, adding this `@inbounds` yields a ~20% speedup for TLSPH on GPUs (A4500).
+        neighbor_coords = @inbounds extract_svector(neighbor_system_coords,
+                                                    Val(ndims(neighborhood_search)),
+                                                    neighbor)
 
-        pos_diff = point_coords - neighbor_coords
+        pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
         distance2 = dot(pos_diff, pos_diff)
 
         pos_diff,
