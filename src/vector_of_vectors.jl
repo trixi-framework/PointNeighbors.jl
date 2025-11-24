@@ -161,3 +161,12 @@ end
 
     return vov
 end
+
+function max_inner_length(cells::DynamicVectorOfVectors, fallback)
+    return size(cells.backend, 1)
+end
+
+# Fallback when backend is a `Vector{Vector{T}}`. Only used for copying the cell list.
+function max_inner_length(::Any, fallback)
+    return fallback
+end
