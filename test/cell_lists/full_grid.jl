@@ -1,4 +1,20 @@
 @testset "`FullGridCellList`" verbose=true begin
+    # Test that an error is thrown when too many dimensions are used
+    @testset "constructor" begin
+        min_corner = zeros(101)
+        max_corner = ones(101)
+        search_radius = 1.0
+
+        error_string = "FullGridCellList only supports up to 100 dimensions"
+        @test_throws error_string FullGridCellList(; min_corner, max_corner)
+        @test_throws error_string FullGridCellList(; min_corner, max_corner, search_radius)
+
+        min_corner = zeros(3)
+        max_corner = ones(2)
+        error_string = "min_corner and max_corner must have the same length"
+        @test_throws error_string FullGridCellList(; min_corner, max_corner)
+    end
+
     # Test that `update!` throws an error when a particle is outside the bounding box
     @testset "`update!` bounds check" begin
         @testset "$(N)D" for N in 1:3
