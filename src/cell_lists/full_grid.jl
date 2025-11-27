@@ -47,6 +47,15 @@ function FullGridCellList(; min_corner, max_corner,
                           search_radius = zero(eltype(min_corner)),
                           backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
+    if length(min_corner) != length(max_corner)
+        throw(ArgumentError("min_corner and max_corner must have the same length"))
+    end
+
+    if length(min_corner) > 100
+        throw(ArgumentError("FullGridCellList only supports up to 100 dimensions, " *
+                            "check your `min_corner` and `max_corner`"))
+    end
+
     # Add one layer in each direction to make sure neighbor cells exist.
     # Also pad domain a little more to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
