@@ -75,6 +75,11 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                        periodic_box = nothing,
                                        cell_list = DictionaryCellList{NDIMS}(),
                                        update_strategy = nothing) where {NDIMS}
+    if ndims(cell_list) != NDIMS
+        throw(ArgumentError("a $(NDIMS)D cell list is required for " *
+                            "a GridNeighborhoodSearch{$(NDIMS)}"))
+    end
+
     if isnothing(update_strategy)
         # Automatically choose best available update option for this cell list
         update_strategy = first(supported_update_strategies(cell_list))()

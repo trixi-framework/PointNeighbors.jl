@@ -25,6 +25,8 @@ struct DictionaryCellList{NDIMS} <: AbstractCellList
     end
 end
 
+@inline Base.ndims(::DictionaryCellList{NDIMS}) where {NDIMS} = NDIMS
+
 function supported_update_strategies(::DictionaryCellList)
     return (SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate)
 end

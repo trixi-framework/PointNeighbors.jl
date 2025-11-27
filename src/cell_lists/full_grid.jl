@@ -34,6 +34,8 @@ struct FullGridCellList{C, LI, MINC, MAXC} <: AbstractCellList
     max_corner     :: MAXC
 end
 
+@inline Base.ndims(cell_list::FullGridCellList) = ndims(cell_list.linear_indices)
+
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
     return (ParallelIncrementalUpdate, ParallelUpdate, SemiParallelUpdate,
             SerialIncrementalUpdate, SerialUpdate)

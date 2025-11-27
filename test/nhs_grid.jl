@@ -1,5 +1,8 @@
 @testset verbose=true "GridNeighborhoodSearch" begin
     @testset "Constructor" begin
+        error_str = "a 2D cell list is required for a GridNeighborhoodSearch{2}"
+        @test_throws error_str GridNeighborhoodSearch{2}(cell_list = DictionaryCellList{3}())
+
         error_str = "is not a valid update strategy"
         @test_throws "test $error_str" GridNeighborhoodSearch{2}(update_strategy = :test)
 
