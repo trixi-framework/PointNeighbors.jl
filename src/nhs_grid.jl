@@ -30,6 +30,8 @@ since not sorting makes our implementation a lot faster (although less paralleli
 # Keywords
 - `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
                             with [`copy_neighborhood_search`](@ref).
+                            Note that the type of `search_radius` determines the type used
+                            for the distance computations.
 - `n_points = 0`:           Total number of points. The default of `0` is useful together
                             with [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
