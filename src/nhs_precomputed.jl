@@ -141,14 +141,14 @@ function update!(search::PrecomputedNeighborhoodSearch,
     # Skip update if both point sets are static
     if any(points_moving)
         initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                                   parallelization_backend)
+                                   parallelization_backend, search.sort_neighbor_lists)
     end
 
     return search
 end
 
 function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                                    parallelization_backend)
+                                    parallelization_backend, sort_neighbor_lists)
     # Initialize neighbor lists
     empty!(neighbor_lists)
     resize!(neighbor_lists, size(x, 2))
@@ -164,7 +164,8 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
 end
 
 function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
-                                    neighborhood_search, x, y, parallelization_backend)
+                                    neighborhood_search, x, y, parallelization_backend,
+                                    sort_neighbor_lists)
     resize!(neighbor_lists, size(x, 2))
 
     # `Base.empty!.(neighbor_lists)`, but for all backends
@@ -178,7 +179,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
         pushat!(neighbor_lists, point, neighbor)
     end
 
-    if neighborhood_search.sort_neighbor_lists
+    if sort_neighbor_lists
         sorteach!(neighbor_lists)
     end
 end
