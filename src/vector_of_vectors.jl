@@ -23,6 +23,8 @@ end
 
 @inline Base.size(vov::DynamicVectorOfVectors) = (vov.length_[],)
 
+@inline default_backend(x::DynamicVectorOfVectors) = default_backend(x.backend)
+
 @inline function Base.getindex(vov::DynamicVectorOfVectors, i)
     (; backend, lengths) = vov
 
@@ -158,6 +160,31 @@ end
     # Make sure that all newly added vectors are empty
     vov.lengths[(length(vov) + 1):n] .= zero(Int32)
     vov.length_[] = n
+
+    return vov
+end
+
+# Sort each inner vector
+@inline function sorteach!(vov::DynamicVectorOfVectors)
+    # TODO remove this check when Metal supports sorting
+    if nameof(typeof(default_backend(vov.backend))) == :MetalBackend
+        @warn "sorting neighbor lists is not supported on Metal. Skipping sort."
+        return vov
+    end
+
+    @threaded default_backend(vov.backend) for i in axes(vov.backend, 2)
+        for j in (vov.lengths[i] + 1):size(vov.backend, 1)
+            @inbounds vov.backend[j, i] = typemax(eltype(vov.backend))
+        end
+    end
+
+    sort!(vov.backend, dims = 1)
+
+    return vov
+end
+
+@inline function sorteach!(vov::Vector{<:Vector{T}}) where {T}
+    sort!.(vov)
 
     return vov
 end

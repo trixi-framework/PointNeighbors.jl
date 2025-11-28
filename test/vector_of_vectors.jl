@@ -8,9 +8,6 @@
         vov = PointNeighbors.DynamicVectorOfVectors{ELTYPE}(max_outer_length = 20,
                                                             max_inner_length = 4)
 
-        # Test internal size
-        @test size(vov.backend) == (4, 20)
-
         function verify(vov, vov_ref)
             @test length(vov) == length(vov_ref)
             @test eachindex(vov) == eachindex(vov_ref)
@@ -24,62 +21,92 @@
             end
         end
 
-        # Initial check
-        verify(vov, vov_ref)
+        @testset "Initial state" begin
+            # Test internal size
+            @test size(vov.backend) == (4, 20)
 
-        # First `push!`
-        push!(vov_ref, type.([1, 2, 3]))
-        push!(vov, type.([1, 2, 3]))
+            # Initial check
+            verify(vov, vov_ref)
+        end
 
-        verify(vov, vov_ref)
+        @testset "First push!" begin
+            push!(vov_ref, type.([1, 3, 2]))
+            push!(vov, type.([1, 3, 2]))
 
-        # `push!` multiple items
-        push!(vov_ref, type.([4]), type.([5, 6, 7, 8]))
-        push!(vov, type.([4]), type.([5, 6, 7, 8]))
+            verify(vov, vov_ref)
+        end
 
-        verify(vov, vov_ref)
+        @testset "push! multiple items" begin
+            push!(vov_ref, type.([4]), type.([5, 6, 7, 8]))
+            push!(vov, type.([4]), type.([5, 6, 7, 8]))
 
-        # `push!` to an inner vector
-        push!(vov_ref[1], type(12))
-        PointNeighbors.pushat!(vov, 1, type(12))
+            verify(vov, vov_ref)
+        end
 
-        # `push!` overflow
-        error_ = ErrorException("cell list is full. Use a larger `max_points_per_cell`.")
-        @test_throws error_ PointNeighbors.pushat!(vov, 1, type(13))
+        @testset "push! to an inner vector" begin
+            push!(vov_ref[1], type(12))
+            PointNeighbors.pushat!(vov, 1, type(12))
 
-        verify(vov, vov_ref)
+            verify(vov, vov_ref)
+        end
 
-        # Delete entry of inner vector. Note that this changes the order of the elements.
-        deleteat!(vov_ref[3], 2)
-        PointNeighbors.deleteatat!(vov, 3, 2)
+        @testset "push! overflow" begin
+            error_ = ErrorException("cell list is full. Use a larger `max_points_per_cell`.")
+            @test_throws error_ PointNeighbors.pushat!(vov, 1, type(13))
 
-        @test vov_ref[3] == type.([5, 7, 8])
-        @test vov[3] == type.([5, 8, 7])
+            verify(vov, vov_ref)
+        end
 
-        # Delete second to last entry
-        deleteat!(vov_ref[3], 2)
-        PointNeighbors.deleteatat!(vov, 3, 2)
+        @testset "deleteat!" begin
+            # Delete entry of inner vector. Note that this changes the order of the elements.
+            deleteat!(vov_ref[3], 2)
+            PointNeighbors.deleteatat!(vov, 3, 2)
 
-        @test vov_ref[3] == type.([5, 8])
-        @test vov[3] == type.([5, 7])
+            @test vov_ref[3] == type.([5, 7, 8])
+            @test vov[3] == type.([5, 8, 7])
 
-        # Delete last entry
-        deleteat!(vov_ref[3], 2)
-        PointNeighbors.deleteatat!(vov, 3, 2)
+            # Delete second to last entry
+            deleteat!(vov_ref[3], 2)
+            PointNeighbors.deleteatat!(vov, 3, 2)
 
-        # Now they are identical again
-        verify(vov, vov_ref)
+            @test vov_ref[3] == type.([5, 8])
+            @test vov[3] == type.([5, 7])
 
-        # Delete the remaining entry of this vector
-        deleteat!(vov_ref[3], 1)
-        PointNeighbors.deleteatat!(vov, 3, 1)
+            # Delete last entry
+            deleteat!(vov_ref[3], 2)
+            PointNeighbors.deleteatat!(vov, 3, 2)
 
-        verify(vov, vov_ref)
+            # Now they are identical again
+            verify(vov, vov_ref)
 
-        # `empty!`
-        empty!(vov_ref)
-        empty!(vov)
+            # Delete the remaining entry of this vector
+            deleteat!(vov_ref[3], 1)
+            PointNeighbors.deleteatat!(vov, 3, 1)
 
-        verify(vov, vov_ref)
+            verify(vov, vov_ref)
+        end
+
+        # Skip for Tuples
+        if ELTYPE <: Number
+            @testset "sorteach!" begin
+                # Make sure that the first inner vector is unsorted.
+                # If this fails, make sure the tests above don't yield a sorted vector.
+                @test vov[1] != sort(vov[1])
+
+                PointNeighbors.sorteach!(vov)
+                PointNeighbors.sorteach!(vov_ref)
+
+                @test vov[1] == sort(vov[1])
+
+                verify(vov, vov_ref)
+            end
+        end
+
+        @testset "empty!" begin
+            empty!(vov_ref)
+            empty!(vov)
+
+            verify(vov, vov_ref)
+        end
     end
 end
