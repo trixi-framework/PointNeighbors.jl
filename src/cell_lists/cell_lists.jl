@@ -13,7 +13,8 @@ end
 function construct_backend(::Type{Vector{Vector{T}}},
                            max_outer_length, max_inner_length;
                            transpose_backend = false) where {T}
-    transpose_backend && error("transpose backend not supported for Vector{Vector{T}}")
+    transpose_backend && error("transpose backend is only supported for " *
+                               "DynamicVectorOfVectors backend")
 
     return [T[] for _ in 1:max_outer_length]
 end

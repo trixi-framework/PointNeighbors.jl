@@ -46,7 +46,7 @@ to strip the internal neighborhood search, which is not needed anymore.
                                        and GPU-compatible.
 - `max_neighbors`:          Maximum number of neighbors per particle. This will be used to
                             allocate the `DynamicVectorOfVectors`. It is not used with
-                            other backends. The default is 64 in 2D and 324 in 3D.
+                            other backends. The default is 64 in 2D and 320 in 3D.
 - `transpose_backend = false`: Whether to transpose the backend data structure storing the
                             neighbor lists. This is only supported for the
                             `DynamicVectorOfVectors` backend.
