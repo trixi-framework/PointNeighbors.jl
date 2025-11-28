@@ -53,10 +53,11 @@ to strip the internal neighborhood search, which is not needed anymore.
                             By default, the neighbors of each point are stored contiguously
                             in memory. This layout optimizes cache hits when looping
                             over all neighbors of a point on CPUs.
-                            On GPUs, however, storing the first neighbors of all points
-                            contiguously in memory (`transpose_backend = true`)
-                            allows for coalesced memory accesses when all threads process
-                            the n-th neighbor of their respective point in parallel.
+                            On GPUs, however, storing all first neighbors of all points
+                            contiguously in memory, then all second neighbors, etc.,
+                            (`transpose_backend = true`) allows for coalesced
+                            memory accesses when all threads process the n-th neighbor
+                            of their respective point in parallel.
                             This can lead to a speedup of ~3x in many cases.
 """
 struct PrecomputedNeighborhoodSearch{NDIMS, NL, ELTYPE, PB, NHS} <:
