@@ -239,5 +239,6 @@ end
     return PrecomputedNeighborhoodSearch{ndims(search)}(search.neighbor_lists,
                                                         search.search_radius,
                                                         search.periodic_box,
-                                                        nothing)
+                                                        nothing,
+                                                        search.sort_neighbor_lists)
 end
