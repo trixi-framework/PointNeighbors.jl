@@ -172,12 +172,21 @@ end
         return vov
     end
 
+    # Note that we cannot just do `sort!(vov[i])` on GPUs because that would call `sort!`
+    # from within a GPU kernel, but this function is not GPU-compatible.
+    # We might be able to use a sorting function from AcceleratedKernels.jl,
+    # but for now the following workaround should be sufficient.
+
+    # Set all unused entries to `typemax` so that they are sorted to the end
     @threaded default_backend(vov.backend) for i in axes(vov.backend, 2)
         for j in (vov.lengths[i] + 1):size(vov.backend, 1)
             @inbounds vov.backend[j, i] = typemax(eltype(vov.backend))
         end
     end
 
+    # Now we can sort full columns.
+    # Note that this will forward to highly optimized sorting functions on GPUs.
+    # It currently does not work on Metal.
     sort!(vov.backend, dims = 1)
 
     return vov
