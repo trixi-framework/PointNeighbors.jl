@@ -3,7 +3,8 @@
                                          periodic_box = nothing, update_strategy = nothing,
                                          update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(),
                                          backend = DynamicVectorOfVectors{Int32},
-                                         max_neighbors = max_neighbors(NDIMS))
+                                         max_neighbors = max_neighbors(NDIMS),
+                                         sort_neighbor_lists = true)
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
 for each point during initialization and update.
@@ -44,6 +45,9 @@ to strip the internal neighborhood search, which is not needed anymore.
 - `max_neighbors`: Maximum number of neighbors per particle. This will be used to
                    allocate the `DynamicVectorOfVectors`. It is not used with
                    other backends. The default is 64 in 2D and 324 in 3D.
+- `sort_neighbor_lists = true`: Whether to sort the neighbor lists after construction.
+                            This can improve cache hits on CPUs and improve coalesced
+                            memory access on GPUs.
 """
 struct PrecomputedNeighborhoodSearch{NDIMS, NL, ELTYPE, PB, NHS} <:
        AbstractNeighborhoodSearch
@@ -51,16 +55,19 @@ struct PrecomputedNeighborhoodSearch{NDIMS, NL, ELTYPE, PB, NHS} <:
     search_radius       :: ELTYPE
     periodic_box        :: PB
     neighborhood_search :: NHS
+    sort_neighbor_lists :: Bool
 
     function PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
                                                   periodic_box,
-                                                  update_neighborhood_search) where {NDIMS}
+                                                  update_neighborhood_search,
+                                                  sort_neighbor_lists) where {NDIMS}
         return new{NDIMS, typeof(neighbor_lists),
                    typeof(search_radius),
                    typeof(periodic_box),
                    typeof(update_neighborhood_search)}(neighbor_lists, search_radius,
                                                        periodic_box,
-                                                       update_neighborhood_search)
+                                                       update_neighborhood_search,
+                                                       sort_neighbor_lists)
     end
 end
 
@@ -73,11 +80,13 @@ function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 
                                                                                                          periodic_box,
                                                                                                          update_strategy),
                                               backend = DynamicVectorOfVectors{Int32},
-                                              max_neighbors = max_neighbors(NDIMS)) where {NDIMS}
+                                              max_neighbors = max_neighbors(NDIMS),
+                                              sort_neighbor_lists = true) where {NDIMS}
     neighbor_lists = construct_backend(backend, n_points, max_neighbors)
 
     PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
-                                         periodic_box, update_neighborhood_search)
+                                         periodic_box, update_neighborhood_search,
+                                         sort_neighbor_lists)
 end
 
 # Default values for maximum neighbor count
@@ -111,7 +120,7 @@ function initialize!(search::PrecomputedNeighborhoodSearch,
     initialize!(neighborhood_search, x, y; parallelization_backend)
 
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                               parallelization_backend)
+                               parallelization_backend, search.sort_neighbor_lists)
 
     return search
 end
@@ -132,14 +141,14 @@ function update!(search::PrecomputedNeighborhoodSearch,
     # Skip update if both point sets are static
     if any(points_moving)
         initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                                   parallelization_backend)
+                                   parallelization_backend, search.sort_neighbor_lists)
     end
 
     return search
 end
 
 function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                                    parallelization_backend)
+                                    parallelization_backend, sort_neighbor_lists)
     # Initialize neighbor lists
     empty!(neighbor_lists)
     resize!(neighbor_lists, size(x, 2))
@@ -155,7 +164,8 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
 end
 
 function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
-                                    neighborhood_search, x, y, parallelization_backend)
+                                    neighborhood_search, x, y, parallelization_backend,
+                                    sort_neighbor_lists)
     resize!(neighbor_lists, size(x, 2))
 
     # `Base.empty!.(neighbor_lists)`, but for all backends
@@ -167,6 +177,10 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     foreach_point_neighbor(x, y, neighborhood_search;
                            parallelization_backend) do point, neighbor, _, _
         pushat!(neighbor_lists, point, neighbor)
+    end
+
+    if sort_neighbor_lists
+        sorteach!(neighbor_lists)
     end
 end
 
@@ -225,5 +239,6 @@ end
     return PrecomputedNeighborhoodSearch{ndims(search)}(search.neighbor_lists,
                                                         search.search_radius,
                                                         search.periodic_box,
-                                                        nothing)
+                                                        nothing,
+                                                        search.sort_neighbor_lists)
 end
