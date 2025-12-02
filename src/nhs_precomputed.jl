@@ -3,7 +3,8 @@
                                          periodic_box = nothing, update_strategy = nothing,
                                          update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(),
                                          backend = DynamicVectorOfVectors{Int32},
-                                         max_neighbors = max_neighbors(NDIMS),
+                                         transpose_backend = false,
+                                         max_neighbors = max_neighbors(NDIMS))
                                          sort_neighbor_lists = true)
 
 Neighborhood search with precomputed neighbor lists. A list of all neighbors is computed
@@ -23,6 +24,8 @@ to strip the internal neighborhood search, which is not needed anymore.
 # Keywords
 - `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
                             with [`copy_neighborhood_search`](@ref).
+                            Note that the type of `search_radius` determines the type used
+                            for the distance computations.
 - `n_points = 0`:           Total number of points. The default of `0` is useful together
                             with [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
@@ -42,6 +45,18 @@ to strip the internal neighborhood search, which is not needed anymore.
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
     - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits
                                        and GPU-compatible.
+- `transpose_backend = false`: Whether to transpose the backend data structure storing the
+                            neighbor lists. This is only supported for the
+                            `DynamicVectorOfVectors` backend.
+                            By default, the neighbors of each point are stored contiguously
+                            in memory. This layout optimizes cache hits when looping
+                            over all neighbors of a point on CPUs.
+                            On GPUs, however, storing all first neighbors of all points
+                            contiguously in memory, then all second neighbors, etc.,
+                            (`transpose_backend = true`) allows for coalesced
+                            memory accesses when all threads process the n-th neighbor
+                            of their respective point in parallel.
+                            This can lead to a speedup of ~3x in many cases.
 - `max_neighbors`: Maximum number of neighbors per particle. This will be used to
                    allocate the `DynamicVectorOfVectors`. It is not used with
                    other backends. The default is 64 in 2D and 324 in 3D.
@@ -80,9 +95,10 @@ function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 
                                                                                                          periodic_box,
                                                                                                          update_strategy),
                                               backend = DynamicVectorOfVectors{Int32},
+                                              transpose_backend = false,
                                               max_neighbors = max_neighbors(NDIMS),
                                               sort_neighbor_lists = true) where {NDIMS}
-    neighbor_lists = construct_backend(backend, n_points, max_neighbors)
+    neighbor_lists = construct_backend(backend, n_points, max_neighbors; transpose_backend)
 
     PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
                                          periodic_box, update_neighborhood_search,
@@ -225,10 +241,12 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
     # For `Vector{Vector}` backend use `max_neighbors(NDIMS)` as fallback.
     # This should never be used because this backend doesn't require a `max_neighbors`.
     max_neighbors_ = max_inner_length(nhs.neighbor_lists, max_neighbors(ndims(nhs)))
+    transpose_backend = transposed_backend(nhs.neighbor_lists)
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
                                                      periodic_box = nhs.periodic_box,
                                                      update_neighborhood_search,
                                                      backend = typeof(nhs.neighbor_lists),
+                                                     transpose_backend,
                                                      max_neighbors = max_neighbors_)
 end
 

@@ -13,8 +13,17 @@ struct DynamicVectorOfVectors{T, ARRAY2D, ARRAY1D, L} <: AbstractVector{Array{T,
     end
 end
 
-function DynamicVectorOfVectors{T}(; max_outer_length, max_inner_length) where {T}
-    backend = Array{T, 2}(undef, max_inner_length, max_outer_length)
+function DynamicVectorOfVectors{T}(; max_outer_length, max_inner_length,
+                                   transpose_backend = false) where {T}
+    if transpose_backend
+        # Create a row-major array
+        backend_ = Array{T, 2}(undef, max_outer_length, max_inner_length)
+        # Wrap in a `PermutedDimsArray` to obtain the usual column-major access,
+        # even though the underlying memory layout is row-major.
+        backend = PermutedDimsArray(backend_, (2, 1))
+    else
+        backend = Array{T, 2}(undef, max_inner_length, max_outer_length)
+    end
     length_ = Ref(zero(Int32))
     lengths = zeros(Int32, max_outer_length)
 
@@ -203,6 +212,14 @@ function max_inner_length(cells::DynamicVectorOfVectors, fallback)
 end
 
 # Fallback when backend is a `Vector{Vector{T}}`. Only used for copying the cell list.
-function max_inner_length(::Any, fallback)
+@inline function max_inner_length(::Any, fallback)
     return fallback
+end
+
+@inline function transposed_backend(::DynamicVectorOfVectors{<:Any, <:PermutedDimsArray})
+    return true
+end
+
+@inline function transposed_backend(::Any)
+    return false
 end
