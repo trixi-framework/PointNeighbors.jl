@@ -556,6 +556,448 @@ end
     end
 end
 
+# for cell in cells
+#     for point in cell
+#         for neighbor_cell in neighbor_cells
+
+#             for neighbor in neighbor_cell
+@inline function foreach_point_neighbor_localmem(f, system_coords, neighbor_coords,
+                                             neighborhood_search; search_radius = search_radius(neighborhood_search))
+    backend = KernelAbstractions.get_backend(system_coords)
+    max_particles_per_cell = 64
+    nhs_size = size(neighborhood_search.cell_list.linear_indices)
+    # cells = CartesianIndices(ntuple(i -> 2:(nhs_size[i] - 1), ndims(neighborhood_search)))
+    linear_indices = neighborhood_search.cell_list.linear_indices
+    cartesian_indices = CartesianIndices(size(linear_indices))
+    lengths = Array(neighborhood_search.cell_list.cells.lengths)
+    # max_particles_per_cell = maximum(lengths)
+    nonempty_cells = Adapt.adapt(backend, filter(index -> lengths[linear_indices[index]] > 0, cartesian_indices))
+    ndrange = max_particles_per_cell * length(nonempty_cells)
+    kernel = foreach_neighbor_localmem(backend, (max_particles_per_cell,))
+    kernel(f, system_coords, neighbor_coords, neighborhood_search, nonempty_cells, Val(max_particles_per_cell), search_radius; ndrange)
+
+    KernelAbstractions.synchronize(backend)
+
+    return nothing
+end
+
+@inline function copy_to_localmem!(local_points, local_neighbor_coords,
+                                   neighbor_cell, neighbor_system_coords,
+                                   neighborhood_search, particleidx)
+    points_view = points_in_cell(neighbor_cell, neighborhood_search)
+    n_particles_in_neighbor_cell = length(points_view)
+
+    # First use all threads to load the neighbors into local memory in parallel
+    if particleidx <= n_particles_in_neighbor_cell
+        @inbounds p = local_points[particleidx] = points_view[particleidx]
+        for d in 1:ndims(neighborhood_search)
+            @inbounds local_neighbor_coords[d, particleidx] = neighbor_system_coords[d, p]
+        end
+    end
+    return n_particles_in_neighbor_cell
+end
+
+# @parallel(block) for cell in cells
+#     for neighbor_cell in neighboring_cells
+#         @parallel(thread) for neighbor in neighbor_cell
+#             copy_coordinates_to_localmem(neighbor)
+#
+#         # Make sure all threads finished the copying
+#         @synchronize
+#
+#         @parallel(thread) for particle in cell
+#             for neighbor in neighbor_cell
+#                 # This uses the neighbor coordinates from the local memory
+#                 compute(point, neighbor)
+#
+#         # Make sure all threads finished computing before we continue with copying
+#         @synchronize
+@kernel cpu=false function foreach_neighbor_localmem(f::F, system_coords, neighbor_system_coords,
+                               neighborhood_search, cells, ::Val{MAX}, search_radius) where {F, MAX}
+    cell_ = @index(Group)
+    cell = @inbounds Tuple(cells[cell_])
+    particleidx = @index(Local)
+    @assert 1 <= particleidx <= MAX
+
+    # Coordinate buffer in local memory
+    local_points = @localmem Int32 MAX
+    local_neighbor_coords = @localmem eltype(system_coords) (ndims(neighborhood_search), MAX)
+
+    points = points_in_cell(cell, neighborhood_search)
+    n_particles_in_current_cell = length(points)
+
+    # Extract point coordinates if a point lies on this thread
+    if particleidx <= n_particles_in_current_cell
+        point = @inbounds points[particleidx]
+        point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
+                                                 point)
+    else
+        point = zero(Int32)
+        point_coords = zero(SVector{ndims(neighborhood_search), eltype(system_coords)})
+    end
+
+    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+        neighbor_cell = Tuple(neighbor_cell_)
+
+        n_particles_in_neighbor_cell = copy_to_localmem!(local_points, local_neighbor_coords,
+                                                         neighbor_cell, neighbor_system_coords,
+                                                         neighborhood_search, particleidx)
+
+        # Make sure all threads finished the copying
+        @synchronize
+
+        # Now each thread works on one point again
+        if particleidx <= n_particles_in_current_cell
+            for local_neighbor in 1:n_particles_in_neighbor_cell
+                @inbounds neighbor = local_points[local_neighbor]
+                @inbounds neighbor_coords = extract_svector(local_neighbor_coords,
+                                                            Val(ndims(neighborhood_search)),
+                                                            local_neighbor)
+
+                pos_diff = point_coords - neighbor_coords
+                distance2 = dot(pos_diff, pos_diff)
+
+                # TODO periodic
+
+                if distance2 <= search_radius^2
+                    distance = sqrt(distance2) # TODO: eventuell fastmath
+
+                    # Inline to avoid loss of performance
+                    # compared to not using `foreach_point_neighbor`.
+                    @inline f(point, neighbor, pos_diff, distance)
+                end
+            end
+        end
+
+        # Make sure all threads finished computing before we continue with copying
+        @synchronize()
+    end
+end
+
+# @parallel(block) for cell in cells
+#     @parallel(thread) for neighbor in first_neighbor_cell
+#         copy_coordinates_to_localmem!(local_coords, neighbor)
+#
+#     for neighbor_cell in neighboring_cells
+#         @parallel(thread) for neighbor in neighbor_cell + 1
+#             copy_coordinates_to_localmem!(next_local_coords, neighbor)
+#
+#         # No synchronize needed. The following loop works on `local_coords`.
+#
+#         @parallel(thread) for particle in cell
+#             for neighbor in neighbor_cell
+#                 # This uses the neighbor coordinates from the local memory
+#                 compute(point, neighbor)
+#
+#         # Make sure all threads finished computing before we switch variables
+#         @synchronize
+#         local_coords, next_local_coords = next_local_coords, local_coords
+@kernel cpu=false function foreach_neighbor_double_buffer(f::F, system_coords, neighbor_system_coords,
+                               neighborhood_search, cells, ::Val{MAX}, search_radius) where {F, MAX}
+    cell_ = @index(Group)
+    cell = @inbounds Tuple(cells[cell_])
+    particleidx = @index(Local)
+    @assert 1 <= particleidx <= MAX
+
+    # Coordinate buffer in local memory
+    local_points = @localmem Int32 MAX
+    local_neighbor_coords = @localmem eltype(system_coords) (ndims(neighborhood_search), MAX)
+
+    # Next coordinate buffer in local memory
+    next_local_points = @localmem Int32 MAX
+    next_local_neighbor_coords = @localmem eltype(system_coords) (ndims(neighborhood_search), MAX)
+
+    points = points_in_cell(cell, neighborhood_search)
+    n_particles_in_current_cell = length(points)
+
+    # Extract point coordinates if a point lies on this thread
+    if particleidx <= n_particles_in_current_cell
+        point = @inbounds points[particleidx]
+        point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
+                                                 point)
+    else
+        point = zero(Int32)
+        point_coords = zero(SVector{ndims(neighborhood_search), eltype(system_coords)})
+    end
+
+    neighborhood = neighboring_cells(cell, neighborhood_search)
+    # (neighbor_cell, state) = iterate(neighborhood)
+    neighbor_cell = Tuple(first(neighborhood))
+
+    n_particles_in_neighbor_cell = copy_to_localmem!(local_points, local_neighbor_coords,
+                                                     neighbor_cell, neighbor_system_coords,
+                                                     neighborhood_search, particleidx)
+
+    @synchronize()
+
+    for neighbor_ in 1:length(neighborhood)
+        neighbor_cell = @inbounds Tuple(neighborhood[neighbor_])
+
+    # while true
+    #     next = iterate(neighborhood, state)
+    #     if next !== nothing
+
+        if neighbor_ < length(neighborhood)
+            next_neighbor_cell = @inbounds Tuple(neighborhood[neighbor_ + 1])
+            # (next_neighbor_cell, state) = next
+            next_n_particles_in_neighbor_cell = copy_to_localmem!(next_local_points, next_local_neighbor_coords,
+                                                             next_neighbor_cell, neighbor_system_coords,
+                                                             neighborhood_search, particleidx)
+        end
+
+        # Now each thread works on one point again
+        if particleidx <= n_particles_in_current_cell
+            for local_neighbor in 1:n_particles_in_neighbor_cell
+                @inbounds neighbor = local_points[local_neighbor]
+                @inbounds neighbor_coords = extract_svector(local_neighbor_coords,
+                                                            Val(ndims(neighborhood_search)),
+                                                            local_neighbor)
+
+                pos_diff = point_coords - neighbor_coords
+                distance2 = dot(pos_diff, pos_diff)
+
+                # TODO periodic
+
+                if distance2 <= search_radius^2
+                    distance = sqrt(distance2) # TODO: eventuell fastmath
+
+                    # Inline to avoid loss of performance
+                    # compared to not using `foreach_point_neighbor`.
+                    @inline f(point, neighbor, pos_diff, distance)
+                end
+            end
+        end
+
+        # next === nothing && break
+        neighbor_ >= length(neighborhood) && break
+        @synchronize()
+
+        # swap variables
+        n_particles_in_neighbor_cell = next_n_particles_in_neighbor_cell
+        local_points, next_local_points = next_local_points, local_points
+        local_neighbor_coords, next_local_neighbor_coords = next_local_neighbor_coords, local_neighbor_coords
+    end
+end
+
+@inline function foreach_point_neighbor_cell_blocks(f, system_coords, neighbor_coords,
+                                             neighborhood_search)
+    backend = KernelAbstractions.get_backend(system_coords)
+    max_particles_per_cell = 64
+    nhs_size = size(neighborhood_search.cell_list.linear_indices)
+    cells = CartesianIndices(ntuple(i -> 2:(nhs_size[i] - 1), ndims(neighborhood_search)))
+    ndrange = max_particles_per_cell * length(cells)
+    kernel = foreach_neighbor_cell_blocks(backend, (max_particles_per_cell,))
+    kernel(f, system_coords, neighbor_coords, neighborhood_search, Val(max_particles_per_cell); ndrange)
+
+    KernelAbstractions.synchronize(backend)
+
+    return nothing
+end
+
+@kernel cpu=false function foreach_neighbor_cell_blocks(f::F, system_coords, neighbor_coords,
+                               neighborhood_search, ::Val{MAX}) where {F, MAX}
+    cell_ = @index(Group)
+    nhs_size = size(neighborhood_search.cell_list.linear_indices)
+    @inbounds cells = CartesianIndices(ntuple(i -> 2:(nhs_size[i] - 1), ndims(neighborhood_search)))
+    cell = @inbounds Tuple(cells[cell_])
+    particleidx = @index(Local)
+    @assert 1 <= particleidx <= MAX
+
+    pv = points_in_cell(cell, neighborhood_search)
+    n_particles_in_current_cell = length(pv)
+    if particleidx <= n_particles_in_current_cell
+        point = @inbounds pv[particleidx]
+        point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
+                                                 point)
+        # KernelAbstractions.@print("Point $point with coords ($(point_coords[1]), $(point_coords[2]))\n")
+
+        for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+            neighbor_cell = Tuple(neighbor_cell_)
+            points_view = points_in_cell(neighbor_cell, neighborhood_search)
+
+            for neighbor in points_view
+                @inbounds neighbor_coords = extract_svector(neighbor_system_coords,
+                                                Val(ndims(neighborhood_search)), neighbor)
+
+                pos_diff = point_coords - neighbor_coords
+                distance2 = dot(pos_diff, pos_diff)
+
+                # TODO periodic
+
+                if distance2 <= search_radius^2
+                    # KernelAbstractions.@print("Point $point, neighbor $neighbor with distance2 $distance2\n")
+                    distance = sqrt(distance2) # TODO: eventuell fastmath
+
+                    # Inline to avoid loss of performance
+                    # compared to not using `foreach_point_neighbor`.
+                    @inline f(point, neighbor, pos_diff, distance)
+                end
+            end
+        end
+    end
+end
+
+# Another version of the above that allows for groups smaller than cells
+# # for cell in cells
+# #     for point in cell
+# #         for neighbor_cell in neighbor_cells
+
+# #             for neighbor in neighbor_cell
+# function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search::GridNeighborhoodSearch;
+#                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
+#                                 points = axes(system_coords, 2)) where {T}
+#     # The type annotation above is to make Julia specialize on the type of the function.
+#     # Otherwise, unspecialized code will cause a lot of allocations
+#     # and heavily impact performance.
+#     # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+
+#     if system_coords !== neighbor_coords
+#         foreach_point_neighbor_fallback(f, system_coords, neighbor_coords,
+#                                         neighborhood_search;
+#                                         parallelization_backend,
+#                                         points)
+#         return nothing
+#     end
+
+#     # Explicit bounds check before the GPU kernel
+#     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+
+#     linear_indices = neighborhood_search.cell_list.linear_indices
+#     cartesian_indices = CartesianIndices(size(linear_indices))
+#     lengths = Array(neighborhood_search.cell_list.cells.lengths)
+#     # max_particles_per_cell = maximum(lengths)
+#     nonempty_cells = Adapt.adapt(parallelization_backend,
+#                                  filter(index -> lengths[linear_indices[index]] > 0,
+#                                         cartesian_indices))
+
+#     # Launch: one workgroup per non-empty cell
+#     workgroupsize = 16
+#     n_groups = length(nonempty_cells)
+#     ndrange  = n_groups * workgroupsize
+
+#     kernel = foreach_neighbor_gpu(parallelization_backend, workgroupsize)
+#     kernel(f, system_coords, neighbor_coords, neighborhood_search, points, nonempty_cells, Val(workgroupsize); ndrange)
+
+#     KernelAbstractions.synchronize(parallelization_backend)
+
+#     return nothing
+# end
+
+# function foreach_point_neighbor_fallback(f::T, system_coords, neighbor_coords, neighborhood_search;
+#                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
+#                                 points = axes(system_coords, 2)) where {T}
+#     # The type annotation above is to make Julia specialize on the type of the function.
+#     # Otherwise, unspecialized code will cause a lot of allocations
+#     # and heavily impact performance.
+#     # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+
+#     # Explicit bounds check before the hot loop (or GPU kernel)
+#     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+
+#     @threaded parallelization_backend for point in points
+#         # Now we can safely assume that `point` is inbounds
+#         @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
+#                                    neighborhood_search, point)
+#     end
+
+#     return nothing
+# end
+
+# @kernel function foreach_neighbor_gpu(f, system_coords, neighbor_system_coords,
+#                                       neighborhood_search::GridNeighborhoodSearch, points,
+#                                       cells, ::Val{workgroupsize}) where {workgroupsize}
+#     gid = @index(Group)
+#     lid = @index(Local)
+
+#     ELTYPE = eltype(neighborhood_search)
+
+#     # Shared (local) memory to stage one tile of neighbor attributes
+#     # 2D shown here. For 3D, add z buffer likewise.
+#     sh_x = @localmem eltype(neighbor_system_coords) (workgroupsize,)
+#     sh_y = @localmem eltype(neighbor_system_coords) (workgroupsize,)
+#     # neighbor particle indices (use Int32 if your indices are 32-bit)
+#     sh_id = @localmem Int32 (workgroupsize,)
+
+#     # Each group processes exactly one cell
+#     @assert gid <= length(cells)
+#     this_cell = @inbounds Tuple(cells[gid])
+
+#     points_in_cell_ = @inbounds points_in_cell(this_cell, neighborhood_search)
+#     @assert length(points_in_cell_) != 0
+
+#     neighboring_cells_ = neighboring_cells(this_cell, neighborhood_search)
+#     search_radius2 = search_radius(neighborhood_search)^2
+
+#     # Tile particles in cell by workgroup size
+#     n_tiles = ceil(Int, length(points_in_cell_) / workgroupsize)
+
+#     for tile_i in 1:n_tiles
+#         cell_i = (tile_i - 1) * workgroupsize + lid
+
+#         if cell_i <= length(points_in_cell_)
+#             # Load one point from this cell
+#             point = @inbounds points_in_cell_[cell_i]
+#             point_coords = @inbounds extract_svector(system_coords,
+#                                                         Val(ndims(neighborhood_search)),
+#                                                         point)
+#         else
+#             point = zero(Int32)
+#             point_coords = zero(SVector{ndims(neighborhood_search), eltype(system_coords)})
+#         end
+
+#         # Loop over neighboring cells
+#         for neighbor_cell_ in neighboring_cells_
+#             neighbor_cell = Tuple(neighbor_cell_)
+
+#             # We can use `@inbounds` here, assuming that the initialize/update steps verified
+#             # that all cells have valid neighbors.
+#             neighbors = @inbounds points_in_cell(neighbor_cell, neighborhood_search)
+#             n_neighbors = length(neighbors)
+
+#             # Tile neighbors by WG and stage to local memory
+#             j = 1
+#             # This loop should only have one iteration if workgroupsize is larger than cell size
+#             while j <= n_neighbors
+#                 # Cooperative load: each thread brings one neighbor into shared memory
+#                 lane_idx = j + (lid - 1)
+#                 if lane_idx <= n_neighbors
+#                     nb = @inbounds neighbors[lane_idx]
+#                     @inbounds sh_id[lid] = Int32(nb)
+#                     nb_coords = @inbounds extract_svector(neighbor_system_coords,
+#                                                         Val(ndims(neighborhood_search)), nb)
+#                     @inbounds sh_x[lid] = nb_coords[1]
+#                     @inbounds sh_y[lid] = nb_coords[2]
+#                 end
+
+#                 @synchronize
+
+#                 if cell_i <= length(points_in_cell_)
+#                     # Reuse the staged tile for all threads' i
+#                     # Determine how many valid neighbors were staged in this tile
+#                     tile_count = min(workgroupsize, n_neighbors - j + 1)
+
+#                     @inbounds for t in 1:tile_count
+#                         neighbor = @inbounds sh_id[t]
+#                         # Compute pairwise interaction
+#                         pos_diff1 = @inbounds convert(ELTYPE, point_coords[1] - sh_x[t])
+#                         pos_diff2 = @inbounds convert(ELTYPE, point_coords[2] - sh_y[t])
+#                         distance2 = pos_diff1 * pos_diff1 + pos_diff2 * pos_diff2
+#                         if distance2 <= search_radius2
+#                             distance = sqrt(distance2)
+
+#                             # Call the user-supplied functor
+#                             @inline f(point, neighbor, SVector(pos_diff1, pos_diff2), distance)
+#                         end
+#                     end
+#                 end
+
+#                 @synchronize
+#                 j += workgroupsize
+#             end
+#         end
+#     end
+# end
+
 @inline function neighboring_cells(cell, neighborhood_search)
     NDIMS = ndims(neighborhood_search)
 
