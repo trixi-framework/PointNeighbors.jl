@@ -122,6 +122,21 @@ macro threaded(backend, expr)
                end)
 end
 
+# Same as `@threaded`, but without synchronization after a GPU kernel.
+# This can be used to launch multiple GPU kernels in a row without synchronizing in between,
+# but it should be used carefully together with manual synchronization.
+macro threaded_nosync(backend, expr)
+    iterator = expr.args[1].args[2]
+    i = expr.args[1].args[1]
+    inner_loop = expr.args[2]
+
+    return esc(quote
+                   PointNeighbors.parallel_foreach_nosync($iterator, $backend) do $i
+                       $inner_loop
+                   end
+               end)
+end
+
 # Serial loop
 @inline function parallel_foreach(f, iterator, ::SerialBackend)
     for i in iterator
@@ -150,8 +165,19 @@ end
     end
 end
 
-# On GPUs, execute `f` inside a GPU kernel with KernelAbstractions.jl
+# On GPUs, synchronization is required for a safe `parallel_foreach` and `@threaded`
 @inline function parallel_foreach(f, iterator, backend::KernelAbstractions.Backend)
+    parallel_foreach_nosync(f, iterator, backend)
+    KernelAbstractions.synchronize(backend)
+end
+
+# For non-GPU backends, `parallel_foreach_nosync` is the same as `parallel_foreach`
+@inline function parallel_foreach_nosync(f, iterator, backend)
+    parallel_foreach(f, iterator, backend)
+end
+
+# On GPUs, execute `f` inside a GPU kernel with KernelAbstractions.jl
+@inline function parallel_foreach_nosync(f, iterator, backend::KernelAbstractions.Backend)
     # On the GPU, we can only loop over `1:N`. Therefore, we loop over `1:length(iterator)`
     # and index with `iterator[eachindex(iterator)[i]]`.
     # Note that this only works with vector-like iterators that support arbitrary indexing.
@@ -166,8 +192,6 @@ end
     generic_kernel(backend)(ndrange = ndrange) do i
         @inbounds @inline f(iterator[indices[i]])
     end
-
-    KernelAbstractions.synchronize(backend)
 end
 
 @kernel function generic_kernel(f)
