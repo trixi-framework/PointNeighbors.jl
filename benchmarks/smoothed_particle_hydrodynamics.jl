@@ -22,7 +22,6 @@ end
 end
 
 # Newer TrixiParticles versions define TLSPH-specific neighborhood-search lookups.
-# Provide explicit tie-breakers so the benchmark shim keeps using its single NHS.
 @inline function TrixiParticles.get_neighborhood_search(::TotalLagrangianSPHSystem,
                                                         semi::DummySemidiscretization)
     return semi.neighborhood_search
