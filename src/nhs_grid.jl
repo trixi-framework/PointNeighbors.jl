@@ -231,7 +231,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
         return neighborhood_search
     end
 
-    @boundscheck checkbounds(y, eachindex_y)
+    @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
 
     # Ignore the parallelization backend here. This cannot be parallelized.
     for point in eachindex_y
