@@ -514,10 +514,11 @@ end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
-@inline @generated function foreach_neighbor(f, neighbor_system_coords,
+@generated function foreach_neighbor(f, neighbor_system_coords,
                                   neighborhood_search::GridNeighborhoodSearch{NDIMS},
                                   point, point_coords, search_radius) where NDIMS
     quote
+    @inline
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
 
