@@ -21,6 +21,18 @@ end
     return semi.neighborhood_search
 end
 
+# Newer TrixiParticles versions define TLSPH-specific neighborhood-search lookups.
+@inline function TrixiParticles.get_neighborhood_search(::TotalLagrangianSPHSystem,
+                                                        semi::DummySemidiscretization)
+    return semi.neighborhood_search
+end
+
+@inline function TrixiParticles.get_neighborhood_search(::TotalLagrangianSPHSystem,
+                                                        ::TotalLagrangianSPHSystem,
+                                                        semi::DummySemidiscretization)
+    return semi.neighborhood_search
+end
+
 """
     benchmark_wcsph(neighborhood_search, coordinates;
                     parallelization_backend = default_backend(coordinates))
