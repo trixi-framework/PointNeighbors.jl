@@ -62,7 +62,7 @@ jobs:
       - name: Display Julia version
         run: julia -e 'using InteractiveUtils; versioninfo(verbose=true)'
 
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
 
       - name: Build package
         uses: julia-actions/julia-buildpkg@v1
@@ -86,7 +86,7 @@ jobs:
       - name: Upload coverage report to Codecov
         # Only run coverage in one Job (Ubuntu and latest Julia version)
         if: matrix.os == 'ubuntu-latest' && matrix.version == '1.11'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: lcov.info
           fail_ci_if_error: true
