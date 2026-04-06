@@ -506,20 +506,30 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
            coords[hash] != PointNeighbors.coordinates_flattened(neighbor_cell)
 end
 
+using Base.Cartesian: @nloops, @ntuple
+
+macro __unroll()
+     Expr(:loopinfo, (Symbol("llvm.loop.unroll.full"),))
+end
+
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
-@inline function foreach_neighbor(f, neighbor_system_coords,
-                                  neighborhood_search::GridNeighborhoodSearch,
-                                  point, point_coords, search_radius)
+@generated function foreach_neighbor(f, neighbor_system_coords,
+                                  neighborhood_search::GridNeighborhoodSearch{NDIMS},
+                                  point, point_coords, search_radius) where NDIMS
+    quote
+    @inline
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
 
-    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
-        neighbor_cell = Tuple(neighbor_cell_)
+    # Generated explicitly nested for-loops so that LLVM can actually unroll them.
+    @nloops $NDIMS d d -> -1:1 begin
+    # @nloops $NDIMS d d -> -1:1 d->nothing d->@__unroll() begin
+        neighbor_cell = @ntuple $NDIMS i->cell[i] + d_i
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
 
         # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
-        cell_collision = check_cell_collision(neighbor_cell_,
+        cell_collision = check_cell_collision(CartesianIndex(neighbor_cell),
                                               cell_list, neighborhood_search)
 
         for neighbor_ in eachindex(neighbors)
@@ -543,7 +553,7 @@ end
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
                 if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                   check_collision(CartesianIndex(neighbor_cell), neighbor_coords, cell_list,
                                    neighborhood_search)
                     continue
                 end
@@ -554,6 +564,7 @@ end
             end
         end
     end
+    end # quote
 end
 
 @inline function neighboring_cells(cell, neighborhood_search)
