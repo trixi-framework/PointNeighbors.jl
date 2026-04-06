@@ -525,6 +525,10 @@ end
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
 
+            # Skip half of the neighbors and use symmetry below.
+            # Note that this only works when `system_coords == neighbor_system_coords`.
+            point <= neighbor || continue
+
             # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
             # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
             neighbor_coords = extract_svector(neighbor_system_coords,
@@ -551,6 +555,9 @@ end
                 # Inline to avoid loss of performance
                 # compared to not using `foreach_point_neighbor`.
                 @inline f(point, neighbor, pos_diff, distance)
+                if point < neighbor
+                    @inline f(neighbor, point, -pos_diff, distance)
+                end
             end
         end
     end
