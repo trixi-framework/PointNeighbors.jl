@@ -142,14 +142,14 @@
                      "($(seed == 1 ? "`initialize!`" : "`update!`"))"
         @testset verbose=true "$(name(cloud_size, seed)))" for cloud_size in cloud_sizes,
                                                                seed in seeds
-            coords = point_cloud(cloud_size, seed = seed)
+            search_radius = 2.5
+            coords = point_cloud(cloud_size, search_radius, seed = seed)
             NDIMS = length(cloud_size)
             n_points = size(coords, 2)
-            search_radius = 2.5
 
             # Use different coordinates for `initialize!` and then `update!` with the
             # correct coordinates to make sure that `update!` is working as well.
-            coords_initialize = point_cloud(cloud_size, seed = 1)
+            coords_initialize = point_cloud(cloud_size, search_radius, seed = 1)
 
             # Compute expected neighbor lists by brute-force looping over all points
             # as potential neighbors (`TrivialNeighborhoodSearch`).

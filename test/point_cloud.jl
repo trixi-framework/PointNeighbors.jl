@@ -1,8 +1,9 @@
 using Random
 
 # Generate a rectangular point cloud, optionally with a perturbation in the point positions
-function point_cloud(n_points_per_dimension;
-                     seed = 1, perturbation_factor_position = 1.0, shuffle = false)
+function point_cloud(n_points_per_dimension, search_radius;
+                     seed = 1, perturbation_factor_position = 1.0,
+                     sort = true, shuffle = false)
     # Fixed seed to ensure reproducibility
     Random.seed!(seed)
 
@@ -12,7 +13,7 @@ function point_cloud(n_points_per_dimension;
 
     # Extra data structures for the sorting code below
     cell_coords = Vector{SVector{n_dims, Int}}(undef, size(coordinates, 2))
-    cell_size = ntuple(dim -> 4.0, n_dims)
+    cell_size = ntuple(dim -> search_radius, n_dims)
 
     for i in axes(coordinates, 2)
         point_coords = SVector(Tuple(cartesian_indices[i]))
@@ -28,17 +29,20 @@ function point_cloud(n_points_per_dimension;
     # The benchmark results are also consistent with the timer output of the simulation.
     perturb!(coordinates, perturbation_factor_position * 0.05)
 
-    # Sort by Z index (with `using Morton`)
-    # permutation = sortperm(cell_coords, by = c -> cartesian2morton(c))
-
     # Sort by linear cell index
-    # permutation = sortperm(cell_coords)
-    # coordinates .= coordinates[:, permutation]
+    if sort
+        if shuffle
+            throw(ArgumentError("cannot sort and shuffle at the same time"))
+        end
 
-    if shuffle
+        # Sort by Z index (with `using Morton`)
+        # permutation = sortperm(cell_coords, by = c -> cartesian2morton(c))
+
+        permutation = sortperm(cell_coords)
+        coordinates .= coordinates[:, permutation]
+    elseif shuffle
         # Sort randomly
         permutation = shuffle(axes(coordinates, 2))
-
         coordinates .= coordinates[:, permutation]
     end
 
