@@ -10,184 +10,65 @@ We use Morton indexing for efficient memory access and cells can be of different
 We populate the cell list, by iterating over all points, calculating the cartesian coordinates of the cell its in, 
 convert to the Morton index with cartesian2morton() and insert it there.   
 """
-struct TreeCellList{C, CIO, LI, MINC, MAXC} <: AbstractCellList
-    cells          :: C
-    cells_index :: CIO
-    linear_indices :: LI
-    min_corner     :: MINC
-    max_corner     :: MAXC
+struct TreeCellList{NDIMS, LI, MINC, MAXC} <: AbstractCellList
+    linear_indices     :: LI
+    min_corner         :: MINC
+    max_corner         :: MAXC
+
+    particle_z         :: Vector{UInt64} # Calculate the z-index for each particle 
+    particle_indices   :: Vector{Int} # Contains the particle indices, will be sorted based on z-code. 
+    cell_z             :: Vector{UInt64} # Unique z-indices of the cells that contain particles
+    cell_ranges        :: Vector{UnitRange{Int}} # The index in the sorted particle array where this cell's particles begin.
+    cell_levels        :: Vector{UInt8}
+
+    min_cell_length    :: Float64
+    grid_length        :: Float64
+    max_depth          :: Int
+    capacity_per_cell  :: Int 
 end
 
-@inline Base.ndims(cell_list::TreeCellList) = ndims(cell_list.linear_indices)
+function TreeCellList{NDIMS}(; min_corner, max_corner, n_particles, depth = 16, capacity_per_cell=1) where {NDIMS}
+    n_cells_per_dimension = 2^depth
+    min_corner = SVector(Tuple(min_corner .- 1001 // 1000 // n_cells_per_dimension))
+    max_corner = SVector(Tuple(max_corner .+ 1001 // 1000 // n_cells_per_dimension))
 
-function supported_update_strategies(::TreeCellList{<:DynamicVectorOfVectors})
-    return (SerialUpdate,)
-end
+    grid_length = maximum(max_corner - min_corner)
+    min_cell_length = grid_length / n_cells_per_dimension
+    linear_indices = LinearIndices(ntuple(_ -> n_cells_per_dimension, NDIMS))
+    n_cells = n_cells_per_dimension^NDIMS
 
-function supported_update_strategies(::TreeCellList)
-    return (SerialUpdate,)
-end
+    cell_z = Vector{UInt64}(undef, 0)
+    cell_ranges = Vector{UnitRange{Int}}(undef, 0)
+    cell_levels = Vector{UInt8}(undef, 0)
+    particle_z = Vector{UInt64}(undef, 0)
+    particle_indices = Vector{Int}(undef, 0)
 
-function TreeCellList(; min_corner, max_corner, max_n_cells = nothing, 
-                          search_radius = ntuplezero(eltype(min_corner)),
-                          backend = DynamicVectorOfVectors{Int32},
-                          max_points_per_cell = 100)
-    if length(min_corner) != length(max_corner)
-        throw(ArgumentError("min_corner and max_corner must have the same length"))
-    end
-
-    if length(min_corner) > 100
-        throw(ArgumentError("TreeCellList only supports up to 100 dimensions, " *
-                            "check your `min_corner` and `max_corner`"))
-    end
-
-    cells_index = Dict{UInt64, UnitRange{Int}}()   
-
-    min_corner = SVector(Tuple(min_corner .- 1001 // 1000 * search_radius))
-    max_corner = SVector(Tuple(max_corner .+ 1001 // 1000 * search_radius))
-    
-    if search_radius < eps()
-        # Create an empty "template" cell list to be used with `copy_cell_list`
-        cells = construct_backend(backend, 0, max_points_per_cell)
-        linear_indices = LinearIndices(ntuple(_ -> 0, length(min_corner)))
-        max_n_cells = 0     
-
-    else
-        n_cells_per_dimension = ceil.(Int, (max_corner .- min_corner) ./ search_radius)
-        linear_indices = LinearIndices(Tuple(n_cells_per_dimension))
-
-
-        if isnothing(max_n_cells)
-            max_n_cells = 2 * prod(n_cells_per_dimension)
-        end
-
-        cells = construct_backend(backend, max_n_cells,
-                                  max_points_per_cell)     
-    end
-
-    return TreeCellList(cells, cells_index, linear_indices, min_corner, max_corner)
-end
-
-@inline function cell_coords(coords, periodic_box::Nothing, cell_list::TreeCellList,
-                             cell_size)
-    (; min_corner) = cell_list
-
-    # Subtract `min_corner` to offset coordinates so that the min corner of the grid
-    # corresponds to the (1, 1, 1) cell.
-    return cartesian2morton(Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1)
+    return TreeCellList{NDIMS, typeof(linear_indices), typeof(min_corner), typeof(max_corner)}(
+        linear_indices, min_corner, max_corner, particle_z, particle_indices, cell_z, cell_ranges, cell_levels, min_cell_length, grid_length, depth, capacity_per_cell)
 end
 
 function Base.empty!(cell_list::TreeCellList)
-    (; cells) = cell_list
-
-    # `Base.empty!.(cells)`, but for all backends
-    @threaded default_backend(cells) for i in eachindex(cells)
-        emptyat!(cells, i)
-    end
-
-    return cell_list
-end
-
-function Base.empty!(cell_list::TreeCellList{Nothing})
-    # This is an empty "template" cell list to be used with `copy_cell_list`
-    error("`search_radius` is not defined for this cell list")
-end
-
-function push_cell!(cell_list::TreeCellList, cell, particle)
-    (; cells) = cell_list
-
-    @boundscheck check_cell_bounds(cell_list, cell)
-
-    # `push!(cell_list[cell], particle)`, but for all backends
-    @inbounds pushat!(cells, cell_index(cell_list, cell), particle)
+    (; particle_z, particle_indices, cell_z, cell_ranges, cell_levels)
+    empty!(particle_z)
+    empty!(particle_indices)
+    empty!(cell_z)
+    empty!(cell_ranges)
+    empty!(cell_levels)
 
     return cell_list
 end
 
-function push_cell!(cell_list::TreeCellList{Nothing}, cell, particle)
-    # This is an empty "template" cell list to be used with `copy_cell_list`
-    error("`search_radius` is not defined for this cell list")
-end
 
-@inline function push_cell_atomic!(cell_list::TreeCellList, cell, particle)
+function push_cell!(cell_list::TreeCellList, cell, point)
     (; cells) = cell_list
+    (; particle_z, particle_indices)
+    point_coords = extract_svector(y, Val(ndims(neighborhood_search)), point)
+    point_z = morton_cell_coords(point_coords, cell_list)
 
-    @boundscheck check_cell_bounds(cell_list, cell)
+    particle_idx = searchsorted()
 
-    # `push!(cell_list[cell], particle)`, but for all backends.
-    # The atomic version of `pushat!` uses atomics to avoid race conditions when `pushat!`
-    # is used in a parallel loop.
-    @inbounds pushat_atomic!(cells, cell_index(cell_list, cell), particle)
 
-    return cell_list
 end
 
-function deleteat_cell!(cell_list::TreeCellList, cell, i)
-    (; cells) = cell_list
 
-    @boundscheck check_cell_bounds(cell_list, cell)
 
-    # `deleteat!(cell_list[cell], i)`, but for all backends
-    deleteatat!(cells, cell_index(cell_list, cell), i)
-end
-
-@inline each_cell_index(cell_list::TreeCellList) = eachindex(cell_list.cells)
-
-function each_cell_index(cell_list::TreeCellList{Nothing})
-    # This is an empty "template" cell list to be used with `copy_cell_list`
-    error("`search_radius` is not defined for this cell list")
-end
-
-@propagate_inbounds cell_index(cell_list::TreeCellList, cell::Tuple) = cartesian2morton(cell)
-
-@inline cell_index(::TreeCellList, cell::Integer) = cell
-
-@propagate_inbounds function Base.getindex(cell_list::TreeCellList, cell)
-    (; cells) = cell_list
-
-    return cells[cell_index(cell_list, cell)]
-end
-
-@inline function is_correct_cell(cell_list::TreeCellList, cell, cell_index_)
-    @boundscheck check_cell_bounds(cell_list, cell)
-
-    return cell_index(cell_list, cell) == cell_index_
-end
-
-@inline index_type(::TreeCellList) = Int32
-
-function copy_cell_list(cell_list::TreeCellList, search_radius, periodic_box)
-    (; min_corner, max_corner) = cell_list
-
-    return TreeCellList(; min_corner, max_corner, search_radius,
-                            backend = typeof(cell_list.cells),
-                            max_points_per_cell = max_inner_length(cell_list.cells, 100))
-end
-
-@inline function check_cell_bounds(cell_list::TreeCellList{<:DynamicVectorOfVectors{<:Any,
-                                                                                        <:Array}},
-                                   cell::Tuple)
-    (; linear_indices) = cell_list
-
-    # Make sure that points are not added to the outer padding layer, which is needed
-    # to ensure that neighboring cells in all directions of all non-empty cells exist.
-    if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
-        size_ = [2:(size(linear_indices, i) - 1) for i in eachindex(cell)]
-        print_size_ = "[$(join(size_, ", "))]"
-        error("particle coordinates are NaN or outside the domain bounds of the cell list\n" *
-              "cell $cell is out of bounds for cell grid of size $print_size_")
-    end
-end
-
-# On GPUs, we can't throw a proper error message because string interpolation is not
-# allowed. Note that we cannot dispatch on `AbstractGPUArray`, as we are inside a kernel,
-# so the array types are something like `CuDeviceArray`, which is not an `AbstractGPUArray`.
-@inline function check_cell_bounds(cell_list::TreeCellList, cell::Tuple)
-    (; linear_indices) = cell_list
-
-    # Make sure that points are not added to the outer padding layer, which is needed
-    # to ensure that neighboring cells in all directions of all non-empty cells exist.
-    if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
-        error("particle coordinates are NaN or outside the domain bounds of the cell list")
-    end
-end
