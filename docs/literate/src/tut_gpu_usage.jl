@@ -52,7 +52,7 @@ nothing # hide
 
 # For GPU compatibility, we need to use a [`FullGridCellList`](@ref), which is optimized
 # for maximum performance, but requires a rectangular bounding box for the domain,
-# as opposed ot the default [`DictionaryCellList`](@ref) that supports potentially
+# as opposed to the default [`DictionaryCellList`](@ref) that supports potentially
 # infinite domains.
 min_corner = minimum(coordinates, dims = 2)
 max_corner = maximum(coordinates, dims = 2)
