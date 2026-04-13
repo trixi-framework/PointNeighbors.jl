@@ -39,7 +39,7 @@ coordinates_gpu = adapt(backend, coordinates)
 # the data type that we want to use for our computations, which will usually be `Float32`
 # when working on GPUs.
 #
-# Note that it is common in Smoothed Particle Hydrodynamics to store the coordiantes
+# Note that it is common in Smoothed Particle Hydrodynamics to store the coordinates
 # in `Float64` and everything else in `Float32` to avoid large errors in the distance
 # computations. This is also supported by PointNeighbors.jl. Using `Float64` coordinates
 # with a `Float32` search radius limits `Float64` operations by converting to `Float32`
