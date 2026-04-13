@@ -508,14 +508,19 @@ end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
-@inline function foreach_neighbor(f, neighbor_system_coords,
-                                  neighborhood_search::GridNeighborhoodSearch,
-                                  point, point_coords, search_radius)
+# Note that calling this function with `@inbounds` is not safe.
+# See the comments in `foreach_neighbor_unsafe`.
+@propagate_inbounds function foreach_neighbor_inner(f, neighbor_system_coords,
+                                                    neighborhood_search::GridNeighborhoodSearch,
+                                                    point, point_coords, search_radius)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
+
+        # Making the following `@inbounds` is not safe because we don't know if
+        # `neighbor_cell` is in bounds of the grid.
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
 
         # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
@@ -525,8 +530,8 @@ end
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
 
-            # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
-            # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
+            # Making the following `@inbounds` is not safe because we don't know
+            # if `neighbor` (extracted from the cell list) is in bounds.
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
