@@ -34,7 +34,7 @@
 
         @test copy.cell_list isa FullGridCellList
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
-        @test copy.update_strategy == ParallelIncrementalUpdate()
+        @test copy.update_strategy == ParallelUpdate()
 
         # Full grid cell list with `Vector{Vector}` backend
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
