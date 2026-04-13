@@ -65,7 +65,6 @@ makedocs(modules = [PointNeighbors],
          pages = [
              "Home" => "index.md",
              "Tutorials" => [
-                 "Overview" => "tutorial.md",
                  "Basic Usage" => joinpath("tutorials", "tut_basic_usage.md"),
                  "N-Body" => joinpath("tutorials", "tut_n_body.md"),
                  "Periodicity" => joinpath("tutorials", "tut_periodicity.md"),

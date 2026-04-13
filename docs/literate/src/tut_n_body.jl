@@ -15,6 +15,7 @@ coordinates = rand(2, n_particles)
 
 # The cutoff radius for pair interactions is the search radius.
 search_radius = 0.04
+nothing # hide
 
 # Each particle gets a mass in [1e10, 2e10].
 mass = 1.0e10 .* (rand(n_particles) .+ 1)
@@ -26,6 +27,7 @@ nothing # hide
 
 nhs = GridNeighborhoodSearch{2}(; search_radius, n_points = n_particles)
 initialize!(nhs, coordinates, coordinates)
+nothing # hide
 
 # ## Compute one acceleration update
 

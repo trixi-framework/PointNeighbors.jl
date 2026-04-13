@@ -36,6 +36,7 @@ nothing # hide
 #     for points contained in `coordinates` and not for arbitrary points in space.
 #     See below for more information.
 initialize!(nhs, coordinates, coordinates)
+nothing # hide
 
 # ## Count neighbors for each point
 

@@ -31,6 +31,7 @@ end
 
 # We can use Adapt.jl to move this coordinates array to the GPU.
 coordinates_gpu = adapt(backend, coordinates)
+nothing # hide
 
 # ## Create and initialize the neighborhood search
 
@@ -90,6 +91,7 @@ function count_neighbors!(n_neighbors, coordinates, nhs)
 
     return n_neighbors
 end
+nothing # hide
 
 # Now we can run the neighbor loop on the GPU.
 # We just need to make sure to pass the GPU coordinates, GPU neighborhood search,
