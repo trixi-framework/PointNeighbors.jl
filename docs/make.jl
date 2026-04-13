@@ -41,14 +41,14 @@ copy_file("LICENSE.md",
 
 mkpath(joinpath(@__DIR__, "src", "tutorials"))
 
-Literate.markdown(joinpath("docs", "literate", "src", "tut_basic_usage.jl"),
-                  joinpath("docs", "src", "tutorials"))
-Literate.markdown(joinpath("docs", "literate", "src", "tut_n_body.jl"),
-                  joinpath("docs", "src", "tutorials"))
-Literate.markdown(joinpath("docs", "literate", "src", "tut_periodicity.jl"),
-                  joinpath("docs", "src", "tutorials"))
-Literate.markdown(joinpath("docs", "literate", "src", "tut_gpu_usage.jl"),
-                  joinpath("docs", "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_basic_usage.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_n_body.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_periodicity.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_gpu_usage.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
 
 # Make documentation
 makedocs(modules = [PointNeighbors],
