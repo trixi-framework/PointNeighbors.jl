@@ -1,10 +1,11 @@
 struct TreeNeighborhoodSearch{NDIMS, C, ELTYPE} <: AbstractNeighborhoodSearch
-    cell_list :: C
-    search_radius :: ELTYPE
+    cell_list::C
+    search_radius::ELTYPE
 end
 
 function TreeNeighborhoodSearch{NDIMS}(cell_list, search_radius = 0.0) where {NDIMS}
-    return TreeNeighborhoodSearch{NDIMS, typeof(cell_list), typeof(search_radius)}(cell_list, search_radius)
+    return TreeNeighborhoodSearch{NDIMS, typeof(cell_list), typeof(search_radius)}(cell_list,
+                                                                                   search_radius)
 end
 
 @inline Base.ndims(::TreeNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -25,7 +26,7 @@ function initialize_tree!(neighborhood_search, y::AbstractMatrix;
     (; particle_z, particle_indices, max_depth) = cell_list
 
     empty!(particle_z)
-    
+
     for point in eachindex_y
         point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
         point_z = morton_cell_coords(point_coords, cell_list, max_depth)
@@ -34,12 +35,8 @@ function initialize_tree!(neighborhood_search, y::AbstractMatrix;
 
     resize!(particle_indices, length(particle_z))
 
-    # @autoinfiltrate
-
     sortperm!(particle_indices, particle_z)
     sort!(particle_z)
-
-    # @autoinfiltrate
 
     refine_tree!(cell_list, 1, max_depth)
 
@@ -47,10 +44,8 @@ function initialize_tree!(neighborhood_search, y::AbstractMatrix;
 end
 
 function refine_tree!(cell_list, max_capacity, max_depth)
-    # Using cell_z here to match your struct, previously cell_mortons
-    (; cell_z, cell_levels, cell_ranges, particle_z) = cell_list 
-    
-    # Clear the cell arrays before building
+    (; cell_z, cell_levels, cell_ranges, particle_z) = cell_list
+
     empty!(cell_z)
     empty!(cell_levels)
     empty!(cell_ranges)
@@ -68,10 +63,9 @@ function refine_tree!(cell_list, max_capacity, max_depth)
     while !isempty(stack)
         # Pop the most recently added node
         start_idx, end_idx, level, prefix = pop!(stack)
-        
+
         count = end_idx - start_idx + 1
-        
-        # Base case: max_capacity met OR max depth reached
+
         if count <= max_capacity || level == max_depth
             push!(cell_z, prefix)
             push!(cell_levels, level)
@@ -80,100 +74,91 @@ function refine_tree!(cell_list, max_capacity, max_depth)
             # Subdivide
             next_level = level + UInt8(1)
             shift_amount = 2 * (max_depth - next_level)
-            
+
             # Calculate boundary Morton codes
             m1 = prefix | (UInt64(1) << shift_amount)
             m2 = prefix | (UInt64(2) << shift_amount)
             m3 = prefix | (UInt64(3) << shift_amount)
-            
+
             # Find boundaries in the sorted array
             b1_rel = searchsortedfirst(@view(particle_z[start_idx:end_idx]), m1)
             b1 = start_idx + b1_rel - 1
-            
+
             b2_rel = searchsortedfirst(@view(particle_z[b1:end_idx]), m2)
             b2 = b1 + b2_rel - 1
-            
+
             b3_rel = searchsortedfirst(@view(particle_z[b2:end_idx]), m3)
             b3 = b2 + b3_rel - 1
 
             if b3 <= end_idx
                 push!(stack, (b3, end_idx, next_level, m3))
             end
-            
+
             if b2 < b3
                 push!(stack, (b2, b3 - 1, next_level, m2))
             end
-            
+
             if b1 < b2
                 push!(stack, (b1, b2 - 1, next_level, m1))
             end
-            
+
             if start_idx < b1
                 push!(stack, (start_idx, b1 - 1, next_level, prefix))
             end
-
         end
     end
-end
-
-@inline function cell_coords(coords, cell_list::TreeCellList)
-    (; min_corner, min_cell_length) = cell_list
-    return floor_to_int.((coords .- min_corner) ./ min_cell_length) .+ 1 
-end
-
-# The bit-shifting in `refine_tree!` depends on 0-indexing
-@inline function morton_cell_coords(coords, cell_list::TreeCellList, depth=cell_list.max_depth)
-    (; min_corner, grid_length) = cell_list
-    cell_length = grid_length / (2^depth)
-    grid_coords = floor_to_int.((coords .- min_corner) ./ cell_length) .+ 1
-    
-    # Subtract 1 to make it a standard 0-based
-    return cartesian2morton(grid_coords) - UInt64(1) 
-end
-
-@inline function cell_coords(coords, cell_list::TreeCellList, depth=cell_list.max_depth)
-    (; min_corner, grid_length) = cell_list
-    cell_length = grid_length / (2^depth)
-
-    return floor_to_int.((coords .- min_corner) ./ cell_length) .+ 1
 end
 
 function update!(neighborhood_search::TreeNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
                  points_moving = (true, true), parallelization_backend = default_backend(x),
                  eachindex_y = axes(y, 2))
+    # The coordinates of the first set of points are irrelevant for this NHS.
+    # Only update when the second set is moving.
     points_moving[2] || return neighborhood_search
 
-    update_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
+    update_tree!(neighborhood_search, y; eachindex_y, parallelization_backend)
 end
 
-function update_grid!(neighborhood_search,
+# TODO
+function update_tree!(neighborhood_search::TreeNeighborhoodSearch,
                       y::AbstractMatrix;
                       parallelization_backend = default_backend(y),
                       eachindex_y = axes(y, 2))
+    (; cell_list) = neighborhood_search
+    empty!(cell_list)
+    initialize_tree!(neighborhood_search, y; parallelization_backend, eachindex_y)
+
+    return neighborhood_search
 end
 
-# Specialized version of the function in `neighborhood_search.jl`, which is faster
-# than looping over `eachneighbor`.
+# The bit-shifting in `refine_tree!` depends on 0-indexing
+@inline function morton_cell_coords(coords, cell_list::TreeCellList,
+                                    depth = cell_list.max_depth)
+    (; min_corner, grid_length) = cell_list
+    cell_length = grid_length / (2^depth)
+    grid_coords = floor_to_int.((coords .- min_corner) ./ cell_length) .+ 1
+
+    # Subtract 1 to make it a standard 0-based
+    return cartesian2morton(grid_coords) - UInt64(1)
+end
+
+@inline function cartesian_cell_coords(coords, cell_list::TreeCellList,
+                                       depth = cell_list.max_depth)
+    (; min_corner, grid_length) = cell_list
+    cell_length = grid_length / (2^depth)
+
+    return floor_to_int.((coords .- min_corner) ./ cell_length) .+ 1
+end
+
 @inline function foreach_neighbor(f, neighbor_system_coords,
                                   neighborhood_search::TreeNeighborhoodSearch,
                                   point, point_coords, search_radius)
-    (; cell_list, periodic_box) = neighborhood_search
-    cell = cell_coords(point_coords, neighborhood_search)
-
-    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
-        neighbor_cell = Tuple(neighbor_cell_)
-        neighbors = points_in_cell(neighbor_cell, neighborhood_search)
-
-        # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
-        cell_collision = check_cell_collision(neighbor_cell_,
-                                              cell_list, neighborhood_search)
+    for neighbor_cell_ in neighboring_cells(point_coords, neighborhood_search)
+        neighbors = points_in_cell(neighbor_cell_, neighborhood_search)
 
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
-
-            # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
-            # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
             neighbor_coords = extract_svector(neighbor_system_coords,
                                               Val(ndims(neighborhood_search)), neighbor)
 
@@ -182,51 +167,38 @@ end
 
             pos_diff,
             distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                  search_radius, periodic_box)
+                                                  search_radius, nothing)
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
-
-                # If this cell has a collision, check if this point belongs to this cell
-                # (only with `SpatialHashingCellList`).
-                if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_coords, cell_list,
-                                   neighborhood_search)
-                    continue
-                end
-
-                # Inline to avoid loss of performance
-                # compared to not using `foreach_point_neighbor`.
                 @inline f(point, neighbor, pos_diff, distance)
             end
         end
     end
 end
 
+# Returns the indices in `cell_z` for the neighboring cells of the point at `coords`. 
 @inline function neighboring_cells(coords, neighborhood_search::TreeNeighborhoodSearch)
     (; cell_list, search_radius) = neighborhood_search
     (; min_corner, max_corner, max_depth, cell_z, cell_levels) = cell_list
-    NDIMS = ndims(neighborhood_search)
 
     min_corner_point = maximum([coords .- search_radius, min_corner])
-    max_corner_point = minimum([coords .+ search_radius, max_corner]) 
-    # @autoinfiltrate
-    min_cell_point = cell_coords(min_corner_point, cell_list)
-    max_cell_point = cell_coords(max_corner_point, cell_list)
+    max_corner_point = minimum([coords .+ search_radius, max_corner])
+
+    min_cell_point = cartesian_cell_coords(min_corner_point, cell_list)
+    max_cell_point = cartesian_cell_coords(max_corner_point, cell_list)
 
     visited_cells = BitSet()
     neighboring_cells = BitSet()
 
-    # @autoinfiltrate
-    
     for i in min_cell_point[1]:max_cell_point[1], j in min_cell_point[2]:max_cell_point[2]
-        candidate_z = cartesian2morton([i,j]) - UInt64(1) 
+        candidate_z = cartesian2morton([i, j]) - UInt64(1)
         neighbor_idx = searchsortedlast(cell_z, candidate_z)
         already_visited = neighbor_idx in visited_cells
         push!(visited_cells, neighbor_idx)
-    
+
         if neighbor_idx == 0 || already_visited
-            continue 
+            continue
         end
 
         neighbor_prefix = cell_z[neighbor_idx]
@@ -235,29 +207,29 @@ end
 
         candidate_prefix = (candidate_z >> shift_amount) << shift_amount
 
-        if neighbor_prefix == candidate_prefix 
+        if neighbor_prefix == candidate_prefix
             push!(neighboring_cells, neighbor_idx)
-        end 
+        end
     end
 
     return neighboring_cells
 end
 
 @inline function eachneighbor(coords, neighborhood_search::TreeNeighborhoodSearch)
-    cell = cell_coords(coords, neighborhood_search)
 
     # Merge all lists of points in the neighboring cells into one iterator
-    Iterators.flatten(points_in_cell(Tuple(cell), neighborhood_search)
-                      for cell in neighboring_cells(cell, neighborhood_search))
+    Iterators.flatten(points_in_cell(cell, neighborhood_search)
+                      for cell in neighboring_cells(coords, neighborhood_search))
 end
 
+# Expects a `cell_index` in the range 1:length(cell_ranges).
 @propagate_inbounds function points_in_cell(cell_index, neighborhood_search)
     (; cell_list) = neighborhood_search
+    (; cell_ranges, particle_indices) = cell_list
 
-    return cell_list[cell_index]
+    return particle_indices[cell_ranges[cell_index]]
 end
 
 function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
 end
-
