@@ -11,7 +11,9 @@ using Adapt
 # - `using AMDGPU; backend = ROCBackend()` for AMD GPUs with AMDGPU.jl
 # - `using Metal; backend = MetalBackend()` for Apple Silicon GPUs with Metal.jl
 # - `using oneAPI; backend = oneAPIBackend()` for Intel GPUs with oneAPI.jl
-import KernelAbstractions; backend = KernelAbstractions.CPU(); nothing # hide
+import KernelAbstractions # hide
+backend = KernelAbstractions.CPU() # hide
+nothing # hide
 
 # ## Create coordinates on the CPU
 

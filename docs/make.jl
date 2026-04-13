@@ -60,7 +60,7 @@ makedocs(modules = [PointNeighbors],
                                   # Set canonical URL to GitHub pages URL
                                   canonical = "https://trixi-framework.github.io/PointNeighbors.jl/stable",
                                   # Set edit_link explicitly to avoid `git remote show origin` lookups.
-                                  edit_link="main"),
+                                  edit_link = "main"),
          # Explicitly specify documentation structure
          pages = [
              "Home" => "index.md",
