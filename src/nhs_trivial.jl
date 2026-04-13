@@ -25,6 +25,11 @@ struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodS
 
     function TrivialNeighborhoodSearch{NDIMS}(; search_radius = 0.0, eachpoint = 1:0,
                                               periodic_box = nothing) where {NDIMS}
+        if search_radius isa Integer
+            throw(ArgumentError("`search_radius` cannot be an integer type, since computed " *
+                                "distances will be converted to this type"))
+        end
+
         new{NDIMS, typeof(search_radius),
             typeof(eachpoint), typeof(periodic_box)}(search_radius, eachpoint, periodic_box)
     end
