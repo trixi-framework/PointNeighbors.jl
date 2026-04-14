@@ -202,9 +202,9 @@ end
 
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
-@propagate_inbounds function foreach_neighbor_unsafe(f, neighbor_system_coords,
-                                                     neighborhood_search::PrecomputedNeighborhoodSearch,
-                                                     point, point_coords, search_radius)
+@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
+                                                    neighborhood_search::PrecomputedNeighborhoodSearch,
+                                                    point, point_coords, search_radius)
     (; periodic_box, neighbor_lists) = neighborhood_search
 
     # Making the following `@inbounds` is not safe because the neighbor list
@@ -216,15 +216,16 @@ end
         # Making this `@inbounds` is not safe because
         # `neighbor` (extracted from the neighbor list) is only guaranteed to be in bounds
         # if the neighbor lists were constructed correctly and have not been corrupted.
-        neighbor_coords = extract_svector(neighbor_system_coords,
-                                          Val(ndims(neighborhood_search)), neighbor)
+        neighbor_point_coords = extract_svector(neighbor_coords,
+                                                Val(ndims(neighborhood_search)), neighbor)
 
-        pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
+        pos_diff = convert.(eltype(neighborhood_search),
+                            point_coords - neighbor_point_coords)
         distance2 = dot(pos_diff, pos_diff)
 
-        pos_diff,
-        distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
-                                              periodic_box)
+        (pos_diff,
+         distance2) = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                                periodic_box)
 
         distance = sqrt(distance2)
 

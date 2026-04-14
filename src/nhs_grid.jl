@@ -510,7 +510,7 @@ end
 # than looping over `eachneighbor`.
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
-@propagate_inbounds function foreach_neighbor_inner(f, neighbor_system_coords,
+@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
                                                     neighborhood_search::GridNeighborhoodSearch,
                                                     point, point_coords, search_radius)
     (; cell_list, periodic_box) = neighborhood_search
@@ -532,15 +532,17 @@ end
 
             # Making the following `@inbounds` is not safe because we don't know
             # if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_coords = extract_svector(neighbor_system_coords,
-                                              Val(ndims(neighborhood_search)), neighbor)
+            neighbor_point_coords = extract_svector(neighbor_coords,
+                                                    Val(ndims(neighborhood_search)),
+                                                    neighbor)
 
-            pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
+            pos_diff = convert.(eltype(neighborhood_search),
+                                point_coords - neighbor_point_coords)
             distance2 = dot(pos_diff, pos_diff)
 
-            pos_diff,
-            distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                  search_radius, periodic_box)
+            (pos_diff,
+             distance2) = compute_periodic_distance(pos_diff, distance2,
+                                                    search_radius, periodic_box)
 
             if distance2 <= search_radius^2
                 distance = sqrt(distance2)
@@ -548,7 +550,7 @@ end
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
                 if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                   check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
                                    neighborhood_search)
                     continue
                 end
