@@ -142,14 +142,14 @@
                      "($(seed == 1 ? "`initialize!`" : "`update!`"))"
         @testset verbose=true "$(name(cloud_size, seed)))" for cloud_size in cloud_sizes,
                                                                seed in seeds
-            coords = point_cloud(cloud_size, seed = seed)
+            search_radius = 2.5
+            coords = point_cloud(cloud_size, search_radius, seed = seed)
             NDIMS = length(cloud_size)
             n_points = size(coords, 2)
-            search_radius = 2.5
 
             # Use different coordinates for `initialize!` and then `update!` with the
             # correct coordinates to make sure that `update!` is working as well.
-            coords_initialize = point_cloud(cloud_size, seed = 1)
+            coords_initialize = point_cloud(cloud_size, search_radius, seed = 1)
 
             # Compute expected neighbor lists by brute-force looping over all points
             # as potential neighbors (`TrivialNeighborhoodSearch`).
@@ -254,7 +254,7 @@
             names_copied = [name * " copied" for name in names]
             append!(names, names_copied)
 
-            @testset "$(names[i])" for i in eachindex(names)
+            @testset verbose=true "$(names[i])" for i in eachindex(names)
                 nhs = neighborhood_searches[i]
 
                 # Initialize with `seed = 1`
@@ -267,17 +267,60 @@
                     update!(nhs, coords, coords)
                 end
 
-                neighbors = [Int[] for _ in axes(coords, 2)]
+                # Test the regular `foreach_point_neighbor`
+                @testset "`foreach_point_neighbor`" begin
+                    neighbors = [Int[] for _ in axes(coords, 2)]
+                    foreach_point_neighbor(coords, coords, nhs,
+                                           parallelization_backend = SerialBackend()) do point,
+                                                                                         neighbor,
+                                                                                         pos_diff,
+                                                                                         distance
+                        append!(neighbors[point], neighbor)
+                    end
 
-                foreach_point_neighbor(coords, coords, nhs,
-                                       parallelization_backend = SerialBackend()) do point,
-                                                                                     neighbor,
-                                                                                     pos_diff,
-                                                                                     distance
-                    append!(neighbors[point], neighbor)
+                    @test sort.(neighbors) == neighbors_expected
                 end
 
-                @test sort.(neighbors) == neighbors_expected
+                # Test manual loop with `foreach_neighbor`
+                @testset "Manual Loop with `foreach_neighbor`" begin
+                    neighbors_manual = [Int[] for _ in axes(coords, 2)]
+                    for point in axes(coords, 2)
+                        foreach_neighbor(coords, coords, nhs,
+                                         point) do point, neighbor, pos_diff, distance
+                            append!(neighbors_manual[point], neighbor)
+                        end
+                    end
+
+                    @test sort.(neighbors_manual) == neighbors_expected
+                end
+
+                # Repeat with foreach_point_neighbor_unsafe
+                @testset "`foreach_point_neighbor_unsafe`" begin
+                    neighbors_unsafe = [Int[] for _ in axes(coords, 2)]
+                    foreach_point_neighbor_unsafe(coords, coords, nhs,
+                                                  parallelization_backend = SerialBackend()) do point,
+                                                                                                neighbor,
+                                                                                                pos_diff,
+                                                                                                distance
+                        append!(neighbors_unsafe[point], neighbor)
+                    end
+
+                    @test sort.(neighbors_unsafe) == neighbors_expected
+                end
+
+                # Repeat with manual loop with `foreach_neighbor_unsafe`
+                @testset "Manual Loop with `foreach_neighbor_unsafe`" begin
+                    neighbors_manual_unsafe = [Int[] for _ in axes(coords, 2)]
+                    for point in axes(coords, 2)
+                        foreach_neighbor_unsafe(coords, coords, nhs,
+                                                point) do point, neighbor,
+                                                          pos_diff, distance
+                            append!(neighbors_manual_unsafe[point], neighbor)
+                        end
+                    end
+
+                    @test sort.(neighbors_manual_unsafe) == neighbors_expected
+                end
             end
         end
     end

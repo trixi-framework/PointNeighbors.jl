@@ -1,4 +1,5 @@
 using PointNeighbors
+using PointNeighbors.Adapt
 using TrixiParticles
 using BenchmarkTools
 
@@ -43,47 +44,30 @@ This method is used to simulate an incompressible fluid.
 """
 function benchmark_wcsph(neighborhood_search, coordinates;
                          parallelization_backend = default_backend(coordinates))
-    density = 1000.0
-    particle_spacing = PointNeighbors.search_radius(neighborhood_search) / 3
-    fluid = InitialCondition(; coordinates, density, mass = 0.1, particle_spacing)
+    # System initialization has to happen on the CPU
+    coordinates_cpu = PointNeighbors.Adapt.adapt(Array, coordinates)
 
-    sound_speed = 10.0
+    search_radius = PointNeighbors.search_radius(neighborhood_search)
+    ELTYPE = typeof(search_radius)
+    density = convert(ELTYPE, 1000.0)
+    particle_spacing = PointNeighbors.search_radius(neighborhood_search) / 3
+    fluid = InitialCondition(; coordinates = coordinates_cpu, density,
+                             mass = convert(ELTYPE, 0.1) * particle_spacing,
+                             particle_spacing)
+
+    # Make sure that the computed forces are not all zero
+    for i in eachindex(fluid.density)
+        fluid.density[i] += rand(eltype(fluid.density))
+    end
+
+    sound_speed = convert(ELTYPE, 10.0)
     state_equation = StateEquationCole(; sound_speed, reference_density = density,
                                        exponent = 1)
 
-    viscosity = ArtificialViscosityMonaghan(alpha = 0.02, beta = 0.0)
-    density_diffusion = DensityDiffusionMolteniColagrossi(delta = 0.1)
+    viscosity = ArtificialViscosityMonaghan(alpha = convert(ELTYPE, 0.02),
+                                            beta = convert(ELTYPE, 0.0))
+    density_diffusion = DensityDiffusionMolteniColagrossi(delta = convert(ELTYPE, 0.1))
 
-    __benchmark_wcsph_inner(neighborhood_search, fluid, state_equation,
-                            viscosity, density_diffusion, parallelization_backend)
-end
-
-"""
-    benchmark_wcsph_fp32(neighborhood_search, coordinates;
-                         parallelization_backend = default_backend(coordinates))
-
-Like [`benchmark_wcsph`](@ref), but using single precision floating point numbers.
-"""
-function benchmark_wcsph_fp32(neighborhood_search, coordinates_;
-                              parallelization_backend = default_backend(coordinates_))
-    coordinates = convert(Matrix{Float32}, coordinates_)
-    density = 1000.0f0
-    particle_spacing = PointNeighbors.search_radius(neighborhood_search) / 3
-    fluid = InitialCondition(; coordinates, density, mass = 0.1f0, particle_spacing)
-
-    sound_speed = 10.0f0
-    state_equation = StateEquationCole(; sound_speed, reference_density = density,
-                                       exponent = 1)
-
-    viscosity = ArtificialViscosityMonaghan(alpha = 0.02f0, beta = 0.0f0)
-    density_diffusion = DensityDiffusionMolteniColagrossi(delta = 0.1f0)
-
-    __benchmark_wcsph_inner(neighborhood_search, fluid, state_equation,
-                            viscosity, density_diffusion, parallelization_backend)
-end
-
-function __benchmark_wcsph_inner(neighborhood_search, initial_condition, state_equation,
-                                 viscosity, density_diffusion, parallelization_backend)
     # Compact support == 2 * smoothing length for these kernels
     smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
     if ndims(neighborhood_search) == 1
@@ -92,23 +76,21 @@ function __benchmark_wcsph_inner(neighborhood_search, initial_condition, state_e
         smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
     end
 
-    fluid_system = WeaklyCompressibleSPHSystem(initial_condition, ContinuityDensity(),
+    fluid_system = WeaklyCompressibleSPHSystem(fluid, ContinuityDensity(),
                                                state_equation, smoothing_kernel,
                                                smoothing_length, viscosity = viscosity,
                                                density_diffusion = density_diffusion)
 
-    system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
+    system = Adapt.adapt(parallelization_backend, fluid_system)
 
     # Remove unnecessary data structures that are only used for initialization
-    neighborhood_search_ = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
+    nhs = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
 
-    nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search_)
     semi = DummySemidiscretization(nhs, parallelization_backend, true)
 
-    v = PointNeighbors.Adapt.adapt(parallelization_backend,
-                                   vcat(initial_condition.velocity,
-                                        initial_condition.density'))
-    u = PointNeighbors.Adapt.adapt(parallelization_backend, initial_condition.coordinates)
+    v = Adapt.adapt(parallelization_backend,
+                    vcat(fluid.velocity, fluid.density'))
+    u = Adapt.adapt(parallelization_backend, fluid.coordinates)
     dv = zero(v)
 
     # Initialize the system
@@ -128,8 +110,15 @@ This method is used to simulate an elastic structure.
 """
 function benchmark_tlsph(neighborhood_search, coordinates;
                          parallelization_backend = default_backend(coordinates))
-    material = (density = 1000.0, E = 1.4e6, nu = 0.4)
-    solid = InitialCondition(; coordinates, density = material.density, mass = 0.1)
+    # System initialization has to happen on the CPU
+    coordinates_cpu = PointNeighbors.Adapt.adapt(Array, coordinates)
+
+    search_radius = PointNeighbors.search_radius(neighborhood_search)
+    ELTYPE = typeof(search_radius)
+    material = (density = convert(ELTYPE, 1000.0), E = convert(ELTYPE, 1.4e6),
+                nu = convert(ELTYPE, 0.4))
+    solid = InitialCondition(; coordinates = coordinates_cpu,
+                             density = material.density, mass = convert(ELTYPE, 0.1))
 
     # Compact support == 2 * smoothing length for these kernels
     smoothing_length_ = PointNeighbors.search_radius(neighborhood_search) / 2
@@ -142,15 +131,20 @@ function benchmark_tlsph(neighborhood_search, coordinates;
 
     solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
                                             material.E, material.nu)
-    semi = DummySemidiscretization(neighborhood_search, parallelization_backend, true)
+    system_ = Adapt.adapt(parallelization_backend, solid_system)
 
-    v = copy(solid.velocity)
-    u = copy(solid.coordinates)
+    # Remove unnecessary data structures that are only used for initialization
+    nhs = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
+    system = TrixiParticles.@set system_.self_interaction_nhs = nhs
+
+    semi = DummySemidiscretization(nhs, parallelization_backend, true)
+
+    v = Adapt.adapt(parallelization_backend, copy(solid.velocity))
+    u = Adapt.adapt(parallelization_backend, copy(solid.coordinates))
     dv = zero(v)
 
     # Initialize the system
-    TrixiParticles.initialize!(solid_system, semi)
+    TrixiParticles.initialize!(system, semi)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u,
-                                              $solid_system, $solid_system, $semi)
+    return @belapsed TrixiParticles.interact_structure_structure2!($dv, $v, $system, $semi)
 end
