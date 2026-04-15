@@ -54,11 +54,8 @@ end
 
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachpoint
 
-# Create a copy of a neighborhood search but with a different search radius
-function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch, search_radius, x, y)
-    return nhs
-end
-
+# Create a copy of a neighborhood search but with a different search radius and different
+# number of points.
 function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch,
                                   search_radius, n_points; eachpoint = 1:n_points)
     return TrivialNeighborhoodSearch{ndims(nhs)}(; search_radius, eachpoint,

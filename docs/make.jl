@@ -49,6 +49,8 @@ Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_periodicity.jl"),
                   joinpath(@__DIR__, "src", "tutorials"))
 Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_gpu_usage.jl"),
                   joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_advanced_usage.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
 
 # Make documentation
 makedocs(modules = [PointNeighbors],
@@ -68,7 +70,8 @@ makedocs(modules = [PointNeighbors],
                  "Basic Usage" => joinpath("tutorials", "tut_basic_usage.md"),
                  "N-Body" => joinpath("tutorials", "tut_n_body.md"),
                  "Periodicity" => joinpath("tutorials", "tut_periodicity.md"),
-                 "GPU Usage" => joinpath("tutorials", "tut_gpu_usage.md")
+                 "GPU Usage" => joinpath("tutorials", "tut_gpu_usage.md"),
+                 "Advanced Usage" => joinpath("tutorials", "tut_advanced_usage.md")
              ],
              "API reference" => "reference.md",
              "Authors" => "authors.md",
