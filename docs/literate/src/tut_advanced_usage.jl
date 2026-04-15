@@ -40,7 +40,7 @@ nothing # hide
 # Additional configuration options can be passed to the templates and will be preserved
 # through the copying process. This applies for example to the periodic box or the
 # update strategy of the [`GridNeighborhoodSearch`](@ref).
-periodic_box = PeriodicBox(min_corner=(0.0, 0.0), max_corner=(10.0, 10.0))
+periodic_box = PeriodicBox(min_corner = (0.0, 0.0), max_corner = (10.0, 10.0))
 template_nhs3 = GridNeighborhoodSearch{2}(; periodic_box, update_strategy = SerialUpdate())
 nhs4 = copy_neighborhood_search(template_nhs3, search_radius, n_points)
 nhs4.update_strategy, nhs4.periodic_box
