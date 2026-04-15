@@ -161,7 +161,7 @@ Note that `system_coords` and `neighbor_coords` can be identical.
 !!! warning
     The `neighborhood_search` must have been initialized or updated with `system_coords`
     as first coordinate array and `neighbor_coords` as second coordinate array.
-    This can be skipped for certain implementations. See [`requires_update`](@ref).
+    For some implementations, this requirement can be relaxed; see [`requires_update`](@ref).
 
 # Arguments
 - `f`: The function explained above.
@@ -178,7 +178,7 @@ Note that `system_coords` and `neighbor_coords` can be identical.
                              automatically based on the type of `system_coords`.
                              See [`@threaded`](@ref) for a list of available backends.
 
-See also [`initialize!`](@ref), [`update!`](@ref).
+See also [`foreach_point_neighbor_unsafe`](@ref), [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
@@ -200,41 +200,143 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
     return nothing
 end
 
-@propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_system_coords,
+"""
+    foreach_point_neighbor_unsafe(f, system_coords, neighbor_coords, neighborhood_search;
+                                  parallelization_backend = default_backend(system_coords),
+                                  points = axes(system_coords, 2))
+
+Like [`foreach_point_neighbor`](@ref), but skips **all** bounds checks inside the
+threaded loop or GPU kernel.
+See [`foreach_neighbor_unsafe`](@ref) for more details on which bounds checks are skipped.
+
+!!! warning
+    The `neighborhood_search` must have been initialized or updated with `system_coords`
+    as first coordinate array and `neighbor_coords` as second coordinate array.
+    For some implementations, this requirement can be relaxed; see [`requires_update`](@ref).
+
+!!! warning
+    Use this only when `neighborhood_search` is known to be initialized correctly for
+    `system_coords` and `neighbor_coords`.
+"""
+function foreach_point_neighbor_unsafe(f::T, system_coords, neighbor_coords,
+                                       neighborhood_search;
+                                       parallelization_backend::ParallelizationBackend = default_backend(system_coords),
+                                       points = axes(system_coords, 2)) where {T}
+    # Explicit bounds check before the hot loop (or GPU kernel)
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+
+    @threaded parallelization_backend for point in points
+        foreach_neighbor_unsafe(f, system_coords, neighbor_coords,
+                                neighborhood_search, point)
+    end
+
+    return nothing
+end
+
+"""
+    foreach_neighbor(f, system_coords, neighbor_coords,
+                     neighborhood_search::AbstractNeighborhoodSearch, point;
+                     search_radius = search_radius(neighborhood_search))
+
+Loop over all neighbors of `point` and execute `f(i, j, pos_diff, d)` for every
+neighbor within `search_radius`, where `i` is `point`, `j` is the neighbor index,
+`pos_diff` is the vector from neighbor to point, and `d` is the distance.
+
+This method performs bounds checks, even when called with `@inbounds`.
+`@inbounds` only skips the bounds check for loading the coordinates of `point`
+from `system_coords`.
+See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks.
+"""
+@propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_coords,
                                               neighborhood_search::AbstractNeighborhoodSearch,
                                               point;
                                               search_radius = search_radius(neighborhood_search))
     # Due to https://github.com/JuliaLang/julia/issues/30411, we cannot just remove
     # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
     # We have to use `@propagate_inbounds`, which will also remove boundschecks
-    # in the neighbor loop, which is not safe (see comment below).
+    # in the neighbor loop, which is not safe (that's what `foreach_neighbor_unsafe` is for).
     # To avoid this, we have to use a function barrier to disable the `@inbounds` again.
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
 
-    foreach_neighbor(f, neighbor_system_coords, neighborhood_search,
+    foreach_neighbor(f, neighbor_coords, neighborhood_search,
                      point, point_coords, search_radius)
+end
+
+# This is a function barrier to prevent the `@inbounds` in `foreach_neighbor`
+# from propagating into the neighbor loop, which is not safe.
+@inline function foreach_neighbor(f, neighbor_coords,
+                                  neighborhood_search::AbstractNeighborhoodSearch,
+                                  point, point_coords, search_radius)
+    foreach_neighbor_inner(f, neighbor_coords, neighborhood_search,
+                           point, point_coords, search_radius)
+end
+
+"""
+    foreach_neighbor_unsafe(f, system_coords, neighbor_coords,
+                            neighborhood_search::AbstractNeighborhoodSearch, point;
+                            search_radius = search_radius(neighborhood_search))
+
+Like [`foreach_neighbor`](@ref), but skips **all** bounds checks.
+
+`foreach_neighbor` performs the following bounds checks that are skipped here:
+- Check if `point` is in bounds of `system_coords`. This is the only bounds check
+  that is skipped when calling `foreach_neighbor` with `@inbounds`, and the only one that
+  is safe to skip when `point` is guaranteed to be in bounds of `system_coords`.
+- Check if the neighbors of `point` are in bounds of `neighbor_coords`.
+  This is not safe to skip when the neighborhood search was not initialized correctly;
+  for example when initialized with coordinate arrays of different sizes than the ones
+  passed to this function or when the internal data structures have been tampered with.
+  In this case, the cell lists (for [`GridNeighborhoodSearch`](@ref)) or neighbor lists
+  (for [`PrecomputedNeighborhoodSearch`](@ref)) might contain indices that are out of
+  bounds for `neighbor_coords`.
+- With `GridNeighborhoodSearch` and [`FullGridCellList`](@ref), check if the neighboring
+  cells are in bounds of the grid. Again, this is not safe to skip when the neighborhood
+  search might not have been initialized correctly.
+- With `PrecomputedNeighborhoodSearch`, verify that `point` is in bounds of the neighbor lists.
+  Skipping this is unsafe if the neighborhood search was not initialized correctly.
+
+Note that all these bounds checks are safe to skip if
+- `point` is guaranteed to be in bounds of `system_coords`,
+- the neighborhood search was initialized correctly with `system_coords`
+  and `neighbor_coords` and has not been tampered with since then.
+
+!!! warning
+    Use this only when `point` is known to be in bounds of `system_coords`
+    and when `neighborhood_search` is known to be initialized correctly for
+    `system_coords` and `neighbor_coords`.
+"""
+@inline function foreach_neighbor_unsafe(f, system_coords, neighbor_coords,
+                                         neighborhood_search::AbstractNeighborhoodSearch,
+                                         point;
+                                         search_radius = search_radius(neighborhood_search))
+    point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
+                                             point)
+
+    @inbounds foreach_neighbor_inner(f, neighbor_coords, neighborhood_search,
+                                     point, point_coords, search_radius)
 end
 
 # This is the generic function that is called for `TrivialNeighborhoodSearch`.
 # For `GridNeighborhoodSearch`, a specialized function is used for slightly better
 # performance. `PrecomputedNeighborhoodSearch` can skip the distance check altogether.
-@inline function foreach_neighbor(f, neighbor_system_coords,
-                                  neighborhood_search::AbstractNeighborhoodSearch,
-                                  point, point_coords, search_radius)
+# Note that calling this function with `@inbounds` is not safe.
+# See the comments in `foreach_neighbor_unsafe`.
+@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
+                                                    neighborhood_search::AbstractNeighborhoodSearch,
+                                                    point, point_coords, search_radius)
     (; periodic_box) = neighborhood_search
 
     for neighbor in eachneighbor(point_coords, neighborhood_search)
-        # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
-        # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
-        neighbor_coords = extract_svector(neighbor_system_coords,
-                                          Val(ndims(neighborhood_search)), neighbor)
+        neighbor_point_coords = extract_svector(neighbor_coords,
+                                                Val(ndims(neighborhood_search)), neighbor)
 
-        pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
+        pos_diff = convert.(eltype(neighborhood_search),
+                            point_coords - neighbor_point_coords)
         distance2 = dot(pos_diff, pos_diff)
 
-        pos_diff,
-        distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
-                                              periodic_box)
+        (pos_diff,
+         distance2) = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                                periodic_box)
 
         if distance2 <= search_radius^2
             distance = sqrt(distance2)
