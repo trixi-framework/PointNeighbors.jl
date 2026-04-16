@@ -71,9 +71,11 @@
 
     @testset "Cell Coordinates Hash Function" begin
         # 1D coordinates
-        @test coordinates_flattened([1]) == UInt128(reinterpret(UInt32, Int32(1)))
-        @test coordinates_flattened([-1]) == UInt128(reinterpret(UInt32, Int32(-1)))
-        @test coordinates_flattened([0]) == Int128(0)
+        @test PointNeighbors.coordinates_flattened([1]) ==
+              UInt128(reinterpret(UInt32, Int32(1)))
+        @test PointNeighbors.coordinates_flattened([-1]) ==
+              UInt128(reinterpret(UInt32, Int32(-1)))
+        @test PointNeighbors.coordinates_flattened([0]) == Int128(0)
 
         # 2D coordinates
         coord2 = [-1, 1]
@@ -82,18 +84,20 @@
         # The second coordinate gives 1 shifted by 32 bits, so 1 * 2^32.
         expected2 = UInt128(2^32 - 1 + 2^32)
 
-        @test coordinates_flattened(coord2) == expected2
+        @test PointNeighbors.coordinates_flattened(coord2) == expected2
 
         # 3D coordinates
         coord3 = [1, 0, -1]
         expected3 = UInt128(1 + 0 * 2^32 + (2^32 - 1) * Int128(2)^64)
-        @test coordinates_flattened(coord3) == expected3
+        @test PointNeighbors.coordinates_flattened(coord3) == expected3
 
         # Extreme Int32 bounds
         max_val = Int32(typemax(Int32))
         min_val = Int32(typemin(Int32))
-        @test coordinates_flattened((max_val,)) == UInt128(reinterpret(UInt32, max_val))
-        @test coordinates_flattened((min_val,)) == UInt128(reinterpret(UInt32, min_val))
+        @test PointNeighbors.coordinates_flattened((max_val,)) ==
+              UInt128(reinterpret(UInt32, max_val))
+        @test PointNeighbors.coordinates_flattened((min_val,)) ==
+              UInt128(reinterpret(UInt32, min_val))
 
         # 3D extreme Int32 bounds
         coord4 = [min_val, max_val, Int32(0)]
@@ -102,19 +106,19 @@
         # `typemax(Int32)` gives the unsigned value 2^31 - 1.
         expected4 = UInt128(2^31 + (2^31 - 1) * 2^32)
 
-        @test coordinates_flattened(coord4) == expected4
+        @test PointNeighbors.coordinates_flattened(coord4) == expected4
 
         # Passing non-Int32-coercible should error
         large_val = typemax(Int32) + 1
-        @test_throws InexactError coordinates_flattened([large_val])
+        @test_throws InexactError PointNeighbors.coordinates_flattened([large_val])
 
         small_val = typemin(Int32) - 1
-        @test_throws InexactError coordinates_flattened([small_val])
+        @test_throws InexactError PointNeighbors.coordinates_flattened([small_val])
 
-        @test_throws InexactError coordinates_flattened([Inf])
-        @test_throws InexactError coordinates_flattened([NaN])
+        @test_throws InexactError PointNeighbors.coordinates_flattened([Inf])
+        @test_throws InexactError PointNeighbors.coordinates_flattened([NaN])
 
         # Too many dimensions should throw assertion error
-        @test_throws AssertionError coordinates_flattened([1, 2, 3, 4])
+        @test_throws AssertionError PointNeighbors.coordinates_flattened([1, 2, 3, 4])
     end
 end
