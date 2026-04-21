@@ -117,8 +117,11 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     ELTYPE = typeof(search_radius)
     material = (density = convert(ELTYPE, 1000.0), E = convert(ELTYPE, 1.4e6),
                 nu = convert(ELTYPE, 0.4))
+
+    # The `particle_spacing` is only required for setting the type of the initial condition
     solid = InitialCondition(; coordinates = coordinates_cpu,
-                             density = material.density, mass = convert(ELTYPE, 0.1))
+                             density = material.density, mass = convert(ELTYPE, 0.1),
+                             particle_spacing = search_radius)
 
     # Compact support == 2 * smoothing length for these kernels
     smoothing_length_ = PointNeighbors.search_radius(neighborhood_search) / 2
@@ -129,8 +132,9 @@ function benchmark_tlsph(neighborhood_search, coordinates;
         smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
     end
 
+    penalty_force = PenaltyForceGanzenmueller(alpha = convert(ELTYPE, 0.1))
     solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
-                                            material.E, material.nu)
+                                            material.E, material.nu; penalty_force)
     system_ = Adapt.adapt(parallelization_backend, solid_system)
 
     # Remove unnecessary data structures that are only used for initialization
@@ -146,5 +150,5 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     # Initialize the system
     TrixiParticles.initialize!(system, semi)
 
-    return @belapsed TrixiParticles.interact_structure_structure2!($dv, $v, $system, $semi)
+    return @belapsed TrixiParticles.interact_structure_structure!($dv, $v, $system, $semi)
 end
