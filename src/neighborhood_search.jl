@@ -249,7 +249,7 @@ See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks
 """
 @propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_coords,
                                               neighborhood_search::AbstractNeighborhoodSearch,
-                                              point;
+                                              point, args...;
                                               search_radius = search_radius(neighborhood_search))
     # Due to https://github.com/JuliaLang/julia/issues/30411, we cannot just remove
     # a `@boundscheck` by calling this function with `@inbounds` because it has a kwarg.
@@ -259,16 +259,16 @@ See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
 
     foreach_neighbor(f, neighbor_coords, neighborhood_search,
-                     point, point_coords, search_radius)
+                     point, point_coords, search_radius, args...)
 end
 
 # This is a function barrier to prevent the `@inbounds` in `foreach_neighbor`
 # from propagating into the neighbor loop, which is not safe.
 @inline function foreach_neighbor(f, neighbor_coords,
                                   neighborhood_search::AbstractNeighborhoodSearch,
-                                  point, point_coords, search_radius)
+                                  point, point_coords, search_radius, args...)
     foreach_neighbor_inner(f, neighbor_coords, neighborhood_search,
-                           point, point_coords, search_radius)
+                           point, point_coords, search_radius, args...)
 end
 
 """
@@ -307,13 +307,13 @@ Note that all these bounds checks are safe to skip if
 """
 @inline function foreach_neighbor_unsafe(f, system_coords, neighbor_coords,
                                          neighborhood_search::AbstractNeighborhoodSearch,
-                                         point;
+                                         point, args...;
                                          search_radius = search_radius(neighborhood_search))
     point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
                                              point)
 
     @inbounds foreach_neighbor_inner(f, neighbor_coords, neighborhood_search,
-                                     point, point_coords, search_radius)
+                                     point, point_coords, search_radius, args...)
 end
 
 # This is the generic function that is called for `TrivialNeighborhoodSearch`.

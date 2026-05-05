@@ -204,6 +204,41 @@ end
 # See the comments in `foreach_neighbor_unsafe`.
 @propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
                                                     neighborhood_search::PrecomputedNeighborhoodSearch,
+                                                    point, point_coords, search_radius, data)
+    (; periodic_box, neighbor_lists) = neighborhood_search
+
+    # Making the following `@inbounds` is not safe because the neighbor list
+    # might not contain `point` if the NHS was not initialized correctly.
+    neighbors = neighbor_lists[point]
+    @fastmath @loopinfo vectorwidth=8 predicate for neighbor_ in eachindex(neighbors)
+        neighbor = @inbounds neighbors[neighbor_]
+
+        # Making this `@inbounds` is not safe because
+        # `neighbor` (extracted from the neighbor list) is only guaranteed to be in bounds
+        # if the neighbor lists were constructed correctly and have not been corrupted.
+        neighbor_point_coords = extract_svector(neighbor_coords,
+                                                Val(ndims(neighborhood_search)), neighbor)
+
+        pos_diff = convert.(eltype(neighborhood_search),
+                            point_coords - neighbor_point_coords)
+        distance2 = dot(pos_diff, pos_diff)
+
+        (pos_diff,
+         distance2) = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                                periodic_box)
+
+        distance = sqrt(distance2)
+
+        # Inline to avoid loss of performance
+        # compared to not using `foreach_point_neighbor`.
+        data = @inline f(point, neighbor, pos_diff, distance, data)
+    end
+
+    return data
+end
+
+@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
+                                                    neighborhood_search::PrecomputedNeighborhoodSearch,
                                                     point, point_coords, search_radius)
     (; periodic_box, neighbor_lists) = neighborhood_search
 

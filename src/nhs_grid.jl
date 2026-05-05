@@ -506,26 +506,97 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
            coords[hash] != PointNeighbors.coordinates_flattened(neighbor_cell)
 end
 
+using LLVMLoopInfo
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
 @propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
                                                     neighborhood_search::GridNeighborhoodSearch,
-                                                    point, point_coords, search_radius)
+                                                    point, point_coords, search_radius, data)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
 
-    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
-        neighbor_cell = Tuple(neighbor_cell_)
+    @inbounds @fastmath for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+                neighbor_cell = Tuple(neighbor_cell_)
+    # @inbounds @fastmath for cellx in (cell[1] - 1):(cell[1] + 1), celly in (cell[2] - 1):(cell[2] + 1), cellz in (cell[3] - 1):(cell[3] + 1)
+    #     neighbor_cell = (cellx, celly, cellz)
 
         # Making the following `@inbounds` is not safe because we don't know if
         # `neighbor_cell` is in bounds of the grid.
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
 
         # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
-        cell_collision = check_cell_collision(neighbor_cell_,
-                                              cell_list, neighborhood_search)
+        # cell_collision = check_cell_collision(neighbor_cell_,
+        #                                       cell_list, neighborhood_search)
+
+        @loopinfo vectorwidth=8 predicate for neighbor_ in eachindex(neighbors)
+            neighbor = @inbounds neighbors[neighbor_]
+
+            # Making the following `@inbounds` is not safe because we don't know
+            # if `neighbor` (extracted from the cell list) is in bounds.
+            neighbor_point_coords = extract_svector(neighbor_coords,
+                                                    Val(ndims(neighborhood_search)),
+                                                    neighbor)
+
+            pos_diff = convert.(eltype(neighborhood_search),
+                                point_coords - neighbor_point_coords)
+            distance2 = dot(pos_diff, pos_diff)
+
+            # (pos_diff,
+            #  distance2) = compute_periodic_distance(pos_diff, distance2,
+            #                                         search_radius, periodic_box)
+
+            distance = sqrt(distance2)
+            if distance2 <= search_radius^2
+            # distance2 = ifelse(distance2 <= search_radius^2, distance2, zero(distance2))
+                # distance = sqrt(distance2)
+
+                # If this cell has a collision, check if this point belongs to this cell
+                # (only with `SpatialHashingCellList`).
+                # if cell_collision &&
+                #    check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
+                #                    neighborhood_search)
+                #     continue
+                # end
+
+                # Inline to avoid loss of performance
+                # compared to not using `foreach_point_neighbor`.
+                data = @inline f(point, neighbor, pos_diff, distance, data)
+            end
+        end
+    end
+
+    return data
+end
+
+@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
+                                                    neighborhood_search::GridNeighborhoodSearch,
+                                                    point, point_coords, search_radius)
+    (; cell_list, periodic_box) = neighborhood_search
+    cell = cell_coords(point_coords, neighborhood_search)
+
+    @inbounds @fastmath for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+                neighbor_cell = Tuple(neighbor_cell_)
+    # @inbounds @fastmath for cellx in (cell[1] - 1):(cell[1] + 1), celly in (cell[2] - 1):(cell[2] + 1), cellz in (cell[3] - 1):(cell[3] + 1)
+    #     neighbor_cell = (cellx, celly, cellz)
+
+        # Making the following `@inbounds` is not safe because we don't know if
+        # `neighbor_cell` is in bounds of the grid.
+        neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+
+        # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
+        # cell_collision = check_cell_collision(neighbor_cell_,
+        #                                       cell_list, neighborhood_search)
+
+        # vectorwidth = 8
+        # for block_idx in cld(length(neighbors), vectorwidth)
+        #     block = SVector{vectorwidth}((block_idx - 1) * vectorwidth .+ (1:vectorwidth))
+        #     neighbors_block = @inbounds neighbors[block]
+
+        #     neighbor_coords = @inbounds extract_svector(neighbor_coords,
+        #                                     Val(ndims(neighborhood_search)),
+        #                                     neighbors_block)
 
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
@@ -540,20 +611,22 @@ end
                                 point_coords - neighbor_point_coords)
             distance2 = dot(pos_diff, pos_diff)
 
-            (pos_diff,
-             distance2) = compute_periodic_distance(pos_diff, distance2,
-                                                    search_radius, periodic_box)
+            # (pos_diff,
+            #  distance2) = compute_periodic_distance(pos_diff, distance2,
+            #                                         search_radius, periodic_box)
 
+            distance = sqrt(distance2)
             if distance2 <= search_radius^2
-                distance = sqrt(distance2)
+            # distance2 = ifelse(distance2 <= search_radius^2, distance2, zero(distance2))
+                # distance = sqrt(distance2)
 
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
-                if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
-                                   neighborhood_search)
-                    continue
-                end
+                # if cell_collision &&
+                #    check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
+                #                    neighborhood_search)
+                #     continue
+                # end
 
                 # Inline to avoid loss of performance
                 # compared to not using `foreach_point_neighbor`.
