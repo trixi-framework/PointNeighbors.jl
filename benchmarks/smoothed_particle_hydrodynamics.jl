@@ -142,8 +142,8 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     end
 
     solid_system = TotalLagrangianSPHSystem(solid; smoothing_kernel, smoothing_length,
-                                            young_modulus=material.E,
-                                            poisson_ratio=material.nu)
+                                            young_modulus = material.E,
+                                            poisson_ratio = material.nu)
     semi = DummySemidiscretization(neighborhood_search, parallelization_backend, true)
 
     v = copy(solid.velocity)
