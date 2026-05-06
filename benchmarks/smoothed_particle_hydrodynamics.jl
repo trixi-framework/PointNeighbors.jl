@@ -93,7 +93,7 @@ function __benchmark_wcsph_inner(neighborhood_search, initial_condition, state_e
     end
 
     fluid_system = WeaklyCompressibleSPHSystem(initial_condition; 
-                                               density_calculator=ContinuityDensity(),
+                                               density_calculator = ContinuityDensity(),
                                                state_equation, smoothing_kernel,
                                                smoothing_length, viscosity,
                                                density_diffusion)
