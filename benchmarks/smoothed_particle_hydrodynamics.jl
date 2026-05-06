@@ -92,7 +92,7 @@ function __benchmark_wcsph_inner(neighborhood_search, initial_condition, state_e
         smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
     end
 
-    fluid_system = WeaklyCompressibleSPHSystem(initial_condition; 
+    fluid_system = WeaklyCompressibleSPHSystem(initial_condition;
                                                density_calculator = ContinuityDensity(),
                                                state_equation, smoothing_kernel,
                                                smoothing_length, viscosity,
