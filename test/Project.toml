@@ -1,5 +1,7 @@
 [deps]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
@@ -7,7 +9,9 @@ TrixiParticles = "66699cd8-9c01-4e9d-a059-b96c86d16b3a"
 TrixiTest = "0a316866-cbd0-4425-8bcb-08103b2c1f26"
 
 [compat]
+Adapt = "4"
 BenchmarkTools = "1"
+KernelAbstractions = "0.9"
 Plots = "1"
 Test = "1"
 TrixiParticles = "0.4"

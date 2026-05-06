@@ -1,4 +1,5 @@
 using Documenter
+using Literate: Literate
 
 # Get PointNeighbors.jl root directory
 trixibase_root_dir = dirname(@__DIR__)
@@ -38,6 +39,19 @@ copy_file("LICENSE.md",
           "[AUTHORS.md](AUTHORS.md)" => "[Authors](@ref)",
           "\n" => "\n> ", r"^" => "# License\n\n> ")
 
+mkpath(joinpath(@__DIR__, "src", "tutorials"))
+
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_basic_usage.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_n_body.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_periodicity.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_gpu_usage.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_advanced_usage.jl"),
+                  joinpath(@__DIR__, "src", "tutorials"))
+
 # Make documentation
 makedocs(modules = [PointNeighbors],
          sitename = "PointNeighbors.jl",
@@ -46,10 +60,19 @@ makedocs(modules = [PointNeighbors],
                                   # Disable pretty URLs during manual testing
                                   prettyurls = get(ENV, "CI", nothing) == "true",
                                   # Set canonical URL to GitHub pages URL
-                                  canonical = "https://trixi-framework.github.io/PointNeighbors.jl/stable"),
+                                  canonical = "https://trixi-framework.github.io/PointNeighbors.jl/stable",
+                                  # Set edit_link explicitly to avoid `git remote show origin` lookups.
+                                  edit_link = "main"),
          # Explicitly specify documentation structure
          pages = [
              "Home" => "index.md",
+             "Tutorials" => [
+                 "Basic Usage" => joinpath("tutorials", "tut_basic_usage.md"),
+                 "N-Body" => joinpath("tutorials", "tut_n_body.md"),
+                 "Periodicity" => joinpath("tutorials", "tut_periodicity.md"),
+                 "GPU Usage" => joinpath("tutorials", "tut_gpu_usage.md"),
+                 "Advanced Usage" => joinpath("tutorials", "tut_advanced_usage.md")
+             ],
              "API reference" => "reference.md",
              "Authors" => "authors.md",
              "License" => "license.md"

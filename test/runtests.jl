@@ -10,4 +10,8 @@ const POINTNEIGHBORS_TEST = lowercase(get(ENV, "POINTNEIGHBORS_TEST", "all"))
     if POINTNEIGHBORS_TEST in ("all", "benchmarks")
         include("benchmarks.jl")
     end
+
+    if POINTNEIGHBORS_TEST in ("cuda", "amdgpu", "metal", "oneapi")
+        include("gpu.jl")
+    end
 end;

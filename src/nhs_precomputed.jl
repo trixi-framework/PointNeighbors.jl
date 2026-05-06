@@ -98,6 +98,11 @@ function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 
                                               transpose_backend = false,
                                               max_neighbors = max_neighbors(NDIMS),
                                               sort_neighbor_lists = true) where {NDIMS}
+    if search_radius isa Integer
+        throw(ArgumentError("`search_radius` cannot be an integer type, since computed " *
+                            "distances will be converted to this type"))
+    end
+
     neighbor_lists = construct_backend(backend, n_points, max_neighbors; transpose_backend)
 
     PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
