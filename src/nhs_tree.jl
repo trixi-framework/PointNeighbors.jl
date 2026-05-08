@@ -1,11 +1,16 @@
 struct TreeNeighborhoodSearch{NDIMS, C, ELTYPE} <: AbstractNeighborhoodSearch
     cell_list::C
     search_radius::ELTYPE
+    particle_z       :: Vector{UInt64} # Calculate the z-index for each particle 
+    particle_idxs    :: Vector{UInt64} # Contains the particle indices, will be sorted based on z-code. 
 end
 
-function TreeNeighborhoodSearch{NDIMS}(cell_list, search_radius = 0.0) where {NDIMS}
+function TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius = 0.0, n_points = 0) where {NDIMS}
+    particle_z = Vector{UInt64}(undef, n_points)
+    particle_idxs = Vector{UInt64}(undef, n_points)
+
     return TreeNeighborhoodSearch{NDIMS, typeof(cell_list), typeof(search_radius)}(cell_list,
-                                                                                   search_radius)
+                                                                                   search_radius, particle_z, particle_idxs)
 end
 
 @inline Base.ndims(::TreeNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -22,91 +27,111 @@ end
 function initialize_tree!(neighborhood_search, y::AbstractMatrix;
                           parallelization_backend = default_backend(y),
                           eachindex_y = axes(y, 2))
-    (; cell_list) = neighborhood_search
-    (; particle_z, particle_indices, max_depth) = cell_list
+    (; cell_list, particle_z, particle_idxs) = neighborhood_search
+    (; cell_levels, max_level, capacity_per_cell) = cell_list
 
-    empty!(particle_z)
+    cell_levels .= max_level
 
     for point in eachindex_y
         point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
-        point_z = morton_cell_coords(point_coords, cell_list, max_depth)
-        push!(particle_z, point_z)
+        point_z = morton_cell_coords(point_coords, cell_list)
+        push_cell!(cell_list, point_z, point)
     end
 
-    resize!(particle_indices, length(particle_z))
-
-    sortperm!(particle_indices, particle_z)
-    sort!(particle_z)
-
-    refine_tree!(cell_list, 1, max_depth)
+    for i in 0:2
+        mark_merge!(cell_list, level=max_level - i, capacity=capacity_per_cell)
+        apply_merge!(cell_list, level=max_level -i)
+    end
 
     return neighborhood_search
 end
 
-function refine_tree!(cell_list, max_capacity, max_depth)
-    (; cell_z, cell_levels, cell_ranges, particle_z) = cell_list
+# For each cell on the specified `level`, we check if we can merge the subcells on `level - 1`
+# The lowest level for which we can perform the cell merging thus is `cell_list.max_level - 1`
+function mark_merge!(cell_list; level=cell_list.max_level, capacity=1)
+    (; active_cells, max_level, marked_cells) = cell_list
+    @assert 2 <= level <= max_level 
 
-    empty!(cell_z)
-    empty!(cell_levels)
-    empty!(cell_ranges)
+    offset = 4^(max_level - level)
+    marked_cells .= false
 
-    N = length(particle_z)
-    if N == 0
-        return
-    end
+    for i in 1:offset:length(active_cells)
+        num_particles = 0
 
-    # (start_idx, end_idx, level, prefix)
-    stack = Tuple{Int, Int, UInt8, UInt64}[]
-    sizehint!(stack, max_depth * 4)
-    push!(stack, (1, N, UInt8(0), UInt64(0)))
-
-    while !isempty(stack)
-        # Pop the most recently added node
-        start_idx, end_idx, level, prefix = pop!(stack)
-
-        count = end_idx - start_idx + 1
-
-        if count <= max_capacity || level == max_depth
-            push!(cell_z, prefix)
-            push!(cell_levels, level)
-            push!(cell_ranges, start_idx:end_idx)
-        else
-            # Subdivide
-            next_level = level + UInt8(1)
-            shift_amount = 2 * (max_depth - next_level)
-
-            # Calculate boundary Morton codes
-            m1 = prefix | (UInt64(1) << shift_amount)
-            m2 = prefix | (UInt64(2) << shift_amount)
-            m3 = prefix | (UInt64(3) << shift_amount)
-
-            # Find boundaries in the sorted array
-            b1_rel = searchsortedfirst(@view(particle_z[start_idx:end_idx]), m1)
-            b1 = start_idx + b1_rel - 1
-
-            b2_rel = searchsortedfirst(@view(particle_z[b1:end_idx]), m2)
-            b2 = b1 + b2_rel - 1
-
-            b3_rel = searchsortedfirst(@view(particle_z[b2:end_idx]), m3)
-            b3 = b2 + b3_rel - 1
-
-            if b3 <= end_idx
-                push!(stack, (b3, end_idx, next_level, m3))
-            end
-
-            if b2 < b3
-                push!(stack, (b2, b3 - 1, next_level, m2))
-            end
-
-            if b1 < b2
-                push!(stack, (b1, b2 - 1, next_level, m1))
-            end
-
-            if start_idx < b1
-                push!(stack, (start_idx, b1 - 1, next_level, prefix))
-            end
+        for j in 0:offset - 1
+            num_particles += length(active_cells[i + j])                
         end
+
+        marked_cells[i] = num_particles <= capacity
+    end 
+
+    return any(marked_cells)
+end
+
+function apply_merge!(cell_list; level = cell_list.max_level - 1)
+    (; active_cells, max_level, marked_cells, cell_levels) = cell_list
+    @assert 2 <= level <= max_level 
+
+    offset = 4^(max_level - level)
+    for i in findall(marked_cells)
+        for j in 1:offset - 1
+            particles = active_cells[i + j]
+
+            for k in reverse(eachindex(particles))
+                particle = particles[k]
+                deleteat_cell!(cell_list, i + j, k)
+                push_cell!(cell_list, i, particle)
+            end
+
+            cell_levels[i + j] = 0 # Reset the cells
+        end
+
+        cell_levels[i] = level
     end
+end 
+
+function mark_refine!(cell_list; level=1, capacity=1)
+    (; active_cells, cell_levels,  max_level, marked_cells) = cell_list
+    @assert 1 <= level < max_level 
+
+    offset = 4^(max_level - level)
+    marked_cells .= false
+    for i in 1:offset:length(active_cells)
+        if cell_levels[i] == level 
+            marked_cells[i] = length(active_cells[i]) > capacity
+        end 
+    end 
+
+    return any(marked_cells)
+end
+
+function apply_refine!(cell_list, neighborhood_search, coords; level=1) 
+    (; active_cells, max_level, marked_cells, cell_levels) = cell_list
+    @assert 1 <= level < max_level 
+
+    for i in findall(marked_cells)
+        particles = active_cells[i]
+        subcells = i .+ [0, 1, 2, 3] * 4^(max_level - level - 1)
+        
+        # Update the cell levels
+        cell_levels[i] = 0
+        for cell in subcells 
+            cell_levels[cell] = level + 1
+        end
+
+
+        for j in reverse(eachindex(particles))
+            particle = particles[j]
+            particle_coords = @inbounds extract_svector(coords, Val(ndims(neighborhood_search)), particle)
+            particle_z = morton_cell_coords(particle_coords, cell_list)
+            cell = subcells[searchsortedlast(subcells, particle_z)]
+            
+            # Redundant if `cell == i`
+            deleteat_cell!(cell_list, i, j)
+            push_cell!(cell_list, cell, particle)
+            
+        end
+    end 
 end
 
 function update!(neighborhood_search::TreeNeighborhoodSearch,
@@ -132,21 +157,16 @@ function update_tree!(neighborhood_search::TreeNeighborhoodSearch,
     return neighborhood_search
 end
 
-# The bit-shifting in `refine_tree!` depends on 0-indexing
 @inline function morton_cell_coords(coords, cell_list::TreeCellList,
-                                    depth = cell_list.max_depth)
-    (; min_corner, grid_length) = cell_list
-    cell_length = grid_length / (2^depth)
-    grid_coords = floor_to_int.((coords .- min_corner) ./ cell_length) .+ 1
-
-    # Subtract 1 to make it a standard 0-based
-    return cartesian2morton(grid_coords) - UInt64(1)
+                                    level = cell_list.max_level)
+    cartesian_coords = cartesian_cell_coords(coords, cell_list, level)
+    return cartesian2morton(cartesian_coords)
 end
 
 @inline function cartesian_cell_coords(coords, cell_list::TreeCellList,
-                                       depth = cell_list.max_depth)
+                                       level = cell_list.max_level)
     (; min_corner, grid_length) = cell_list
-    cell_length = grid_length / (2^depth)
+    cell_length = grid_length / (2^level)
 
     return floor_to_int.((coords .- min_corner) ./ cell_length) .+ 1
 end
@@ -180,7 +200,7 @@ end
 # Returns the indices in `cell_z` for the neighboring cells of the point at `coords`. 
 @inline function neighboring_cells(coords, neighborhood_search::TreeNeighborhoodSearch)
     (; cell_list, search_radius) = neighborhood_search
-    (; min_corner, max_corner, max_depth, cell_z, cell_levels) = cell_list
+    (; min_corner, max_corner, max_level, cell_z, cell_levels) = cell_list
 
     min_corner_point = maximum([coords .- search_radius, min_corner])
     max_corner_point = minimum([coords .+ search_radius, max_corner])
@@ -203,7 +223,7 @@ end
 
         neighbor_prefix = cell_z[neighbor_idx]
         neighbor_level = cell_levels[neighbor_idx]
-        shift_amount = 2 * (max_depth - neighbor_level)
+        shift_amount = 2 * (max_level - neighbor_level)
 
         candidate_prefix = (candidate_z >> shift_amount) << shift_amount
 
