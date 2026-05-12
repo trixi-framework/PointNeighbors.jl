@@ -30,17 +30,18 @@ function initialize_tree!(neighborhood_search, y::AbstractMatrix;
     (; cell_list, particle_z, particle_idxs) = neighborhood_search
     (; cell_levels, max_level, capacity_per_cell) = cell_list
 
-    cell_levels .= max_level
+    empty!(cell_list)
+    cell_levels .= -1
 
+    # Initialize the grid by pushing every point to the cell on the top-most level. 
+    cell_levels[1] = 0
     for point in eachindex_y
-        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
-        point_z = morton_cell_coords(point_coords, cell_list)
-        push_cell!(cell_list, point_z, point)
+        push_cell!(cell_list, 1, point)
     end
 
     for i in 0:2
-        mark_merge!(cell_list, level=max_level - i, capacity=capacity_per_cell)
-        apply_merge!(cell_list, level=max_level -i)
+        mark_refine!(cell_list, level=i, capacity=capacity_per_cell)
+        apply_refine!(cell_list, neighborhood_search, y, level=i)
     end
 
     return neighborhood_search
@@ -83,7 +84,7 @@ function apply_merge!(cell_list; level = cell_list.max_level - 1)
                 push_cell!(cell_list, i, particle)
             end
 
-            cell_levels[i + j] = 0 # Reset the cells
+            cell_levels[i + j] = -1 # Reset the cells
         end
 
         cell_levels[i] = level
@@ -92,7 +93,7 @@ end
 
 function mark_refine!(cell_list; level=1, capacity=1)
     (; active_cells, cell_levels,  max_level, marked_cells) = cell_list
-    @assert 1 <= level < max_level 
+    @assert 0 <= level < max_level 
 
     offset = 4^(max_level - level)
     marked_cells .= false
@@ -107,23 +108,21 @@ end
 
 function apply_refine!(cell_list, neighborhood_search, coords; level=1) 
     (; active_cells, max_level, marked_cells, cell_levels) = cell_list
-    @assert 1 <= level < max_level 
+    @assert 0 <= level < max_level 
 
     for i in findall(marked_cells)
         particles = active_cells[i]
         subcells = i .+ [0, 1, 2, 3] * 4^(max_level - level - 1)
         
-        # Update the cell levels
-        cell_levels[i] = 0
+        # Update cell levels
         for cell in subcells 
             cell_levels[cell] = level + 1
         end
 
-
         for j in reverse(eachindex(particles))
             particle = particles[j]
             particle_coords = @inbounds extract_svector(coords, Val(ndims(neighborhood_search)), particle)
-            particle_z = morton_cell_coords(particle_coords, cell_list)
+            particle_z = morton_cell_index(particle_coords, cell_list)
             cell = subcells[searchsortedlast(subcells, particle_z)]
             
             # Redundant if `cell == i`
@@ -157,7 +156,26 @@ function update_tree!(neighborhood_search::TreeNeighborhoodSearch,
     return neighborhood_search
 end
 
-@inline function morton_cell_coords(coords, cell_list::TreeCellList,
+# For a given point, compute the cell it belongs to based on its coordinates
+@inline function cell_coords(coords, cell_list)
+    (; max_level, cell_levels) = cell_list 
+
+    for level in 1:max_level
+        # For a given level, we identify a cell on this level with the smallest cell on the `max_level` that is part of it. 
+        # For example, for `max_level = 2`, we identify cell 2 on level 1 with cell 5. 
+        morton_code = morton_cell_index(coords, cell_list, level)
+        offset = 4^(max_level - level) # TODO: Move this into an SVector and store as property like `cell_list.level_offsets[level]`
+        cell = (morton_code - 1) * offset + 1 # Map Morton code to the cell index we identify the cell with 
+
+        if cell_levels[cell] != -1
+            return cell
+        end
+    end
+
+    return 0 
+end
+
+@inline function morton_cell_index(coords, cell_list::TreeCellList,
                                     level = cell_list.max_level)
     cartesian_coords = cartesian_cell_coords(coords, cell_list, level)
     return cartesian2morton(cartesian_coords)
@@ -174,7 +192,11 @@ end
 @inline function foreach_neighbor(f, neighbor_system_coords,
                                   neighborhood_search::TreeNeighborhoodSearch,
                                   point, point_coords, search_radius)
-    for neighbor_cell_ in neighboring_cells(point_coords, neighborhood_search)
+
+    (; cell_list) = neighborhood_search
+    cell = cell_coords(point_coords, cell_list)
+
+    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbors = points_in_cell(neighbor_cell_, neighborhood_search)
 
         for neighbor_ in eachindex(neighbors)
@@ -198,41 +220,40 @@ end
 end
 
 # Returns the indices in `cell_z` for the neighboring cells of the point at `coords`. 
-@inline function neighboring_cells(coords, neighborhood_search::TreeNeighborhoodSearch)
-    (; cell_list, search_radius) = neighborhood_search
-    (; min_corner, max_corner, max_level, cell_z, cell_levels) = cell_list
+@inline function neighboring_cells(cell, neighborhood_search::TreeNeighborhoodSearch)
+    (; cell_list) = neighborhood_search
+    (; cell_levels, max_level) = cell_list
 
-    min_corner_point = maximum([coords .- search_radius, min_corner])
-    max_corner_point = minimum([coords .+ search_radius, max_corner])
+    NDIMS = ndims(neighborhood_search)     
+    level = cell_levels[cell]
+    offset = 4^(max_level - level)
+    morton_code = Int(((cell - 1) / offset) + 1)
 
-    min_cell_point = cartesian_cell_coords(min_corner_point, cell_list)
-    max_cell_point = cartesian_cell_coords(max_corner_point, cell_list)
+    cartesian_code = morton2cartesian(morton_code)
 
-    visited_cells = BitSet()
-    neighboring_cells = BitSet()
+    neighbors_cartesian = CartesianIndices(ntuple(i -> (cartesian_code[i] - 1):(cartesian_code[i] + 1), NDIMS))
+    neighbors_morton = [cartesian2morton(collect(Tuple(neighbor_cartesian))) for neighbor_cartesian in neighbors_cartesian]
 
-    for i in min_cell_point[1]:max_cell_point[1], j in min_cell_point[2]:max_cell_point[2]
-        candidate_z = cartesian2morton([i, j]) - UInt64(1)
-        neighbor_idx = searchsortedlast(cell_z, candidate_z)
-        already_visited = neighbor_idx in visited_cells
-        push!(visited_cells, neighbor_idx)
+    # Filter out adjacent cells at the grid boundary that are not part of the grid, 
+    # e.g. in 2D we filter out 5 of the 8 neighbors of cell 1.
+    max_num_cells = 2^(NDIMS * max_level)
+    neighbors_morton = [(neighbor_morton -1) * offset + 1 for neighbor_morton in neighbors_morton]
+    neighbors_morton = neighbors_morton[1 .<= neighbors_morton .<= max_num_cells]
+    neighbors_morton = 
+    
+    return neighbors_morton
+end
 
-        if neighbor_idx == 0 || already_visited
-            continue
-        end
+function expand_cell(cell_list, cell, level)
+    (; cell_levels, max_level) = cell_list
+    offset = 4^(max_level - level)
 
-        neighbor_prefix = cell_z[neighbor_idx]
-        neighbor_level = cell_levels[neighbor_idx]
-        shift_amount = 2 * (max_level - neighbor_level)
-
-        candidate_prefix = (candidate_z >> shift_amount) << shift_amount
-
-        if neighbor_prefix == candidate_prefix
-            push!(neighboring_cells, neighbor_idx)
-        end
+    if cell_level[cell] < level
+        cell_candidates = cell_levels[cell, cell + offset - 1]
+        return findall(cell_candidates .!= 0)
+    else 
+        return [cell]
     end
-
-    return neighboring_cells
 end
 
 @inline function eachneighbor(coords, neighborhood_search::TreeNeighborhoodSearch)
@@ -242,12 +263,8 @@ end
                       for cell in neighboring_cells(coords, neighborhood_search))
 end
 
-# Expects a `cell_index` in the range 1:length(cell_ranges).
 @propagate_inbounds function points_in_cell(cell_index, neighborhood_search)
-    (; cell_list) = neighborhood_search
-    (; cell_ranges, particle_indices) = cell_list
-
-    return particle_indices[cell_ranges[cell_index]]
+    return neighborhood_search.cell_list.active_cells[cell_index]
 end
 
 function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_points;

@@ -17,7 +17,7 @@ struct TreeCellList{NDIMS, LI, MINC, MAXC, AC} <: AbstractCellList
 
     active_cells      :: AC
     marked_cells      :: BitVector
-    cell_levels       :: Vector{UInt8}
+    cell_levels       :: Vector{Int8}
 
     min_cell_length   :: Float64
     grid_length       :: Float64
@@ -38,7 +38,7 @@ function TreeCellList{NDIMS}(; min_corner, max_corner, max_level = 16, backend =
 
     active_cells = construct_backend(backend, n_cells, max_points_per_cell)
     marked_cells = falses(n_cells)
-    cell_levels = Vector{UInt8}(undef, n_cells)
+    cell_levels = Vector{Int8}(undef, n_cells)
 
     return TreeCellList{NDIMS, typeof(linear_indices), typeof(min_corner),
                         typeof(max_corner), typeof(active_cells)}(linear_indices, min_corner, max_corner, active_cells, marked_cells, cell_levels,
@@ -46,11 +46,10 @@ function TreeCellList{NDIMS}(; min_corner, max_corner, max_level = 16, backend =
 end
 
 function Base.empty!(cell_list::TreeCellList)
-    (; active_cells, cell_z, cell_ranges, cell_levels) = cell_list
-    empty!(cell_z)
-    empty!(cell_ranges)
-    empty!(cell_levels)
-
+    (; active_cells,  marked_cells, cell_levels) = cell_list
+    marked_cells .= false 
+    cell_levels .= -1
+    
     @threaded default_backend(active_cells) for i in eachindex(active_cells)
         emptyat!(active_cells, i)
     end
@@ -107,7 +106,8 @@ end
 end
 
 function is_leaf(cell_list, cell)
-    return cell_list.cell_levels[cell] > 0 
+    return cell_list.cell_levels[cell] > -1
+end
 
 @inline index_type(::TreeCellList) = Int32
 
