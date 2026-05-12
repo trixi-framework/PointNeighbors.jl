@@ -586,37 +586,37 @@ end
 end
 
 @inline function periodic_cell_index(cell_index, neighborhood_search)
-    (; n_cells, periodic_box, cell_list) = neighborhood_search
+    (; n_cells, periodic_box) = neighborhood_search
 
-    periodic_cell_index(cell_index, periodic_box, n_cells, cell_list)
+    periodic_cell_index(cell_index, periodic_box, n_cells)
 end
 
-@inline periodic_cell_index(cell_index, ::Nothing, n_cells, cell_list) = cell_index
+@inline periodic_cell_index(cell_index, ::Nothing, n_cells) = cell_index
 
-@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells, cell_list)
-    # 1-based modulo
-    return mod1.(cell_index, n_cells)
+@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells)
+    # With the `DictionaryCellList`, the grid is conceptually infinite,
+    # so we can use any offset for the modulo operation.
+    # With the `FullGridCellList`, we need 2-based modulo, so that the min corner
+    # will be the (2, 2, 2)-cell.
+    # With this, we still have one padding layer in each direction around the periodic box,
+    # just like without using a periodic box.
+    # This is not needed for finding neighbor cells, but to make the bounds check
+    # work the same way as without a periodic box (cells in bounds are 2:end-1).
+    return mod.(cell_index .- 2, n_cells) .+ 2
 end
 
 @inline function cell_coords(coords, neighborhood_search)
-    (; periodic_box, cell_list, cell_size) = neighborhood_search
+    # Compute cell coordinates ignoring periodicity at first
+    nonperiodic_cell_coords_ = nonperiodic_cell_coords(coords, neighborhood_search)
 
-    return cell_coords(coords, periodic_box, cell_list, cell_size)
+    # Now return (without periodicity) or convert to periodic cell index (with periodicity)
+    return periodic_cell_index(nonperiodic_cell_coords_, neighborhood_search)
 end
 
-@inline function cell_coords(coords, periodic_box::Nothing, cell_list, cell_size)
+@inline function nonperiodic_cell_coords(coords, neighborhood_search)
+    (; cell_size) = neighborhood_search
+
     return Tuple(floor_to_int.(coords ./ cell_size))
-end
-
-@inline function cell_coords(coords, periodic_box::PeriodicBox, cell_list, cell_size)
-    # Subtract `min_corner` to offset coordinates so that the min corner of the periodic
-    # box corresponds to the (0, 0, 0) cell of the NHS.
-    # This way, there are no partial cells in the domain if the domain size is an integer
-    # multiple of the cell size (which is required, see the constructor).
-    offset_coords = periodic_coords(coords, periodic_box) .- periodic_box.min_corner
-
-    # Add one for 1-based indexing. The min corner will be the (1, 1, 1)-cell.
-    return Tuple(floor_to_int.(offset_coords ./ cell_size)) .+ 1
 end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
