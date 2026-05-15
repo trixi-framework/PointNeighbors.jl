@@ -194,65 +194,69 @@ end
                                   point, point_coords, search_radius)
 
     (; cell_list) = neighborhood_search
+    (; cell_levels, max_level) = cell_list 
+    
     cell = cell_coords(point_coords, cell_list)
+    NDIMS = ndims(neighborhood_search)   
+    max_num_cells = 2^(NDIMS * max_level)
+    cell_level = cell_levels[cell]
+    offset = (2^NDIMS)^(max_level - cell_level)
+    cell_morton = Int(((cell - 1) / offset) + 1)
+    cell_cartesian = morton2cartesian(cell_morton)
+    
+    neighbors_cartesian = CartesianIndices(ntuple(i -> (cell_cartesian[i] - 1):(cell_cartesian[i] + 1), NDIMS))
 
-    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
-        neighbors = points_in_cell(neighbor_cell_, neighborhood_search)
+    for neighbor_cartesian in neighbors_cartesian
+        cartesian_svec = SVector(Tuple(neighbor_cartesian))
+        neighbor_morton_base = cartesian2morton(cartesian_svec)
+        neighbor_morton = (neighbor_morton_base - 1) * offset + 1
 
-        for neighbor_ in eachindex(neighbors)
-            neighbor = @inbounds neighbors[neighbor_]
-            neighbor_coords = extract_svector(neighbor_system_coords,
-                                              Val(ndims(neighborhood_search)), neighbor)
+        if 1 <= neighbor_morton <= max_num_cells
+                
+            for_expanded_cell(cell_list, neighbor_morton, cell_level) do subcell 
+                
+                neighbors = points_in_cell(subcell, neighborhood_search) 
 
-            pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
-            distance2 = dot(pos_diff, pos_diff)
+                for neighbor_ in eachindex(neighbors)
+                    neighbor = @inbounds neighbors[neighbor_]
+                    neighbor_coords = extract_svector(neighbor_system_coords,
+                                                    Val(NDIMS), neighbor)
 
-            pos_diff,
-            distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                  search_radius, nothing)
+                    pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
+                    distance2 = dot(pos_diff, pos_diff)
 
-            if distance2 <= search_radius^2
-                distance = sqrt(distance2)
-                @inline f(point, neighbor, pos_diff, distance)
-            end
+                    pos_diff,
+                    distance2 = compute_periodic_distance(pos_diff, distance2,
+                                                        search_radius, nothing)
+
+                    if distance2 <= search_radius^2
+                        distance = sqrt(distance2)
+                        @inline f(point, neighbor, pos_diff, distance)
+                    end
+                end
+            end 
         end
     end
 end
 
-# Returns the indices in `cell_z` for the neighboring cells of the point at `coords`. 
-@inline function neighboring_cells(cell, neighborhood_search::TreeNeighborhoodSearch)
-    (; cell_list) = neighborhood_search
+@inline function for_expanded_cell(f, cell_list, cell, level)
     (; cell_levels, max_level) = cell_list
-
-    NDIMS = ndims(neighborhood_search)     
-    level = cell_levels[cell]
-    offset = 4^(max_level - level)
-    morton_code = Int(((cell - 1) / offset) + 1)
-
-    cartesian_code = morton2cartesian(morton_code)
-
-    neighbors_cartesian = CartesianIndices(ntuple(i -> (cartesian_code[i] - 1):(cartesian_code[i] + 1), NDIMS))
-    neighbors_morton = [cartesian2morton(collect(Tuple(neighbor_cartesian))) for neighbor_cartesian in neighbors_cartesian]
-
-    # Filter out adjacent cells at the grid boundary that are not part of the grid, 
-    # e.g. in 2D we filter out 5 of the 8 neighbors of cell 1.
-    max_num_cells = 2^(NDIMS * max_level)
-    neighbors_morton = [(neighbor_morton -1) * offset + 1 for neighbor_morton in neighbors_morton]
-    neighbors_morton = neighbors_morton[1 .<= neighbors_morton .<= max_num_cells]
-    neighbors_morton = 
     
-    return neighbors_morton
-end
-
-function expand_cell(cell_list, cell, level)
-    (; cell_levels, max_level) = cell_list
+    # Note: 4^ assumes a 2D Quadtree. If this is 3D, it should be 8^.
     offset = 4^(max_level - level)
 
-    if cell_level[cell] < level
-        cell_candidates = cell_levels[cell, cell + offset - 1]
-        return findall(cell_candidates .!= 0)
+    if cell_levels[cell] < level
+        subcell = cell 
+
+        while subcell <= cell + offset - 1
+            subcell_level = cell_levels[subcell]
+            if subcell_level != -1
+                @inline f(subcell)
+            end
+            subcell += 4^(max_level - subcell_level)
+        end
     else 
-        return [cell]
+        @inline f(cell) # Run the logic on the single cell
     end
 end
 
