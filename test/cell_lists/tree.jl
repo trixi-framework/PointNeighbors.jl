@@ -104,10 +104,11 @@
         min_corner = Tuple(minimum(eachcol(coords)))
         max_corner = Tuple(maximum(eachcol(coords)))
         n_dims, n_points = size(coords)
-        cell_list = TreeCellList{n_dims}(; min_corner, max_corner, max_level = 3)
+        cell_list = TreeCellList{n_dims}(; min_corner, max_corner, max_level = 3,
+                                         capacity_per_cell = 1)
         (; cell_levels, active_cells) = cell_list
 
-        search_radius = 3 * cell_list.min_cell_length
+        search_radius = 2 * cell_list.min_cell_length
         nhs = TreeNeighborhoodSearch{n_dims}(; cell_list, search_radius, n_points)
         PointNeighbors.initialize_tree!(nhs, coords)
 

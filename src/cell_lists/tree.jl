@@ -10,14 +10,15 @@ We use Morton indexing for efficient memory access and cells can be of different
 We populate the cell list, by iterating over all points, calculating the cartesian coordinates of the cell its in, 
 convert to the Morton index with cartesian2morton() and insert it there.   
 """
-struct TreeCellList{NDIMS, LI, MINC, MAXC, AC} <: AbstractCellList
-    linear_indices    :: LI
-    min_corner        :: MINC
-    max_corner        :: MAXC
+struct TreeCellList{NDIMS, LI, MINC, MAXC, AC, CS} <: AbstractCellList
+    linear_indices :: LI
+    min_corner     :: MINC
+    max_corner     :: MAXC
 
-    active_cells      :: AC
-    marked_cells      :: BitVector
-    cell_levels       :: Vector{Int8}
+    active_cells :: AC
+    marked_cells :: BitVector
+    cell_levels  :: Vector{Int8}
+    cell_sizes   :: CS
 
     min_cell_length   :: Float64
     grid_length       :: Float64
@@ -39,10 +40,24 @@ function TreeCellList{NDIMS}(; min_corner, max_corner, max_level = 16, backend =
     active_cells = construct_backend(backend, n_cells, max_points_per_cell)
     marked_cells = falses(n_cells)
     cell_levels = Vector{Int8}(undef, n_cells)
+    cell_sizes = SVector(Tuple([min_cell_length * 2 ^ (max_level - i) for i in 0:max_level]))
 
     return TreeCellList{NDIMS, typeof(linear_indices), typeof(min_corner),
-                        typeof(max_corner), typeof(active_cells)}(linear_indices, min_corner, max_corner, active_cells, marked_cells, cell_levels,
-                                            min_cell_length, grid_length, max_level, capacity_per_cell)
+                        typeof(max_corner), typeof(active_cells), typeof(cell_sizes)}(linear_indices,
+                                                                                      min_corner,
+                                                                                      max_corner,
+                                                                                      active_cells,
+                                                                                      marked_cells,
+                                                                                      cell_levels,
+                                                                                      cell_sizes,
+                                                                                      min_cell_length,
+                                                                                      grid_length,
+                                                                                      max_level,
+                                                                                      capacity_per_cell)
+end
+
+function supported_update_strategies(::TreeCellList)
+    return (ParallelUpdate, SerialUpdate)
 end
 
 function Base.empty!(cell_list::TreeCellList)

@@ -1,16 +1,28 @@
-struct TreeNeighborhoodSearch{NDIMS, C, ELTYPE} <: AbstractNeighborhoodSearch
-    cell_list::C
-    search_radius::ELTYPE
-    particle_z       :: Vector{UInt64} # Calculate the z-index for each particle 
-    particle_idxs    :: Vector{UInt64} # Contains the particle indices, will be sorted based on z-code. 
+struct TreeNeighborhoodSearch{NDIMS, C, ELTYPE, US} <: AbstractNeighborhoodSearch
+    cell_list       :: C
+    search_radius   :: ELTYPE
+    particle_z      :: Vector{UInt64} # Calculate the z-index for each particle 
+    particle_idxs   :: Vector{UInt64} # Contains the particle indices, will be sorted based on z-code.
+    update_strategy :: US
 end
 
 function TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius = 0.0, n_points = 0) where {NDIMS}
     particle_z = Vector{UInt64}(undef, n_points)
     particle_idxs = Vector{UInt64}(undef, n_points)
 
-    return TreeNeighborhoodSearch{NDIMS, typeof(cell_list), typeof(search_radius)}(cell_list,
-                                                                                   search_radius, particle_z, particle_idxs)
+    if isnothing(update_strategy)
+        update_strategy = first(supported_update_strategies(cell_list))()
+
+    elseif !(typeof(update_strategy) in supported_update_strategies(cell_list))
+        throw(ArgumentError("$update_strategy is not a valid update strategy for " *
+                            "this cell list. Available options are " *
+                            "$(supported_update_strategies(cell_list))"))
+    end
+
+    return TreeNeighborhoodSearch{NDIMS, typeof(cell_list), typeof(search_radius),
+                                  typeof(update_strategy)}(cell_list,
+                                                           search_radius, particle_z,
+                                                           particle_idxs, update_strategy)
 end
 
 @inline Base.ndims(::TreeNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -145,12 +157,17 @@ function update!(neighborhood_search::TreeNeighborhoodSearch,
 end
 
 # TODO
-function update_tree!(neighborhood_search::TreeNeighborhoodSearch,
+function update_tree!(neighborhood_search::TreeNeighborhoodSearch{<:Any, SerialUpdate},
                       y::AbstractMatrix;
                       parallelization_backend = default_backend(y),
                       eachindex_y = axes(y, 2))
-    (; cell_list) = neighborhood_search
-    empty!(cell_list)
+    return neighborhood_search
+end
+
+function update_tree!(neighborhood_search::TreeNeighborhoodSearch{<:Any, ParallelUpdate},
+                      y::AbstractMatrix;
+                      parallelization_backend = default_backend(y),
+                      eachindex_y = axes(y, 2))
     initialize_tree!(neighborhood_search, y; parallelization_backend, eachindex_y)
 
     return neighborhood_search
@@ -158,7 +175,7 @@ end
 
 # For a given point, compute the cell it belongs to based on its coordinates
 @inline function cell_coords(coords, cell_list)
-    (; max_level, cell_levels) = cell_list 
+    (; max_level, cell_levels) = cell_list
 
     for level in 1:max_level
         # For a given level, we identify a cell on this level with the smallest cell on the `max_level` that is part of it. 
@@ -192,19 +209,22 @@ end
 @inline function foreach_neighbor(f, neighbor_system_coords,
                                   neighborhood_search::TreeNeighborhoodSearch,
                                   point, point_coords, search_radius)
+    (; cell_list, search_radius) = neighborhood_search
+    (; cell_sizes, max_level) = cell_list
 
-    (; cell_list) = neighborhood_search
-    (; cell_levels, max_level) = cell_list 
-    
     cell = cell_coords(point_coords, cell_list)
-    NDIMS = ndims(neighborhood_search)   
+    NDIMS = ndims(neighborhood_search)
     max_num_cells = 2^(NDIMS * max_level)
-    cell_level = cell_levels[cell]
+
+    # Pick the first cell size thats larger or equal the search radius. 
+    cell_level = min(max(searchsortedlast(cell_sizes, search_radius, lt = >=), 0),
+                     max_level)
     offset = (2^NDIMS)^(max_level - cell_level)
     cell_morton = Int(((cell - 1) / offset) + 1)
     cell_cartesian = morton2cartesian(cell_morton)
-    
-    neighbors_cartesian = CartesianIndices(ntuple(i -> (cell_cartesian[i] - 1):(cell_cartesian[i] + 1), NDIMS))
+
+    neighbors_cartesian = CartesianIndices(ntuple(i -> (cell_cartesian[i] - 1):(cell_cartesian[i] + 1),
+                                                  NDIMS))
 
     for neighbor_cartesian in neighbors_cartesian
         cartesian_svec = SVector(Tuple(neighbor_cartesian))
@@ -212,42 +232,41 @@ end
         neighbor_morton = (neighbor_morton_base - 1) * offset + 1
 
         if 1 <= neighbor_morton <= max_num_cells
-                
-            for_expanded_cell(cell_list, neighbor_morton, cell_level) do subcell 
-                
-                neighbors = points_in_cell(subcell, neighborhood_search) 
+            for_expanded_cell(cell_list, neighbor_morton, cell_level) do subcell
+                neighbors = points_in_cell(subcell, neighborhood_search)
 
                 for neighbor_ in eachindex(neighbors)
                     neighbor = @inbounds neighbors[neighbor_]
                     neighbor_coords = extract_svector(neighbor_system_coords,
-                                                    Val(NDIMS), neighbor)
+                                                      Val(NDIMS), neighbor)
 
-                    pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
+                    pos_diff = convert.(eltype(neighborhood_search),
+                                        point_coords - neighbor_coords)
                     distance2 = dot(pos_diff, pos_diff)
 
                     pos_diff,
                     distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                        search_radius, nothing)
+                                                          search_radius, nothing)
 
                     if distance2 <= search_radius^2
                         distance = sqrt(distance2)
                         @inline f(point, neighbor, pos_diff, distance)
                     end
                 end
-            end 
+            end
         end
     end
 end
 
 @inline function for_expanded_cell(f, cell_list, cell, level)
     (; cell_levels, max_level) = cell_list
-    
+
     # Note: 4^ assumes a 2D Quadtree. If this is 3D, it should be 8^.
     offset = 4^(max_level - level)
-
-    if cell_levels[cell] < level
-        subcell = cell 
-
+    if cell_levels[cell] <= level
+        @inline f(cell) # Run the logic on the single cell
+    else
+        subcell = cell
         while subcell <= cell + offset - 1
             subcell_level = cell_levels[subcell]
             if subcell_level != -1
@@ -255,8 +274,6 @@ end
             end
             subcell += 4^(max_level - subcell_level)
         end
-    else 
-        @inline f(cell) # Run the logic on the single cell
     end
 end
 
