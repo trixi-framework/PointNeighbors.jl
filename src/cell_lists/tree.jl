@@ -26,8 +26,10 @@ struct TreeCellList{NDIMS, LI, MINC, MAXC, AC, CS} <: AbstractCellList
     capacity_per_cell :: Int
 end
 
-function TreeCellList{NDIMS}(; min_corner, max_corner, max_level = 16, backend = DynamicVectorOfVectors{Int32},
-                               max_points_per_cell = 100, buffer_size = 10000, capacity_per_cell=100) where {NDIMS}
+function TreeCellList{NDIMS}(; min_corner, max_corner, max_level = 16,
+                             backend = DynamicVectorOfVectors{Int32},
+                             max_points_per_cell = 100, buffer_size = 10000,
+                             capacity_per_cell = 100) where {NDIMS}
     n_cells_per_dimension = 2^max_level
     min_corner = SVector(Tuple(min_corner .- 1001 // 1000 // n_cells_per_dimension))
     max_corner = SVector(Tuple(max_corner .+ 1001 // 1000 // n_cells_per_dimension))
@@ -61,14 +63,13 @@ function supported_update_strategies(::TreeCellList)
 end
 
 function Base.empty!(cell_list::TreeCellList)
-    (; active_cells,  marked_cells, cell_levels) = cell_list
-    marked_cells .= false 
+    (; active_cells, marked_cells, cell_levels) = cell_list
+    marked_cells .= false
     cell_levels .= -1
-    
+
     @threaded default_backend(active_cells) for i in eachindex(active_cells)
         emptyat!(active_cells, i)
     end
-
 
     return cell_list
 end
@@ -134,7 +135,8 @@ function copy_cell_list(cell_list::TreeCellList, search_radius, periodic_box)
                         max_points_per_cell = max_inner_length(cell_list.active_cells, 100))
 end
 
-@inline function check_cell_bounds(cell_list::TreeCellList{<:DynamicVectorOfVectors{<:Any,<:Array}},
+@inline function check_cell_bounds(cell_list::TreeCellList{<:DynamicVectorOfVectors{<:Any,
+                                                                                    <:Array}},
                                    cell::Tuple)
     (; linear_indices) = cell_list
 

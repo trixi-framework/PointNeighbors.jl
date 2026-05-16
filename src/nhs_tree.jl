@@ -6,7 +6,8 @@ struct TreeNeighborhoodSearch{NDIMS, C, ELTYPE, US} <: AbstractNeighborhoodSearc
     update_strategy :: US
 end
 
-function TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius = 0.0, n_points = 0) where {NDIMS}
+function TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius = 0.0,
+                                       n_points = 0) where {NDIMS}
     particle_z = Vector{UInt64}(undef, n_points)
     particle_idxs = Vector{UInt64}(undef, n_points)
 
@@ -52,8 +53,8 @@ function initialize_tree!(neighborhood_search, y::AbstractMatrix;
     end
 
     for i in 0:2
-        mark_refine!(cell_list, level=i, capacity=capacity_per_cell)
-        apply_refine!(cell_list, neighborhood_search, y, level=i)
+        mark_refine!(cell_list, level = i, capacity = capacity_per_cell)
+        apply_refine!(cell_list, neighborhood_search, y, level = i)
     end
 
     return neighborhood_search
@@ -61,9 +62,9 @@ end
 
 # For each cell on the specified `level`, we check if we can merge the subcells on `level - 1`
 # The lowest level for which we can perform the cell merging thus is `cell_list.max_level - 1`
-function mark_merge!(cell_list; level=cell_list.max_level, capacity=1)
+function mark_merge!(cell_list; level = cell_list.max_level, capacity = 1)
     (; active_cells, max_level, marked_cells) = cell_list
-    @assert 2 <= level <= max_level 
+    @assert 2 <= level <= max_level
 
     offset = 4^(max_level - level)
     marked_cells .= false
@@ -71,23 +72,23 @@ function mark_merge!(cell_list; level=cell_list.max_level, capacity=1)
     for i in 1:offset:length(active_cells)
         num_particles = 0
 
-        for j in 0:offset - 1
-            num_particles += length(active_cells[i + j])                
+        for j in 0:(offset - 1)
+            num_particles += length(active_cells[i + j])
         end
 
         marked_cells[i] = num_particles <= capacity
-    end 
+    end
 
     return any(marked_cells)
 end
 
 function apply_merge!(cell_list; level = cell_list.max_level - 1)
     (; active_cells, max_level, marked_cells, cell_levels) = cell_list
-    @assert 2 <= level <= max_level 
+    @assert 2 <= level <= max_level
 
     offset = 4^(max_level - level)
     for i in findall(marked_cells)
-        for j in 1:offset - 1
+        for j in 1:(offset - 1)
             particles = active_cells[i + j]
 
             for k in reverse(eachindex(particles))
@@ -101,48 +102,49 @@ function apply_merge!(cell_list; level = cell_list.max_level - 1)
 
         cell_levels[i] = level
     end
-end 
+end
 
-function mark_refine!(cell_list; level=1, capacity=1)
-    (; active_cells, cell_levels,  max_level, marked_cells) = cell_list
-    @assert 0 <= level < max_level 
+function mark_refine!(cell_list; level = 1, capacity = 1)
+    (; active_cells, cell_levels, max_level, marked_cells) = cell_list
+    @assert 0 <= level < max_level
 
     offset = 4^(max_level - level)
     marked_cells .= false
     for i in 1:offset:length(active_cells)
-        if cell_levels[i] == level 
+        if cell_levels[i] == level
             marked_cells[i] = length(active_cells[i]) > capacity
-        end 
-    end 
+        end
+    end
 
     return any(marked_cells)
 end
 
-function apply_refine!(cell_list, neighborhood_search, coords; level=1) 
+function apply_refine!(cell_list, neighborhood_search, coords; level = 1)
     (; active_cells, max_level, marked_cells, cell_levels) = cell_list
-    @assert 0 <= level < max_level 
+    @assert 0 <= level < max_level
 
     for i in findall(marked_cells)
         particles = active_cells[i]
         subcells = i .+ [0, 1, 2, 3] * 4^(max_level - level - 1)
-        
+
         # Update cell levels
-        for cell in subcells 
+        for cell in subcells
             cell_levels[cell] = level + 1
         end
 
         for j in reverse(eachindex(particles))
             particle = particles[j]
-            particle_coords = @inbounds extract_svector(coords, Val(ndims(neighborhood_search)), particle)
+            particle_coords = @inbounds extract_svector(coords,
+                                                        Val(ndims(neighborhood_search)),
+                                                        particle)
             particle_z = morton_cell_index(particle_coords, cell_list)
             cell = subcells[searchsortedlast(subcells, particle_z)]
-            
+
             # Redundant if `cell == i`
             deleteat_cell!(cell_list, i, j)
             push_cell!(cell_list, cell, particle)
-            
         end
-    end 
+    end
 end
 
 function update!(neighborhood_search::TreeNeighborhoodSearch,
@@ -189,11 +191,11 @@ end
         end
     end
 
-    return 0 
+    return 0
 end
 
 @inline function morton_cell_index(coords, cell_list::TreeCellList,
-                                    level = cell_list.max_level)
+                                   level = cell_list.max_level)
     cartesian_coords = cartesian_cell_coords(coords, cell_list, level)
     return cartesian2morton(cartesian_coords)
 end
