@@ -547,8 +547,8 @@ using LLVMLoopInfo
             #  distance2) = compute_periodic_distance(pos_diff, distance2,
             #                                         search_radius, periodic_box)
 
-            distance = sqrt(distance2)
             if distance2 <= search_radius^2
+                distance = sqrt(distance2)
             # distance2 = ifelse(distance2 <= search_radius^2, distance2, zero(distance2))
                 # distance = sqrt(distance2)
 

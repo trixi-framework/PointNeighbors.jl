@@ -179,6 +179,7 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
     end
 end
 
+using SIMD
 function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
                                     neighborhood_search, x, y, parallelization_backend,
                                     sort_neighbor_lists)
@@ -190,10 +191,125 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     end
 
     # Fill neighbor lists
-    foreach_point_neighbor(x, y, neighborhood_search;
-                           parallelization_backend) do point, neighbor, _, _
-        pushat!(neighbor_lists, point, neighbor)
+    # foreach_point_neighbor(x, y, neighborhood_search;
+    #                        parallelization_backend) do point, neighbor, _, _
+    #     @inbounds pushat!(neighbor_lists, point, neighbor)
+    # end
+    # @threaded parallelization_backend for point in axes(x, 2)
+    #     length = @inbounds neighbor_lists.lengths[point]
+    #     length = foreach_neighbor_unsafe(x, y, neighborhood_search, point, length) do point_, neighbor, _, distance, length_
+    #         # @inbounds pushat!(neighbor_lists, point_, neighbor)
+    #         if distance < search_radius(neighborhood_search)
+    #             length_ += 1
+    #             @inbounds neighbor_lists.backend[length_, point] = neighbor
+    #         end
+
+    #         return length_
+    #     end
+    #     @inbounds neighbor_lists.lengths[point] = length
+    # end
+
+    search_radius2 = search_radius(neighborhood_search)^2
+
+    # 100x100x100 points on Rucio: 40ms on the CPU, 65ms on the GPU.
+    @threaded parallelization_backend for point in axes(x, 2)
+        point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+        length = @inbounds neighbor_lists.lengths[point]
+
+        @inbounds @fastmath for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+            neighbor_cell = Tuple(neighbor_cell_)
+            neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+
+            for neighbor_ in eachindex(neighbors)
+                neighbor = @inbounds neighbors[neighbor_]
+
+                neighbor_point_coords = extract_svector(y, Val(ndims(neighborhood_search)),
+                                                        neighbor)
+
+                pos_diff = convert.(eltype(neighborhood_search),
+                                    point_coords - neighbor_point_coords)
+                distance2 = dot(pos_diff, pos_diff)
+
+                @inbounds neighbor_lists.backend[length + 1, point] = neighbor
+                length = length + (distance2 <= search_radius2)
+            end
+        end
+
+        @inbounds neighbor_lists.lengths[point] = length
     end
+
+    # 100x100x100 points on Rucio: 83ms on the CPU, 16ms on the GPU (fastest).
+    # @threaded parallelization_backend for point in axes(x, 2)
+    #     point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
+    #     cell = cell_coords(point_coords, neighborhood_search)
+    #     length = @inbounds neighbor_lists.lengths[point]
+
+    #     @inbounds @fastmath for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+    #         neighbor_cell = Tuple(neighbor_cell_)
+    #         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+
+    #         for neighbor_ in eachindex(neighbors)
+    #             neighbor = @inbounds neighbors[neighbor_]
+
+    #             neighbor_point_coords = extract_svector(y, Val(ndims(neighborhood_search)),
+    #                                                     neighbor)
+
+    #             pos_diff = convert.(eltype(neighborhood_search),
+    #                                 point_coords - neighbor_point_coords)
+    #             distance2 = dot(pos_diff, pos_diff)
+
+    #             if distance2 <= search_radius2
+    #                 length = length + 1
+    #                 @inbounds neighbor_lists.backend[length, point] = neighbor
+    #             end
+    #         end
+    #     end
+
+    #     @inbounds neighbor_lists.lengths[point] = length
+    # end
+
+    # 100x100x100 points on Rucio: 36ms on the CPU (fastest), not GPU-compatible.
+    # @threaded parallelization_backend for point in axes(x, 2)
+    #     point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
+    #     coords_a1, coords_a2, coords_a3 = point_coords
+    #     cell = cell_coords(point_coords, neighborhood_search)
+    #     length_ = @inbounds neighbor_lists.lengths[point]
+
+    #     @inbounds @fastmath for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+    #         neighbor_cell = Tuple(neighbor_cell_)
+    #         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+
+    #         vectorwidth = 8
+    #         @fastmath for block_start in 1:vectorwidth:length(neighbors)
+    #             block_start + vectorwidth - 1 > length(neighbors) && break
+
+    #             neighbors_block = @inbounds vload(Vec{8, eltype(neighbors)}, neighbors, block_start)
+
+    #             # Linear indexing into `coordinates` because Cartesian indexing doesn't work.
+    #             point_start = (neighbors_block - 1) * 3 + 1
+    #             x_b = @inbounds y[point_start]
+    #             y_b = @inbounds y[point_start + 1]
+    #             z_b = @inbounds y[point_start + 2]
+
+    #             pos_diff_x = coords_a1 - x_b
+    #             pos_diff_y = coords_a2 - y_b
+    #             pos_diff_z = coords_a3 - z_b
+    #             distance2 = pos_diff_x * pos_diff_x + pos_diff_y * pos_diff_y + pos_diff_z * pos_diff_z
+    #             mask = distance2 <= search_radius2
+
+    #             sum(mask) == 0 && continue
+
+    #             @inbounds for neighbor_ in 1:vectorwidth
+    #                 neighbor = neighbors_block[neighbor_]
+    #                 neighbor_lists.backend[length_ + 1, point] = neighbor
+    #                 length_ = length_ + mask[neighbor_]
+    #             end
+    #         end
+    #     end
+
+    #     @inbounds neighbor_lists.lengths[point] = length_
+    # end
 
     if sort_neighbor_lists
         sorteach!(neighbor_lists)
