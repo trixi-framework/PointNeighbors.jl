@@ -239,7 +239,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
         @inbounds neighbor_lists.lengths[point] = length
     end
 
-    # 100x100x100 points on Rucio: 83ms on the CPU, 16ms on the GPU (fastest).
+    # 100x100x100 points on Rucio: 83ms on the CPU, 16ms on the GPU.
     # @threaded parallelization_backend for point in axes(x, 2)
     #     point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
     #     cell = cell_coords(point_coords, neighborhood_search)
@@ -268,6 +268,11 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
 
     #     @inbounds neighbor_lists.lengths[point] = length
     # end
+
+    # 100x100x100 points on Rucio: 11ms on the GPU (fastest), not CPU-compatible.
+    # ndrange = size(x, 2)
+    # mykernel(parallelization_backend, 64)(x, y, neighborhood_search, neighbor_lists, search_radius2, ndrange = ndrange)
+    # KernelAbstractions.synchronize(parallelization_backend)
 
     # 100x100x100 points on Rucio: 36ms on the CPU (fastest), not GPU-compatible.
     # @threaded parallelization_backend for point in axes(x, 2)
@@ -313,6 +318,42 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
 
     if sort_neighbor_lists
         sorteach!(neighbor_lists)
+    end
+end
+
+@kernel cpu=false function mykernel(x, y, neighborhood_search, neighbor_lists, search_radius2)
+    point = @index(Global)
+    threadidx = @index(Local)
+
+    point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
+    cell = cell_coords(point_coords, neighborhood_search)
+
+    length_ = @inbounds neighbor_lists.lengths[point]
+    local_neighbors = @localmem Int32 (64, 128) # (groupsize, max_neighbors)
+
+    for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
+        neighbor_cell = Tuple(neighbor_cell_)
+        neighbors = points_in_cell(neighbor_cell, neighborhood_search)
+
+        for neighbor_ in eachindex(neighbors)
+            neighbor = @inbounds neighbors[neighbor_]
+
+            neighbor_point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)),
+                                                              neighbor)
+
+            pos_diff = point_coords - neighbor_point_coords
+            distance2 = dot(pos_diff, pos_diff)
+
+            if distance2 <= search_radius2
+                length_ = length_ + 1
+                @inbounds local_neighbors[threadidx, length_] = neighbor
+            end
+        end
+    end
+
+    @inbounds neighbor_lists.lengths[point] = length_
+    for i in axes(local_neighbors, 2)
+        @inbounds neighbor_lists.backend[i, point] = local_neighbors[threadidx, i]
     end
 end
 
