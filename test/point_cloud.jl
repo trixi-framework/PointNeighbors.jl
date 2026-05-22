@@ -50,7 +50,7 @@ function point_cloud(n_points_per_dimension, search_radius;
 end
 
 function perturb!(data, std_deviation)
-    for i in eachindex(data)
+    PointNeighbors.@threaded PointNeighbors.default_backend(data) for i in eachindex(data)
         data[i] += std_deviation * randn()
     end
 
