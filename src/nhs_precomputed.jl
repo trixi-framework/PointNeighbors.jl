@@ -212,6 +212,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     search_radius2 = search_radius(neighborhood_search)^2
 
     # 100x100x100 points on Rucio: 40ms on the CPU, 65ms on the GPU.
+    # 100x100x100 points on RAMSES: 36ms on the CPU
     @threaded parallelization_backend for point in axes(x, 2)
         point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
         cell = cell_coords(point_coords, neighborhood_search)
@@ -240,6 +241,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     end
 
     # 100x100x100 points on Rucio: 83ms on the CPU, 16ms on the GPU.
+    # 100x100x100 points on RAMSES: 52ms on the CPU
     # @threaded parallelization_backend for point in axes(x, 2)
     #     point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
     #     cell = cell_coords(point_coords, neighborhood_search)
@@ -275,6 +277,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     # KernelAbstractions.synchronize(parallelization_backend)
 
     # 100x100x100 points on Rucio: 36ms on the CPU (fastest), not GPU-compatible.
+    # 100x100x100 points on RAMSES: 38ms on the CPU
     # @threaded parallelization_backend for point in axes(x, 2)
     #     point_coords = @inbounds extract_svector(x, Val(ndims(neighborhood_search)), point)
     #     coords_a1, coords_a2, coords_a3 = point_coords
