@@ -2,6 +2,7 @@
     PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                          periodic_box = nothing, update_strategy = nothing,
                                          update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(),
+                                         update_neighborhood_search_padding = 0.05,
                                          backend = DynamicVectorOfVectors{Int32},
                                          transpose_backend = false,
                                          max_neighbors = max_neighbors(NDIMS))
@@ -40,6 +41,9 @@ to strip the internal neighborhood search, which is not needed anymore.
                             If the precomputed NHS is to be used on the GPU, make sure to
                             either freeze it after initialization and never update it again,
                             or pass a GPU-compatible neighborhood search here.
+- `update_neighborhood_search_padding = 0.05`: Relative padding used for the fixed
+                            search radius of the internal [`GridNeighborhoodSearch`](@ref)
+                            that computes the neighbor lists.
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store
     the neighbor lists. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
@@ -71,26 +75,30 @@ struct PrecomputedNeighborhoodSearch{NDIMS, NL, ELTYPE, PB, NHS} <:
     periodic_box        :: PB
     neighborhood_search :: NHS
     sort_neighbor_lists :: Bool
+    update_neighborhood_search_padding :: Float64
 
     function PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
                                                   periodic_box,
                                                   update_neighborhood_search,
-                                                  sort_neighbor_lists) where {NDIMS}
+                                                  sort_neighbor_lists,
+                                                  update_neighborhood_search_padding) where {NDIMS}
         return new{NDIMS, typeof(neighbor_lists),
                    typeof(search_radius),
                    typeof(periodic_box),
                    typeof(update_neighborhood_search)}(neighbor_lists, search_radius,
                                                        periodic_box,
                                                        update_neighborhood_search,
-                                                       sort_neighbor_lists)
+                                                       sort_neighbor_lists,
+                                                       update_neighborhood_search_padding)
     end
 end
 
 function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                               periodic_box = nothing,
                                               update_strategy = nothing,
+                                              update_neighborhood_search_padding = 0.05,
                                               update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(;
-                                                                                                         search_radius,
+                                                                                                         search_radius = search_radius * (1 + update_neighborhood_search_padding),
                                                                                                          n_points,
                                                                                                          periodic_box,
                                                                                                          update_strategy),
@@ -102,7 +110,8 @@ function PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 
 
     PrecomputedNeighborhoodSearch{NDIMS}(neighbor_lists, search_radius,
                                          periodic_box, update_neighborhood_search,
-                                         sort_neighbor_lists)
+                                         sort_neighbor_lists,
+                                         update_neighborhood_search_padding)
 end
 
 # Default values for maximum neighbor count
@@ -136,6 +145,7 @@ function initialize!(search::PrecomputedNeighborhoodSearch,
     initialize!(neighborhood_search, x, y; parallelization_backend)
 
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                               search.search_radius,
                                parallelization_backend, search.sort_neighbor_lists)
 
     return search
@@ -144,7 +154,7 @@ end
 function update!(search::PrecomputedNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
                  points_moving = (true, true), parallelization_backend = default_backend(x),
-                 eachindex_y = axes(y, 2))
+                 eachindex_y = axes(y, 2), search_radius = search.search_radius)
     (; neighborhood_search, neighbor_lists) = search
 
     if eachindex_y != axes(y, 2)
@@ -157,13 +167,14 @@ function update!(search::PrecomputedNeighborhoodSearch,
     # Skip update if both point sets are static
     if any(points_moving)
         initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+                                   search_radius,
                                    parallelization_backend, search.sort_neighbor_lists)
     end
 
     return search
 end
 
-function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
+function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y, search_radius,
                                     parallelization_backend, sort_neighbor_lists)
     # Initialize neighbor lists
     empty!(neighbor_lists)
@@ -174,15 +185,17 @@ function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
 
     # Fill neighbor lists
     foreach_point_neighbor(x, y, neighborhood_search;
-                           parallelization_backend) do point, neighbor, _, _
-        push!(neighbor_lists[point], neighbor)
+                           parallelization_backend) do point, neighbor, _, distance
+        if distance <= search_radius
+            push!(neighbor_lists[point], neighbor)
+        end
     end
 end
 
 using SIMD
 function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
-                                    neighborhood_search, x, y, parallelization_backend,
-                                    sort_neighbor_lists)
+                                    neighborhood_search, x, y, search_radius,
+                                    parallelization_backend, sort_neighbor_lists)
     resize!(neighbor_lists, size(x, 2))
 
     # `Base.empty!.(neighbor_lists)`, but for all backends
@@ -209,7 +222,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     #     @inbounds neighbor_lists.lengths[point] = length
     # end
 
-    search_radius2 = search_radius(neighborhood_search)^2
+    search_radius2 = search_radius^2
 
     # 100x100x100 points on Rucio: 40ms on the CPU, 65ms on the GPU.
     # 100x100x100 points on RAMSES: 36ms on the CPU
@@ -433,7 +446,8 @@ end
 function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                   search_radius, n_points; eachpoint = 1:n_points)
     update_neighborhood_search = copy_neighborhood_search(nhs.neighborhood_search,
-                                                          search_radius, n_points;
+                                                          search_radius * (1 + nhs.update_neighborhood_search_padding),
+                                                          n_points;
                                                           eachpoint)
 
     # For `Vector{Vector}` backend use `max_neighbors(NDIMS)` as fallback.
@@ -446,7 +460,8 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                                      backend = typeof(nhs.neighbor_lists),
                                                      transpose_backend,
                                                      max_neighbors = max_neighbors_,
-                                                     sort_neighbor_lists = nhs.sort_neighbor_lists)
+                                                     sort_neighbor_lists = nhs.sort_neighbor_lists,
+                                                     update_neighborhood_search_padding = nhs.update_neighborhood_search_padding)
 end
 
 @inline function freeze_neighborhood_search(search::PrecomputedNeighborhoodSearch)
@@ -457,5 +472,6 @@ end
                                                         search.search_radius,
                                                         search.periodic_box,
                                                         nothing,
-                                                        search.sort_neighbor_lists)
+                                                        search.sort_neighbor_lists,
+                                                        search.update_neighborhood_search_padding)
 end
