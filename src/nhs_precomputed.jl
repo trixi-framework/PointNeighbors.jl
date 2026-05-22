@@ -192,7 +192,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     # Fill neighbor lists
     foreach_point_neighbor(x, y, neighborhood_search;
                            parallelization_backend) do point, neighbor, _, _
-        pushat!(neighbor_lists, point, neighbor)
+        @inbounds pushat!(neighbor_lists, point, neighbor)
     end
 
     if sort_neighbor_lists
@@ -250,7 +250,8 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                                      update_neighborhood_search,
                                                      backend = typeof(nhs.neighbor_lists),
                                                      transpose_backend,
-                                                     max_neighbors = max_neighbors_)
+                                                     max_neighbors = max_neighbors_,
+                                                     sort_neighbor_lists = nhs.sort_neighbor_lists)
 end
 
 @inline function freeze_neighborhood_search(search::PrecomputedNeighborhoodSearch)
