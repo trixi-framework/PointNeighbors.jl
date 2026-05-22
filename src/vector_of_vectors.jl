@@ -175,9 +175,9 @@ end
 
 # Sort each inner vector
 @inline function sorteach!(vov::DynamicVectorOfVectors)
-    @threaded default_backend(vov.backend) for i in axes(vov.backend, 2)
+    @threaded default_backend(vov.backend) for i in eachindex(vov)
         # QuickSort is ~1.6x faster here than the default
-        sort!(view(vov.backend, 1:vov.lengths[i], i), alg=QuickSort)
+        sort!(view(vov.backend, 1:vov.lengths[i], i), alg = QuickSort)
     end
 
     return vov

@@ -192,7 +192,7 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     # Fill neighbor lists
     foreach_point_neighbor(x, y, neighborhood_search;
                            parallelization_backend) do point, neighbor, _, _
-        @inbounds pushat!(neighbor_lists, point, neighbor)
+        pushat!(neighbor_lists, point, neighbor)
     end
 
     if sort_neighbor_lists
