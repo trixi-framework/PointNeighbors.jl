@@ -31,7 +31,8 @@ function Adapt.adapt_structure(to, nhs::PrecomputedNeighborhoodSearch)
 
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(neighbor_lists, search_radius,
                                                      periodic_box, neighborhood_search,
-                                                     nhs.sort_neighbor_lists)
+                                                     nhs.sort_neighbor_lists,
+                                                     nhs.update_neighborhood_search_padding)
 end
 
 function Adapt.adapt_structure(to, cell_list::SpatialHashingCellList{NDIMS}) where {NDIMS}

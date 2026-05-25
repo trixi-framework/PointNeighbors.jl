@@ -56,4 +56,22 @@
                               "radius used to build the precomputed neighbor lists (1.06)")
         @test_throws error update!(nhs, coordinates, coordinates; search_radius = 1.06)
     end
+
+    @testset "`Adapt.adapt_structure` preserves all fields" begin
+        nhs = PrecomputedNeighborhoodSearch{3}(; search_radius = 1.0f0,
+                                               n_points = 2,
+                                               update_neighborhood_search_padding = 0.05)
+        frozen_nhs = PointNeighbors.freeze_neighborhood_search(nhs)
+
+        adapted_nhs = @trixi_test_nowarn PointNeighbors.Adapt.adapt_structure(Array,
+                                                                              frozen_nhs)
+
+        @test adapted_nhs.neighbor_lists == frozen_nhs.neighbor_lists
+        @test adapted_nhs.search_radius == frozen_nhs.search_radius
+        @test adapted_nhs.periodic_box == frozen_nhs.periodic_box
+        @test adapted_nhs.neighborhood_search == frozen_nhs.neighborhood_search
+        @test adapted_nhs.sort_neighbor_lists == frozen_nhs.sort_neighbor_lists
+        @test adapted_nhs.update_neighborhood_search_padding ==
+              frozen_nhs.update_neighborhood_search_padding
+    end
 end
