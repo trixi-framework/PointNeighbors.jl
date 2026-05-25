@@ -346,7 +346,8 @@
                     # Test that `mapreduce_neighbor` does not allocate.
                     point = first(axes(coords, 2))
                     function count_neighbors(coords, nhs, point)
-                        mapreduce_neighbor((point, neighbor, pos_diff, distance) -> neighbor,
+                        mapreduce_neighbor((point, neighbor, pos_diff,
+                                            distance) -> neighbor,
                                            +, coords, coords, nhs, point; init = 0)
                     end
                     count_neighbors(coords, nhs, point)
