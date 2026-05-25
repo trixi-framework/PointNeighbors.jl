@@ -510,11 +510,13 @@ end
 # than looping over `eachneighbor`.
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
-@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
-                                                    neighborhood_search::GridNeighborhoodSearch,
-                                                    point, point_coords, search_radius)
+@propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
+                                                      neighborhood_search::GridNeighborhoodSearch,
+                                                      point, point_coords,
+                                                      search_radius, init)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
+    reduced = init
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
@@ -545,8 +547,6 @@ end
                                                     search_radius, periodic_box)
 
             if distance2 <= search_radius^2
-                distance = sqrt(distance2)
-
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
                 if cell_collision &&
@@ -555,12 +555,17 @@ end
                     continue
                 end
 
-                # Inline to avoid loss of performance
-                # compared to not using `foreach_point_neighbor`.
-                @inline f(point, neighbor, pos_diff, distance)
+                distance = sqrt(distance2)
+
+                # Inline to avoid loss of performance compared to not using this function
+                # and unrolling everything.
+                value = @inline f(point, neighbor, pos_diff, distance)
+                reduced = @inline op(reduced, value)
             end
         end
     end
+
+    return reduced
 end
 
 @inline function neighboring_cells(cell, neighborhood_search)

@@ -321,6 +321,53 @@
 
                     @test sort.(neighbors_manual_unsafe) == neighbors_expected
                 end
+
+                @testset "`mapreduce_neighbor`" begin
+                    neighbor_sums = map(axes(coords, 2)) do point
+                        mapreduce_neighbor(+, coords, coords, nhs, point;
+                                           init = 0) do point_, neighbor,
+                                                        pos_diff, distance
+                            point_ == point || error("incorrect point index")
+                            neighbor
+                        end
+                    end
+
+                    @test neighbor_sums == sum.(neighbors_expected)
+
+                    @test_throws UndefKeywordError mapreduce_neighbor(+, coords, coords,
+                                                                      nhs,
+                                                                      first(axes(coords,
+                                                                                 2))) do point_,
+                                                                                         neighbor,
+                                                                                         pos_diff,
+                                                                                         distance
+                        neighbor
+                    end
+                end
+
+                @testset "`mapreduce_neighbor_unsafe`" begin
+                    neighbor_sums = map(axes(coords, 2)) do point
+                        mapreduce_neighbor_unsafe(+, coords, coords, nhs, point;
+                                                  init = 0) do point_, neighbor,
+                                                               pos_diff, distance
+                            point_ == point || error("incorrect point index")
+                            neighbor
+                        end
+                    end
+
+                    @test neighbor_sums == sum.(neighbors_expected)
+
+                    @test_throws UndefKeywordError mapreduce_neighbor_unsafe(+,
+                                                                             coords, coords,
+                                                                             nhs,
+                                                                             first(axes(coords,
+                                                                                        2))) do point_,
+                                                                                                neighbor,
+                                                                                                pos_diff,
+                                                                                                distance
+                        neighbor
+                    end
+                end
             end
         end
     end
