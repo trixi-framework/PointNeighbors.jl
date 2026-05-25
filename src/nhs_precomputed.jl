@@ -168,8 +168,7 @@ function update!(search::PrecomputedNeighborhoodSearch,
 
     # Skip update if both point sets are static
     if any(points_moving)
-        initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                                   search_radius,
+        initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y, search_radius,
                                    parallelization_backend, search.sort_neighbor_lists)
     end
 
