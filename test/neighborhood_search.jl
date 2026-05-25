@@ -295,12 +295,12 @@
 
                     # Test that `foreach_neighbor` does not allocate.
                     point = first(axes(coords, 2))
-                    function empty_foreach_neighbor(coords, nhs, point)
-                        foreach_neighbor((point, neighbor, pos_diff, distance) -> nothing,
-                                         coords, coords, nhs, point)
+                    function allocations_empty_foreach_neighbor(coords, nhs, point)
+                        @allocated(foreach_neighbor((point, neighbor, pos_diff,
+                                                     distance) -> nothing,
+                                                    coords, coords, nhs, point))
                     end
-                    empty_foreach_neighbor(coords, nhs, point)
-                    @test @allocated(empty_foreach_neighbor(coords, nhs, point)) == 0
+                    @test allocations_empty_foreach_neighbor(coords, nhs, point) == 0
                 end
 
                 # Repeat with foreach_point_neighbor_unsafe
@@ -345,13 +345,13 @@
 
                     # Test that `mapreduce_neighbor` does not allocate.
                     point = first(axes(coords, 2))
-                    function count_neighbors(coords, nhs, point)
-                        mapreduce_neighbor((point, neighbor, pos_diff,
-                                            distance) -> neighbor,
-                                           +, coords, coords, nhs, point; init = 0)
+                    function allocations_count_neighbors(coords, nhs, point)
+                        @allocated(mapreduce_neighbor((point, neighbor, pos_diff,
+                                                       distance) -> neighbor,
+                                                      +, coords, coords, nhs, point;
+                                                      init = 0))
                     end
-                    count_neighbors(coords, nhs, point)
-                    @test @allocated(count_neighbors(coords, nhs, point)) == 0
+                    @test allocations_count_neighbors(coords, nhs, point) == 0
 
                     @test_throws UndefKeywordError mapreduce_neighbor(+, coords, coords,
                                                                       nhs,
