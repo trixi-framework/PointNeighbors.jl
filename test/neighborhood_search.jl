@@ -113,7 +113,7 @@
                 foreach_point_neighbor(coords, coords, nhs,
                                        points = axes(coords, 2)) do point, neighbor,
                                                                     pos_diff, distance
-                    append!(neighbors[point], neighbor)
+                    push!(neighbors[point], neighbor)
                 end
 
                 # All of these tests are designed to yield the same neighbor lists.
@@ -163,7 +163,7 @@
                                                                                  neighbor,
                                                                                  pos_diff,
                                                                                  distance
-                append!(neighbors_expected[point], neighbor)
+                push!(neighbors_expected[point], neighbor)
             end
 
             # Expand the domain by `search_radius`, as we need the neighboring cells of
@@ -275,7 +275,7 @@
                                                                                          neighbor,
                                                                                          pos_diff,
                                                                                          distance
-                        append!(neighbors[point], neighbor)
+                        push!(neighbors[point], neighbor)
                     end
 
                     @test sort.(neighbors) == neighbors_expected
@@ -287,11 +287,19 @@
                     for point in axes(coords, 2)
                         foreach_neighbor(coords, coords, nhs,
                                          point) do point, neighbor, pos_diff, distance
-                            append!(neighbors_manual[point], neighbor)
+                            push!(neighbors_manual[point], neighbor)
                         end
                     end
 
                     @test sort.(neighbors_manual) == neighbors_expected
+
+                    # Test that `foreach_neighbor` does not allocate.
+                    point = first(axes(coords, 2))
+                    foreach_neighbor((point, neighbor, pos_diff, distance) -> nothing,
+                                     coords, coords, nhs, point)
+                    @test @allocated(foreach_neighbor((point, neighbor, pos_diff,
+                                                       distance) -> nothing,
+                                                      coords, coords, nhs, point)) == 0
                 end
 
                 # Repeat with foreach_point_neighbor_unsafe
@@ -302,7 +310,7 @@
                                                                                                 neighbor,
                                                                                                 pos_diff,
                                                                                                 distance
-                        append!(neighbors_unsafe[point], neighbor)
+                        push!(neighbors_unsafe[point], neighbor)
                     end
 
                     @test sort.(neighbors_unsafe) == neighbors_expected
@@ -315,7 +323,7 @@
                         foreach_neighbor_unsafe(coords, coords, nhs,
                                                 point) do point, neighbor,
                                                           pos_diff, distance
-                            append!(neighbors_manual_unsafe[point], neighbor)
+                            push!(neighbors_manual_unsafe[point], neighbor)
                         end
                     end
 
@@ -333,6 +341,15 @@
                     end
 
                     @test neighbor_sums == sum.(neighbors_expected)
+
+                    # Test that `mapreduce_neighbor` does not allocate.
+                    point = first(axes(coords, 2))
+                    mapreduce_neighbor((point, neighbor, pos_diff, distance) -> neighbor,
+                                       +, coords, coords, nhs, point; init = 0)
+                    @test @allocated(mapreduce_neighbor((point, neighbor, pos_diff,
+                                                         distance) -> neighbor,
+                                                        +, coords, coords, nhs, point;
+                                                        init = 0)) == 0
 
                     @test_throws UndefKeywordError mapreduce_neighbor(+, coords, coords,
                                                                       nhs,
