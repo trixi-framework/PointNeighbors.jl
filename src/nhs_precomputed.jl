@@ -42,8 +42,16 @@ to strip the internal neighborhood search, which is not needed anymore.
                             either freeze it after initialization and never update it again,
                             or pass a GPU-compatible neighborhood search here.
 - `update_neighborhood_search_padding = 0`: Relative padding used for the fixed
-                            search radius of the internal [`GridNeighborhoodSearch`](@ref)
-                            that computes the neighbor lists.
+                            search radius of the default internal
+                            [`GridNeighborhoodSearch`](@ref) that computes the neighbor
+                            lists. For example, `update_neighborhood_search_padding = 0.05`
+                            creates the internal search with a 5% larger radius than
+                            `search_radius`. This allows [`update!`](@ref) to rebuild the
+                            precomputed neighbor lists with a larger `search_radius`, so the
+                            lists can be updated less frequently when points move only
+                            slowly. The search radius of the internal update neighborhood
+                            search must be at least as large as the `search_radius` passed
+                            to `update!` to build the precomputed neighbor lists.
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store
     the neighbor lists. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
@@ -146,9 +154,11 @@ function initialize!(search::PrecomputedNeighborhoodSearch,
     # Initialize grid NHS
     initialize!(neighborhood_search, x, y; parallelization_backend)
 
+    check_update_neighborhood_search_radius(search, search.search_radius)
+
     initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,
-                               search.search_radius,
-                               parallelization_backend, search.sort_neighbor_lists)
+                               search.search_radius, parallelization_backend,
+                               search.sort_neighbor_lists)
 
     return search
 end
@@ -168,11 +178,25 @@ function update!(search::PrecomputedNeighborhoodSearch,
 
     # Skip update if both point sets are static
     if any(points_moving)
+        check_update_neighborhood_search_radius(search, search_radius)
+
         initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y, search_radius,
                                    parallelization_backend, search.sort_neighbor_lists)
     end
 
     return search
+end
+
+function check_update_neighborhood_search_radius(search::PrecomputedNeighborhoodSearch,
+                                                 neighbor_list_search_radius)
+    update_search_radius = search_radius(search.neighborhood_search)
+
+    if update_search_radius < neighbor_list_search_radius
+        throw(ArgumentError("the search radius of the internal update neighborhood search " *
+                            "($update_search_radius) must be at least as large as the " *
+                            "search radius used to build the precomputed neighbor lists " *
+                            "($neighbor_list_search_radius)"))
+    end
 end
 
 function initialize_neighbor_lists!(neighbor_lists, neighborhood_search, x, y,

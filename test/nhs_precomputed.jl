@@ -35,4 +35,25 @@
     pointer_ = pointer(neighbor_lists.backend.parent)
     @test unsafe_load(pointer_, 1) == 101
     @test unsafe_load(pointer_, 2) == 201
+
+    @testset "`update_neighborhood_search_padding`" begin
+        search_radius = 1.0
+        update_neighborhood_search_padding = 0.05
+        nhs = PrecomputedNeighborhoodSearch{2}(; search_radius,
+                                               update_neighborhood_search_padding,
+                                               n_points = 2)
+
+        @test PointNeighbors.search_radius(nhs.neighborhood_search) == 1.05
+
+        coordinates = [0.0 1.0
+                       0.0 0.0]
+
+        initialize!(nhs, coordinates, coordinates)
+        @test update!(nhs, coordinates, coordinates; search_radius = 1.05) === nhs
+
+        error = ArgumentError("the search radius of the internal update neighborhood " *
+                              "search (1.05) must be at least as large as the search " *
+                              "radius used to build the precomputed neighbor lists (1.06)")
+        @test_throws error update!(nhs, coordinates, coordinates; search_radius = 1.06)
+    end
 end
