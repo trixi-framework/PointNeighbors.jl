@@ -1,8 +1,9 @@
 using Random
 
 # Generate a rectangular point cloud, optionally with a perturbation in the point positions
-function point_cloud(n_points_per_dimension;
-                     seed = 1, perturbation_factor_position = 1.0)
+function point_cloud(n_points_per_dimension, search_radius;
+                     seed = 1, perturbation_factor_position = 1.0,
+                     sort = true, shuffle = false)
     # Fixed seed to ensure reproducibility
     Random.seed!(seed)
 
@@ -10,8 +11,15 @@ function point_cloud(n_points_per_dimension;
     coordinates = Array{Float64}(undef, n_dims, prod(n_points_per_dimension))
     cartesian_indices = CartesianIndices(n_points_per_dimension)
 
+    # Extra data structures for the sorting code below
+    cell_coords = Vector{SVector{n_dims, Int}}(undef, size(coordinates, 2))
+    cell_size = ntuple(dim -> search_radius, n_dims)
+
     for i in axes(coordinates, 2)
-        coordinates[:, i] .= Tuple(cartesian_indices[i])
+        point_coords = SVector(Tuple(cartesian_indices[i]))
+        coordinates[:, i] .= point_coords
+        cell_coords[i] = PointNeighbors.cell_coords(point_coords, nothing, nothing,
+                                                    cell_size) .+ 1
     end
 
     # A standard deviation of 0.05 in the particle coordinates
@@ -20,6 +28,23 @@ function point_cloud(n_points_per_dimension;
     # This is consistent with the standard deviation in a vortex street simulation.
     # The benchmark results are also consistent with the timer output of the simulation.
     perturb!(coordinates, perturbation_factor_position * 0.05)
+
+    # Sort by linear cell index
+    if sort
+        if shuffle
+            throw(ArgumentError("cannot sort and shuffle at the same time"))
+        end
+
+        # Sort by Z index (with `using Morton`)
+        # permutation = sortperm(cell_coords, by = c -> cartesian2morton(c))
+
+        permutation = sortperm(cell_coords)
+        coordinates .= coordinates[:, permutation]
+    elseif shuffle
+        # Sort randomly
+        permutation = shuffle(axes(coordinates, 2))
+        coordinates .= coordinates[:, permutation]
+    end
 
     return coordinates
 end

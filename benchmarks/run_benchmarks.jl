@@ -50,10 +50,11 @@ run_benchmark(benchmark_count_neighbors, (10, 10), 3,
 ```
 """
 function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborhood_searches;
+                       search_radius_factor = 3.0,
                        parallelization_backend = PolyesterBackend(),
                        names = ["Neighborhood search $i"
                                 for i in 1:length(neighborhood_searches)]',
-                       seed = 1, perturbation_factor_position = 1.0)
+                       seed = 1, perturbation_factor_position = 1.0, shuffle = false)
     # Multiply number of points in each iteration (roughly) by this factor
     scaling_factor = 4
     per_dimension_factor = scaling_factor^(1 / length(n_points_per_dimension))
@@ -64,24 +65,29 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
     times = zeros(iterations, length(neighborhood_searches))
 
     for iter in 1:iterations
-        coordinates = point_cloud(sizes[iter]; seed, perturbation_factor_position)
+        coordinates_ = point_cloud(sizes[iter], search_radius_factor;
+                                   seed, perturbation_factor_position, shuffle)
+        coordinates = convert.(typeof(search_radius_factor), coordinates_)
         domain_size = maximum(sizes[iter]) + 1
 
         # Normalize domain size to 1
         coordinates ./= domain_size
 
         # Make this Float32 to make sure that Float32 benchmarks use Float32 exclusively
-        search_radius = 4.0f0 / domain_size
+        search_radius = search_radius_factor / domain_size
         n_particles = size(coordinates, 2)
 
         neighborhood_searches_copy = copy_neighborhood_search.(neighborhood_searches,
                                                                search_radius, n_particles)
 
         for i in eachindex(neighborhood_searches_copy)
-            neighborhood_search = neighborhood_searches_copy[i]
-            PointNeighbors.initialize!(neighborhood_search, coordinates, coordinates)
+            neighborhood_search_ = neighborhood_searches_copy[i]
+            neighborhood_search = PointNeighbors.Adapt.adapt(parallelization_backend,
+                                                             neighborhood_search_)
+            coords = PointNeighbors.Adapt.adapt(parallelization_backend, coordinates)
+            PointNeighbors.initialize!(neighborhood_search, coords, coords)
 
-            time = benchmark(neighborhood_search, coordinates; parallelization_backend)
+            time = benchmark(neighborhood_search, coords; parallelization_backend)
             times[iter, i] = time
             time_string = BenchmarkTools.prettytime(time * 1e9)
             time_string_per_particle = BenchmarkTools.prettytime(time * 1e9 / n_particles)
@@ -170,23 +176,74 @@ include("benchmarks/benchmarks.jl")
 run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 ```
 """
-function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations; kwargs...)
+function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
+                           parallelization_backend=PolyesterBackend(), kwargs...)
     NDIMS = length(n_points_per_dimension)
 
     min_corner = 0.0f0 .* n_points_per_dimension
     max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
-    neighborhood_searches = [GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
-                                                           cell_list = FullGridCellList(;
-                                                                                        search_radius = 0.0f0,
-                                                                                        min_corner,
-                                                                                        max_corner))
-                             PrecomputedNeighborhoodSearch{NDIMS}(search_radius = 0.0f0)]
+    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
+    grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
+                                             update_strategy = ParallelUpdate())
+    transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
+    neighborhood_searches = [
+        grid_nhs
+        PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
+                                             update_neighborhood_search = grid_nhs,
+                                             transpose_backend)#, max_neighbors=128)
+    ]
 
-    names = ["GridNeighborhoodSearch with FullGridCellList";;
-             "PrecomputedNeighborhoodSearch"]
+    names = [
+        "GridNeighborhoodSearch with FullGridCellList";;
+        "PrecomputedNeighborhoodSearch"
+    ]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
-                  neighborhood_searches; names, kwargs...)
+                  neighborhood_searches; names, parallelization_backend, kwargs...)
+end
+
+"""
+    run_benchmark_full_grid(benchmark, n_points_per_dimension, iterations; kwargs...)
+
+Shortcut to call [`run_benchmark`](@ref) with a `GridNeighborhoodSearch` with a
+`FullGridCellList`. This is the neighborhood search implementation that is used
+in TrixiParticles.jl when performance is important.
+Use this function to benchmark and profile TrixiParticles.jl kernels.
+
+# Arguments
+- `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
+                            [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
+                            [`benchmark_wcsph_fp32`](@ref) and [`benchmark_tlsph`](@ref).
+- `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
+                            of points. For example, use `(100, 100)` for a 2D benchmark or
+                            `(10, 10, 10)` for a 3D benchmark.
+- `iterations`:             Number of refinement iterations
+
+# Keywords
+See [`run_benchmark`](@ref) for a list of available keywords.
+
+# Examples
+```julia
+include("benchmarks/benchmarks.jl")
+
+run_benchmark_full_grid(benchmark_n_body, (10, 10), 3)
+```
+"""
+function run_benchmark_full_grid(benchmark, n_points_per_dimension, iterations;
+                           parallelization_backend=PolyesterBackend(), kwargs...)
+    NDIMS = length(n_points_per_dimension)
+
+    min_corner = 0.0f0 .* n_points_per_dimension
+    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
+    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
+    grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
+                                             update_strategy = ParallelUpdate())
+    neighborhood_searches = [grid_nhs]
+
+    names = ["GridNeighborhoodSearch with FullGridCellList";;]
+
+    run_benchmark(benchmark, n_points_per_dimension, iterations,
+                  neighborhood_searches; names, parallelization_backend, kwargs...)
 end
 
 """
