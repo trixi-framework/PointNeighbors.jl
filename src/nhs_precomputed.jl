@@ -243,14 +243,17 @@ end
 
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
-@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
-                                                    neighborhood_search::PrecomputedNeighborhoodSearch,
-                                                    point, point_coords, search_radius)
+@propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
+                                                      neighborhood_search::PrecomputedNeighborhoodSearch,
+                                                      point, point_coords,
+                                                      search_radius, init)
     (; periodic_box, neighbor_lists) = neighborhood_search
 
     # Making the following `@inbounds` is not safe because the neighbor list
     # might not contain `point` if the NHS was not initialized correctly.
     neighbors = neighbor_lists[point]
+    reduced = init
+
     for neighbor_ in eachindex(neighbors)
         neighbor = @inbounds neighbors[neighbor_]
 
@@ -270,10 +273,13 @@ end
 
         distance = sqrt(distance2)
 
-        # Inline to avoid loss of performance
-        # compared to not using `foreach_point_neighbor`.
-        @inline f(point, neighbor, pos_diff, distance)
+        # Inline to avoid loss of performance compared to not using this function
+        # and unrolling everything.
+        value = @inline f(point, neighbor, pos_diff, distance)
+        reduced = @inline op(reduced, value)
     end
+
+    return reduced
 end
 
 function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
