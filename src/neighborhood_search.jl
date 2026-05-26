@@ -161,7 +161,7 @@ Note that `system_coords` and `neighbor_coords` can be identical.
 !!! warning
     The `neighborhood_search` must have been initialized or updated with `system_coords`
     as first coordinate array and `neighbor_coords` as second coordinate array.
-    This can be skipped for certain implementations. See [`requires_update`](@ref).
+    For some implementations, this requirement can be relaxed; see [`requires_update`](@ref).
 
 # Arguments
 - `f`: The function explained above.
@@ -212,7 +212,7 @@ See [`foreach_neighbor_unsafe`](@ref) for more details on which bounds checks ar
 !!! warning
     The `neighborhood_search` must have been initialized or updated with `system_coords`
     as first coordinate array and `neighbor_coords` as second coordinate array.
-    This can be skipped for certain implementations. See [`requires_update`](@ref).
+    For some implementations, this requirement can be relaxed; see [`requires_update`](@ref).
 
 !!! warning
     Use this only when `neighborhood_search` is known to be initialized correctly for
@@ -292,8 +292,8 @@ Like [`foreach_neighbor`](@ref), but skips **all** bounds checks.
 - With `GridNeighborhoodSearch` and [`FullGridCellList`](@ref), check if the neighboring
   cells are in bounds of the grid. Again, this is not safe to skip when the neighborhood
   search might not have been initialized correctly.
-- With `PrecomputedNeighborhoodSearch`, check if `point` is in bounds of the neighbor lists.
-  Again, this is not safe to skip when the neighborhood search was not initialized correctly.
+- With `PrecomputedNeighborhoodSearch`, verify that `point` is in bounds of the neighbor lists.
+  Skipping this is unsafe if the neighborhood search was not initialized correctly.
 
 Note that all these bounds checks are safe to skip if
 - `point` is guaranteed to be in bounds of `system_coords`,
