@@ -8,6 +8,7 @@ using Base: @propagate_inbounds
 using GPUArraysCore: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
+using LLVMLoopInfo: @loopinfo
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
 

@@ -254,7 +254,8 @@ end
     neighbors = neighbor_lists[point]
     reduced = init
 
-    for neighbor_ in eachindex(neighbors)
+    @fastmath @loopinfo vectorwidth=8 predicate for neighbor_ in eachindex(neighbors)
+    # for neighbor_ in eachindex(neighbors)
         neighbor = @inbounds neighbors[neighbor_]
 
         # Making this `@inbounds` is not safe because
