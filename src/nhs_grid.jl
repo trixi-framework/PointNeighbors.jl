@@ -587,14 +587,17 @@ end
 @inline periodic_cell_index(cell_index, ::Nothing, n_cells) = cell_index
 
 @inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells)
-    # With the `DictionaryCellList`, the grid is conceptually infinite,
-    # so we can use any offset for the modulo operation.
-    # With the `FullGridCellList`, we need 2-based modulo, so that the min corner
-    # will be the (2, 2, 2)-cell.
+    # With the `FullGridCellList`, nonperiodic cell coords are in the range 2:n_cells+1,
+    # so we need an offset of 2 to preserve this, so that the min corner will still
+    # be the (2, 2, 2)-cell.
     # With this, we still have one padding layer in each direction around the periodic box,
     # just like without using a periodic box.
-    # This is not needed for finding neighbor cells, but to make the bounds check
+    # This padding is not needed for finding neighbor cells, but to make the bounds check
     # work the same way as without a periodic box (cells in bounds are 2:end-1).
+    #
+    # With the `DictionaryCellList`, the grid is conceptually infinite,
+    # so we can use any offset for the modulo operation.
+    # The offset only determines to which part of R^n the periodic box is mapped.
     return mod.(cell_index .- 2, n_cells) .+ 2
 end
 
@@ -607,8 +610,12 @@ end
 end
 
 @inline function nonperiodic_cell_coords(coords, neighborhood_search)
-    (; cell_size) = neighborhood_search
+    (; cell_list, cell_size) = neighborhood_search
 
+    return nonperiodic_cell_coords(coords, cell_list, cell_size)
+end
+
+@inline function nonperiodic_cell_coords(coords, cell_list, cell_size)
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
 

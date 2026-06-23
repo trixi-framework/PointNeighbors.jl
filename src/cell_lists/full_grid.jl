@@ -81,6 +81,13 @@ function FullGridCellList(; min_corner, max_corner,
     return FullGridCellList(cells, linear_indices, min_corner, max_corner)
 end
 
+@inline function nonperiodic_cell_coords(coords, cell_list::FullGridCellList, cell_size)
+    # Subtract `min_corner` to offset coordinates so that the (padded) min corner
+    # of the grid corresponds to the (1, 1, 1) cell.
+    # The unpadded min corner (that is passed by the user) corresponds to the (2, 2, 2) cell.
+    return Tuple(floor_to_int.((coords .- cell_list.min_corner) ./ cell_size) .+ 1)
+end
+
 function Base.empty!(cell_list::FullGridCellList)
     (; cells) = cell_list
 
