@@ -238,7 +238,7 @@
             [-0.08 0.0 0.18 0.1 -0.08
              -0.12 -0.05 -0.09 0.15 0.39],
             [-0.08 0.0 0.18 0.1 -0.08
-             -0.12 -0.05 -0.09 0.15 0.42],
+             -0.12 -0.05 -0.09 0.15 0.42] .- [0.0017, 0.005],
             [-0.08 0.0 0.18 0.1 -0.08
              -0.12 -0.05 -0.09 0.15 0.39
              0.14 0.34 0.12 0.06 0.13]
@@ -248,7 +248,11 @@
             PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.2, 0.4]),
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
-            PeriodicBox(min_corner = [-0.1, -0.205], max_corner = [0.205, 0.435]),
+            # In order for the points to have the same relative positions inside their cells
+            # with the two cell lists, we need to offset the coordinates and periodic box
+            # to make the grid aligned with the origin.
+            PeriodicBox(min_corner = [-0.1, -0.2] .- [0.0017, 0.005],
+                        max_corner = [0.205, 0.43] .- [0.0017, 0.005]),
             PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35])
         ]
 
