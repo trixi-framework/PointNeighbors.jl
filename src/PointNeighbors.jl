@@ -20,7 +20,8 @@ include("nhs_grid.jl")
 include("nhs_precomputed.jl")
 include("gpu.jl")
 
-export foreach_point_neighbor, foreach_neighbor
+export foreach_point_neighbor, foreach_point_neighbor_unsafe,
+       foreach_neighbor, foreach_neighbor_unsafe
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList
 export DynamicVectorOfVectors

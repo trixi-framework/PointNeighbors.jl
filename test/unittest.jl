@@ -7,4 +7,5 @@
     include("nhs_precomputed.jl")
     include("neighborhood_search.jl")
     include("cell_lists/full_grid.jl")
+    include("cell_lists/spatial_hashing.jl")
 end;
