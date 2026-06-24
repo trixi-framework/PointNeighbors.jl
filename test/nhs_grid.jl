@@ -277,7 +277,7 @@
                 initialize_grid!(nhs, coords)
 
                 neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
-                            for i in 1:5]
+                             for i in 1:5]
 
                 # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
                 @test neighbors[1] == [1, 2, 3, 5]
