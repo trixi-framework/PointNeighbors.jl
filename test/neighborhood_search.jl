@@ -4,22 +4,20 @@
     @testset "`periodic_coords` corner cases" begin
         for T in (Float32, Float64)
             box = PeriodicBox(; min_corner = SVector(T(0), T(0)),
-                                max_corner = SVector(T(1), T(1)))
+                              max_corner = SVector(T(1), T(1)))
 
-            coords = (
-                SVector(prevfloat(T(0)), T(0.5)),
-                SVector(T(0), T(0.5)),
-                SVector(nextfloat(T(0)), T(0.5)),
-                SVector(prevfloat(T(1)), T(0.5)),
-                SVector(T(1), T(0.5)),
-                SVector(nextfloat(T(1)), T(0.5)),
-                SVector(T(0.5), prevfloat(T(0))),
-                SVector(T(0.5), T(0)),
-                SVector(T(0.5), nextfloat(T(0))),
-                SVector(T(0.5), prevfloat(T(1))),
-                SVector(T(0.5), T(1)),
-                SVector(T(0.5), nextfloat(T(1))),
-            )
+            coords = (SVector(prevfloat(T(0)), T(0.5)),
+                      SVector(T(0), T(0.5)),
+                      SVector(nextfloat(T(0)), T(0.5)),
+                      SVector(prevfloat(T(1)), T(0.5)),
+                      SVector(T(1), T(0.5)),
+                      SVector(nextfloat(T(1)), T(0.5)),
+                      SVector(T(0.5), prevfloat(T(0))),
+                      SVector(T(0.5), T(0)),
+                      SVector(T(0.5), nextfloat(T(0))),
+                      SVector(T(0.5), prevfloat(T(1))),
+                      SVector(T(0.5), T(1)),
+                      SVector(T(0.5), nextfloat(T(1))))
 
             for x in coords
                 xp = PointNeighbors.periodic_coords(x, box)
