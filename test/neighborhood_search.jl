@@ -1,6 +1,41 @@
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "All Neighborhood Searches" begin
+    @testset "`periodic_coords` corner cases" begin
+        for T in (Float32, Float64)
+            box = PeriodicBox(; min_corner = SVector(T(0), T(0)),
+                                max_corner = SVector(T(1), T(1)))
+
+            coords = (
+                SVector(prevfloat(T(0)), T(0.5)),
+                SVector(T(0), T(0.5)),
+                SVector(nextfloat(T(0)), T(0.5)),
+                SVector(prevfloat(T(1)), T(0.5)),
+                SVector(T(1), T(0.5)),
+                SVector(nextfloat(T(1)), T(0.5)),
+                SVector(T(0.5), prevfloat(T(0))),
+                SVector(T(0.5), T(0)),
+                SVector(T(0.5), nextfloat(T(0))),
+                SVector(T(0.5), prevfloat(T(1))),
+                SVector(T(0.5), T(1)),
+                SVector(T(0.5), nextfloat(T(1))),
+            )
+
+            for x in coords
+                xp = PointNeighbors.periodic_coords(x, box)
+
+                # Test that the periodic coordinates are within the periodic box.
+                @test all(box.min_corner .<= xp)
+                @test all(xp .<= box.max_corner)
+
+                # Test that the periodic coordinates are equivalent to
+                # the original coordinates up to periodicity.
+                @test xp[1] in (x[1], x[1] - box.size[1], x[1] + box.size[1])
+                @test xp[2] in (x[2], x[2] - box.size[2], x[2] + box.size[2])
+            end
+        end
+    end
+
     @testset verbose=true "Periodicity" begin
         # These examples are constructed by hand and are therefore a good test for the
         # trivial neighborhood search as well.
