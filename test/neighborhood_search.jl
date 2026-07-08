@@ -1,7 +1,7 @@
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "All Neighborhood Searches" begin
-    @testset "`periodic_coords` corner cases" begin
+    @testset "periodicity rounding errors" begin
         for T in (Float32, Float64)
             box = PeriodicBox(; min_corner = SVector(T(0), T(0)),
                               max_corner = SVector(T(1), T(1)))
@@ -19,6 +19,7 @@
                       SVector(T(0.5), T(1)),
                       SVector(T(0.5), nextfloat(T(1))))
 
+            # Test `periodic_coords`.
             for x in coords
                 xp = PointNeighbors.periodic_coords(x, box)
 
@@ -30,6 +31,27 @@
                 # the original coordinates up to periodicity.
                 @test xp[1] in (x[1], x[1] - box.size[1], x[1] + box.size[1])
                 @test xp[2] in (x[2], x[2] - box.size[2], x[2] + box.size[2])
+            end
+
+            # Test that `cell_coords`, which is using integer modulo arithmetic instead of
+            # `periodic_coords`, handles rounding errors at periodic boundaries.
+            search_radius = T(0.1)
+
+            cell_list = FullGridCellList(; min_corner = box.min_corner,
+                                         max_corner = box.max_corner,
+                                         search_radius)
+
+            nhs = GridNeighborhoodSearch{2}(; search_radius,
+                                            n_points = length(coords),
+                                            periodic_box = box, cell_list)
+
+            for x in coords
+                cell = PointNeighbors.cell_coords(x, nhs)
+                periodic_coords_ = PointNeighbors.periodic_coords(x, box)
+                periodic_cell = PointNeighbors.cell_coords(periodic_coords_, nhs)
+
+                @test cell == periodic_cell
+                @test all(2 <= cell[i] <= nhs.n_cells[i] + 1 for i in eachindex(cell))
             end
         end
     end

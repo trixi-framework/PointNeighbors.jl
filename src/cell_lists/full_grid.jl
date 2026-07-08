@@ -82,9 +82,14 @@ function FullGridCellList(; min_corner, max_corner,
 end
 
 @inline function nonperiodic_cell_coords(coords, cell_list::FullGridCellList, cell_size)
-    # Subtract `min_corner` to offset coordinates so that the (padded) min corner
-    # of the grid corresponds to the (1, 1, 1) cell.
-    # The unpadded min corner (that is passed by the user) corresponds to the (2, 2, 2) cell.
+    # The finite grid of the `FullGridCellList` is padded with one layer of cells
+    # in each direction to make sure that neighbor cells exist.
+    # The unpadded min corner (that is passed by the user) corresponds to the (2, 2, 2) cell
+    # of the padded grid. The stored `min_corner` includes the padding and therefore
+    # corresponds to the (1, 1, 1) cell of the padded grid.
+    #
+    # Subtract `min_corner` to offset the coordinates so that `min_corner`
+    # corresponds to the (1, 1, 1) cell.
     return Tuple(floor_to_int.((coords .- cell_list.min_corner) ./ cell_size) .+ 1)
 end
 
