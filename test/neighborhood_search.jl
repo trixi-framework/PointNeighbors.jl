@@ -441,6 +441,16 @@
                                                                                                 distance
                         neighbor
                     end
+
+                    # Test that `init` is used as starting value for the reduction.
+                    point = 1
+                    empty_sum = mapreduce_neighbor_unsafe(+, coords, coords, nhs, point;
+                                                          init = 123) do point_, neighbor,
+                                                                         pos_diff, distance
+                        return 0
+                    end
+
+                    @test empty_sum == 123
                 end
             end
         end

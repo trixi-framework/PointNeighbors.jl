@@ -330,7 +330,10 @@ end
 Apply `f(i, j, pos_diff, d)` to every neighbor of `point` and reduce the results with
 the binary operator `op`, analogous to `mapreduce(f, op, collection)`.
 
-The keyword argument `init` is required and is returned if `point` has no neighbors.
+The keyword argument `init` is required. It provides the starting value for
+the reduction. Choose `init` so that combining it with the first mapped neighbor value
+using `op` gives the desired result, typically the identity element of `op`.
+
 This method performs the same bounds checks as [`foreach_neighbor`](@ref).
 See [`mapreduce_neighbor_unsafe`](@ref) for a version that skips all bounds checks.
 """
