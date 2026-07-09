@@ -365,12 +365,15 @@ end
 
 # TODO export?
 @inline function periodic_coords(coords, periodic_box)
-    (; min_corner, size) = periodic_box
+    (; min_corner, max_corner, size) = periodic_box
 
     # Move coordinates into the periodic box
     box_offset = floor.((coords .- min_corner) ./ size)
+    coords_periodic = coords - box_offset .* size
 
-    return coords - box_offset .* size
+    # Secure against floating point rounding errors that can lead to coordinates
+    # being slightly outside the periodic box.
+    return min.(max.(coords_periodic, min_corner), max_corner)
 end
 
 @inline function periodic_coords(coords, periodic_box::Nothing)
