@@ -457,11 +457,11 @@
                     function op(a, b)
                         error("`op` must not be called for an empty neighborhood")
                     end
-                    
+
                     # Using a non-neutral `init` here is intentional: for an empty
                     # neighborhood, `init` must be returned unchanged.
-                    result = mapreduce_neighbor_unsafe(f, op, coords, empty_coords, empty_nhs,
-                                                       point; init = 123)
+                    result = mapreduce_neighbor_unsafe(f, op, coords, empty_coords,
+                                                       empty_nhs, point; init = 123)
                     @test result == 123
                 end
             end
