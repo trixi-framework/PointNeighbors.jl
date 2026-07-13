@@ -442,15 +442,27 @@
                         neighbor
                     end
 
-                    # Test that `init` is used as starting value for the reduction.
-                    point = 1
-                    empty_sum = mapreduce_neighbor_unsafe(+, coords, coords, nhs, point;
-                                                          init = 123) do point_, neighbor,
-                                                                         pos_diff, distance
-                        return 0
-                    end
+                    # Test the reduction over an empty neighborhood.
+                    empty_nhs = copy_neighborhood_search(nhs, search_radius,
+                                                         size(coords, 2))
 
-                    @test empty_sum == 123
+                    # Initialize the NHS with an empty set of neighbors.
+                    empty_coords = similar(coords, size(coords, 1), 0)
+                    initialize!(empty_nhs, coords, empty_coords)
+                    point = first(axes(coords, 2))
+
+                    function f(point, neighbor, pos_diff, distance)
+                        error("`f` must not be called for an empty neighborhood")
+                    end
+                    function op(a, b)
+                        error("`op` must not be called for an empty neighborhood")
+                    end
+                    
+                    # Using a non-neutral `init` here is intentional: for an empty
+                    # neighborhood, `init` must be returned unchanged.
+                    result = mapreduce_neighbor_unsafe(f, op, coords, empty_coords, empty_nhs,
+                                                       point; init = 123)
+                    @test result == 123
                 end
             end
         end
