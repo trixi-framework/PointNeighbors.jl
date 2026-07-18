@@ -9,7 +9,7 @@ using GPUArraysCore: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
 using Polyester: Polyester
-using Morton: morton2cartesian, cartesian2morton, morton3cartesian, cartesian3morton
+using Morton: _Compact1By1, _Compact1By2, cartesian2morton, cartesian3morton
 @reexport using StaticArrays: SVector
 
 include("util.jl")

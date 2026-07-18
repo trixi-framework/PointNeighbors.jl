@@ -1,164 +1,216 @@
 """
-Tree-based data structure for storing cell lists. 
-Based on `min_corner` and `max_corner`, we construct a covering grid. 
-The cell size of this grid is `search_radius`. Assuming we are using
-a particle refinement, where each particle has its own search radius,
-the passed search radius should be the smallest search radius of all particles.
-`cells_index` is an index array, `cells` stores the actual data. cells_index[i] contains an index to cells,
-i.e. the data for cell i is stored at cells[cells_index[i]]. 
-We use Morton indexing for efficient memory access and cells can be of different size. 
-We populate the cell list, by iterating over all points, calculating the cartesian coordinates of the cell its in, 
-convert to the Morton index with cartesian2morton() and insert it there.   
+!!! warning "Experimental Implementation"
+    This is an experimental feature and may change in any future releases.
 """
-struct TreeCellList{NDIMS, LI, MINC, MAXC, AC, CS} <: AbstractCellList
+
+"""
+    TreeGridCellList(; min_corner, max_corner, backend = DynamicVectorOfVectors{Int32}, 
+                   max_points_per_cell = 100, max_level = 8)
+
+A grid-based cell list, similar to [`FullGridCellList`](@ref). Here, the grid resolution is determined by a hierarchical tree depth (`max_level`), compared to  [`FullGridCellList`](@ref) where the search radius is used.
+The grid is divided into `2^max_level` cells along each dimension.
+# Arguments
+- `min_corner`: Coordinates of the domain corner in negative coordinate directions.
+- `max_corner`: Coordinates of the domain corner in positive coordinate directions.
+- `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the actual
+    cell lists. Can be
+    - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
+    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits
+                                       and GPU-compatible.
+- `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
+                               allocate the `DynamicVectorOfVectors`. It is not used with
+                               the `Vector{Vector{Int32}}` backend.
+- `max_level::Int`: The subdivision level determining grid resolution. Total cells allocated will be `(2^max_level)^NDIMS`.
+"""
+struct TreeGridCellList{C, LI, MINC, MAXC, CL, ML, CPC} <: AbstractCellList
+    cells          :: C
     linear_indices :: LI
     min_corner     :: MINC
     max_corner     :: MAXC
 
-    active_cells :: AC
-    marked_cells :: BitVector
-    cell_levels  :: Vector{Int8}
-    cell_sizes   :: CS
-
-    min_cell_length   :: Float64
-    grid_length       :: Float64
-    max_level         :: Int
-    capacity_per_cell :: Int
+    cell_levels       :: CL
+    max_level         :: ML
+    capacity_per_cell :: CPC
 end
 
-function TreeCellList{NDIMS}(; min_corner, max_corner, max_level = 16,
-                             backend = DynamicVectorOfVectors{Int32},
-                             max_points_per_cell = 100, buffer_size = 10000,
-                             capacity_per_cell = 100) where {NDIMS}
-    n_cells_per_dimension = 2^max_level
-    min_corner = SVector(Tuple(min_corner .- 1001 // 1000 // n_cells_per_dimension))
-    max_corner = SVector(Tuple(max_corner .+ 1001 // 1000 // n_cells_per_dimension))
+@inline Base.ndims(cell_list::TreeGridCellList) = ndims(cell_list.linear_indices)
 
-    grid_length = maximum(max_corner - min_corner)
-    min_cell_length = grid_length / n_cells_per_dimension
-    linear_indices = LinearIndices(ntuple(_ -> n_cells_per_dimension, NDIMS))
-    n_cells = n_cells_per_dimension^NDIMS
-
-    active_cells = construct_backend(backend, n_cells, max_points_per_cell)
-    marked_cells = falses(n_cells)
-    cell_levels = Vector{Int8}(undef, n_cells)
-    cell_sizes = SVector(Tuple([min_cell_length * 2 ^ (max_level - i) for i in 0:max_level]))
-
-    return TreeCellList{NDIMS, typeof(linear_indices), typeof(min_corner),
-                        typeof(max_corner), typeof(active_cells), typeof(cell_sizes)}(linear_indices,
-                                                                                      min_corner,
-                                                                                      max_corner,
-                                                                                      active_cells,
-                                                                                      marked_cells,
-                                                                                      cell_levels,
-                                                                                      cell_sizes,
-                                                                                      min_cell_length,
-                                                                                      grid_length,
-                                                                                      max_level,
-                                                                                      capacity_per_cell)
-end
-
-function supported_update_strategies(::TreeCellList)
+function supported_update_strategies(::TreeGridCellList)
     return (ParallelUpdate, SerialUpdate)
 end
 
-function Base.empty!(cell_list::TreeCellList)
-    (; active_cells, marked_cells, cell_levels) = cell_list
-    marked_cells .= false
+function TreeGridCellList(; min_corner, max_corner,
+                          backend = DynamicVectorOfVectors{Int32},
+                          max_points_per_cell = 100, max_level = 8, capacity_per_cell = 1)
+    if length(min_corner) != length(max_corner)
+        throw(ArgumentError("min_corner and max_corner must have the same length"))
+    end
+
+    if length(min_corner) > 100
+        throw(ArgumentError("TreeGridCellList only supports up to 100 dimensions, " *
+                            "check your `min_corner` and `max_corner`"))
+    end
+
+    NDIMS = length(min_corner)
+    n_cells_per_dimension = 2^max_level
+
+    # Pad domain a little more to avoid 0 in cell indices due to rounding errors.
+    length_grid = maximum(max_corner .- min_corner)
+    length_cell = length_grid / (2^max_level)
+    min_corner = SVector(Tuple(min_corner .- (1001 // 1000 * length_cell)))
+    max_corner = SVector(Tuple(max_corner .+ (1001 // 1000 * length_cell)))
+
+    if max_level < 0
+        # Create an empty "template" cell list to be used with `copy_cell_list`
+        cells = construct_backend(backend, 0, max_points_per_cell)
+        linear_indices = LinearIndices(ntuple(_ -> 0, length(min_corner)))
+        cell_levels = Vector{Int8}(undef, 0)
+    else
+        n_cells = n_cells_per_dimension^NDIMS
+        linear_indices = LinearIndices(ntuple(_ -> n_cells_per_dimension, NDIMS))
+        cells = construct_backend(backend, n_cells, max_points_per_cell)
+
+        n_cells = n_cells_per_dimension^NDIMS
+        cell_levels = Vector{Int8}(undef, n_cells)
+    end
+
+    return TreeGridCellList(cells, linear_indices, min_corner, max_corner, cell_levels,
+                            max_level, capacity_per_cell)
+end
+
+# TODO: Make this more efficient 
+# For a given point, compute the cell it belongs to based on its coordinates
+@inline function cell_coords(coords, cell_list::TreeGridCellList)
+    (; max_level, cell_levels) = cell_list
+
+    morton_code = morton_cell_index(coords, cell_list, cell_list.max_level) # 37
+
+    for level in 1:max_level
+        # For a given level, we identify a cell on this level with the smallest cell on the `max_level` that is part of it. 
+        # For example, for `max_level = 2`, we identify cell 2 on level 1 with cell 5.
+        offset = level_offset(cell_list, level)
+        cell = div(morton_code - 1, offset) * offset + 1 # Map Morton code to the cell index we identify the cell with 
+
+        cell_levels[cell] != -1 && return cell
+    end
+
+    return 0
+end
+
+@inline function morton_cell_index(coords, cell_list::TreeGridCellList,
+                                   level = cell_list.max_level)
+    cartesian_coords = cartesian_cell_coords(coords, cell_list, level)
+    return cartesian_to_morton(cartesian_coords)
+end
+
+@inline function cartesian_cell_coords(coords, cell_list::TreeGridCellList,
+                                       level = cell_list.max_level)
+    (; min_corner) = cell_list
+    length_grid = grid_length(cell_list)
+    cell_length = length_grid / (2^level)
+
+    NDIMS = length(min_corner)
+
+    return SVector{NDIMS, Int}(ntuple(Val(NDIMS)) do i
+                                   @inbounds floor_to_int((coords[i] - min_corner[i]) /
+                                                          cell_length) + 1
+                               end)
+end
+
+function Base.empty!(cell_list::TreeGridCellList)
+    (; cells, cell_levels) = cell_list
     cell_levels .= -1
 
-    @threaded default_backend(active_cells) for i in eachindex(active_cells)
-        emptyat!(active_cells, i)
+    # `Base.empty!.(cells)`, but for all backends
+    @threaded default_backend(cells) for i in eachindex(cells)
+        emptyat!(cells, i)
     end
 
     return cell_list
 end
 
-function push_cell!(cell_list::TreeCellList, cell, particle)
-    (; active_cells) = cell_list
-
-    # TODO
-    # @boundscheck check_cell_bounds(cell_list, cell)
-
-    @inbounds pushat!(active_cells, cell_index(cell_list, cell), particle)
+function push_cell!(cell_list::TreeGridCellList, cell, particle)
+    (; cells) = cell_list
+    @inbounds pushat!(cells, cell_index(cell_list, cell), particle)
 
     return cell_list
 end
 
-function deleteat_cell!(cell_list::TreeCellList, cell, i)
-    (; active_cells) = cell_list
+@inline function push_cell_atomic!(cell_list::TreeGridCellList, cell, particle)
+    (; cells) = cell_list
 
-    # TODO
-    # @boundscheck check_cell_bounds(cell_list, cell)
+    # `push!(cell_list[cell], particle)`, but for all backends.
+    # The atomic version of `pushat!` uses atomics to avoid race conditions when `pushat!`
+    # is used in a parallel loop.
+    @inbounds pushat_atomic!(cells, cell_index(cell_list, cell), particle)
+
+    return cell_list
+end
+
+function deleteat_cell!(cell_list::TreeGridCellList, cell, i)
+    (; cells) = cell_list
 
     # `deleteat!(cell_list[cell], i)`, but for all backends
-    deleteatat!(active_cells, cell_index(cell_list, cell), i)
+    deleteatat!(cells, cell_index(cell_list, cell), i)
 end
 
-@inline each_cell_index(cell_list::TreeCellList) = eachindex(cell_list.active_cells)
+@inline each_cell_index(cell_list::TreeGridCellList) = eachindex(cell_list.cells)
 
-function each_cell_index(cell_list::TreeCellList{Nothing})
-    # This is an empty "template" cell list to be used with `copy_cell_list`
-    error("`search_radius` is not defined for this cell list")
+@propagate_inbounds function cell_index(::TreeGridCellList, cell::Tuple)
+    return cartesian_to_morton(cell...)
 end
 
-@propagate_inbounds function cell_index(::TreeCellList, cell::Tuple)
-    return morton2cartesian(collect(cell))
+@inline cell_index(::TreeGridCellList, cell::Integer) = cell
+
+@propagate_inbounds function Base.getindex(cell_list::TreeGridCellList, cell)
+    (; cells) = cell_list
+
+    return cells[cell_index(cell_list, cell)]
 end
 
-@inline cell_index(::TreeCellList, cell::Integer) = cell
-
-@propagate_inbounds function Base.getindex(cell_list::TreeCellList, cell)
-    (; active_cells) = cell_list
-
-    return active_cells[cell_index(cell_list, cell)]
-end
-
-@inline function is_correct_cell(cell_list::TreeCellList, cell, cell_index_)
-    # TODO
-    # @boundscheck check_cell_bounds(cell_list, cell)
-
+@inline function is_correct_cell(cell_list::TreeGridCellList, cell, cell_index_)
     return cell_index(cell_list, cell) == cell_index_
 end
 
-function is_leaf(cell_list, cell)
-    return cell_list.cell_levels[cell] > -1
+@inline index_type(::TreeGridCellList) = Int32
+
+@inline is_leaf(cell_list, cell) = cell_list.cell_levels[cell_index(cell_list, cell)] > -1
+
+function copy_cell_list(cell_list::TreeGridCellList)
+    (; min_corner, max_corner, max_level) = cell_list
+
+    return TreeGridCellList(; min_corner, max_corner, max_level,
+                            backend = typeof(cell_list.cells),
+                            max_points_per_cell = max_inner_length(cell_list.cells, 100))
 end
 
-@inline index_type(::TreeCellList) = Int32
+@inline level_offset(cell_list::TreeGridCellList,
+                     level) = (2^ndims(cell_list))^(cell_list.max_level - level)
 
-function copy_cell_list(cell_list::TreeCellList, search_radius, periodic_box)
-    (; min_corner, max_corner) = cell_list
+@inline grid_length(cell_list::TreeGridCellList) = maximum(cell_list.max_corner .-
+                                                           cell_list.min_corner)
 
-    return TreeCellList(; min_corner, max_corner, search_radius,
-                        backend = typeof(cell_list.cells),
-                        max_points_per_cell = max_inner_length(cell_list.active_cells, 100))
+@inline function cell_length(cell_list::TreeGridCellList)
+    (; max_level) = cell_list
+
+    return grid_length(cell_list) / (2^max_level)
 end
 
-@inline function check_cell_bounds(cell_list::TreeCellList{<:DynamicVectorOfVectors{<:Any,
-                                                                                    <:Array}},
-                                   cell::Tuple)
-    (; linear_indices) = cell_list
-
-    # Make sure that points are not added to the outer padding layer, which is needed
-    # to ensure that neighboring cells in all directions of all non-empty cells exist.
-    if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
-        size_ = [2:(size(linear_indices, i) - 1) for i in eachindex(cell)]
-        print_size_ = "[$(join(size_, ", "))]"
-        error("particle coordinates are NaN or outside the domain bounds of the cell list\n" *
-              "cell $cell is out of bounds for cell grid of size $print_size_")
-    end
+@inline function morton_to_cartesian(::Val{2}, m::Integer)
+    m_zero = m - 1
+    return SVector{2, Int}(Morton._Compact1By1(m_zero >> 0),
+                           Morton._Compact1By1(m_zero >> 1))
 end
 
-# On GPUs, we can't throw a proper error message because string interpolation is not
-# allowed. Note that we cannot dispatch on `AbstractGPUArray`, as we are inside a kernel,
-# so the array types are something like `CuDeviceArray`, which is not an `AbstractGPUArray`.
-@inline function check_cell_bounds(cell_list::FullGridCellList, cell::Tuple)
-    (; linear_indices) = cell_list
-
-    # Make sure that points are not added to the outer padding layer, which is needed
-    # to ensure that neighboring cells in all directions of all non-empty cells exist.
-    if !all(cell[i] in 2:(size(linear_indices, i) - 1) for i in eachindex(cell))
-        error("particle coordinates are NaN or outside the domain bounds of the cell list")
-    end
+@inline function morton_to_cartesian(::Val{3}, m::Integer)
+    m_zero = m - 1
+    return SVector{3, Int}(Morton._Compact1By2(m_zero >> 0),
+                           Morton._Compact1By2(m_zero >> 1),
+                           Morton._Compact1By2(m_zero >> 2))
 end
+
+@inline cartesian_to_morton(c::SVector{2, <:Integer}) = cartesian2morton(c)
+@inline cartesian_to_morton(c::SVector{3, <:Integer}) = cartesian3morton(c)
+
+@inline cartesian_to_morton(c::NTuple{2, <:Integer}) = cartesian2morton(SVector(c))
+@inline cartesian_to_morton(c::NTuple{3, <:Integer}) = cartesian3morton(SVector(c))
