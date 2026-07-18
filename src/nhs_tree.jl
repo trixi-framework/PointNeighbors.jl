@@ -290,7 +290,7 @@ end
     end
 end
 
-@propagate_inbounds function points_in_cell(cell_index, neighborhood_search)
+@propagate_inbounds function points_in_cell(cell_index, neighborhood_search::TreeNeighborhoodSearch)
     return neighborhood_search.cell_list.cells[cell_index]
 end
 
