@@ -256,7 +256,8 @@ function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                                      update_neighborhood_search,
                                                      backend = typeof(nhs.neighbor_lists),
                                                      transpose_backend,
-                                                     max_neighbors = max_neighbors_)
+                                                     max_neighbors = max_neighbors_,
+                                                     sort_neighbor_lists = nhs.sort_neighbor_lists)
 end
 
 @inline function freeze_neighborhood_search(search::PrecomputedNeighborhoodSearch)

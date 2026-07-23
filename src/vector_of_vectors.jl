@@ -73,13 +73,13 @@ end
     # Outer bounds check
     @boundscheck checkbounds(vov, i)
 
-    lengths[i] += 1
+    @inbounds lengths[i] += 1
 
     # Inner bounds check
     @boundscheck check_list_bounds(vov, i)
 
     # Activate new entry in column `i`
-    backend[lengths[i], i] = value
+    @inbounds backend[lengths[i], i] = value
 
     return vov
 end
@@ -175,6 +175,16 @@ end
 
 # Sort each inner vector
 @inline function sorteach!(vov::DynamicVectorOfVectors)
+    @threaded default_backend(vov.backend) for i in eachindex(vov)
+        # QuickSort is ~1.6x faster here than the default
+        sort!(view(vov.backend, 1:vov.lengths[i], i), alg = QuickSort)
+    end
+
+    return vov
+end
+
+# GPU version
+@inline function sorteach!(vov::DynamicVectorOfVectors{<:Any, <:Any, <:AbstractGPUArray})
     # TODO remove this check when Metal supports sorting
     if nameof(typeof(default_backend(vov.backend))) == :MetalBackend
         @warn "sorting neighbor lists is not supported on Metal. Skipping sort."
