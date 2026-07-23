@@ -62,12 +62,11 @@
         coords2 = [NaN, 0]
         coords3 = [typemax(Int) + 1.0, -typemax(Int) - 1.0]
 
-        @test PointNeighbors.cell_coords(coords1, nothing, nothing, (1.0, 1.0)) ==
-              (typemax(Int), typemin(Int))
-        @test PointNeighbors.cell_coords(coords2, nothing, nothing, (1.0, 1.0)) ==
-              (typemax(Int), 0)
-        @test PointNeighbors.cell_coords(coords3, nothing, nothing, (1.0, 1.0)) ==
-              (typemax(Int), typemin(Int))
+        nhs = GridNeighborhoodSearch{2}(search_radius = 1.0, n_points = 1)
+
+        @test PointNeighbors.cell_coords(coords1, nhs) == (typemax(Int), typemin(Int))
+        @test PointNeighbors.cell_coords(coords2, nhs) == (typemax(Int), 0)
+        @test PointNeighbors.cell_coords(coords3, nhs) == (typemax(Int), typemin(Int))
 
         # The full grid cell list adds one to the coordinates to avoid zero-indexing.
         # This corner case is not relevant, as `typemax` coordinates will always be out of
@@ -75,12 +74,12 @@
         cell_list = FullGridCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
                                      search_radius = 1.0)
 
-        @test PointNeighbors.cell_coords(coords1, nothing, cell_list, (1.0, 1.0)) ==
-              (typemax(Int), typemin(Int)) .+ 1
-        @test PointNeighbors.cell_coords(coords2, nothing, cell_list, (1.0, 1.0)) ==
-              (typemax(Int), 1) .+ 1
-        @test PointNeighbors.cell_coords(coords3, nothing, cell_list, (1.0, 1.0)) ==
-              (typemax(Int), typemin(Int)) .+ 1
+        nhs = GridNeighborhoodSearch{2}(search_radius = 1.0, n_points = 1,
+                                        cell_list = cell_list)
+
+        @test PointNeighbors.cell_coords(coords1, nhs) == (typemax(Int), typemin(Int)) .+ 1
+        @test PointNeighbors.cell_coords(coords2, nhs) == (typemax(Int), 1) .+ 1
+        @test PointNeighbors.cell_coords(coords3, nhs) == (typemax(Int), typemin(Int)) .+ 1
     end
 
     @testset "Rectangular Point Cloud 2D" begin
@@ -239,7 +238,7 @@
             [-0.08 0.0 0.18 0.1 -0.08
              -0.12 -0.05 -0.09 0.15 0.39],
             [-0.08 0.0 0.18 0.1 -0.08
-             -0.12 -0.05 -0.09 0.15 0.42],
+             -0.12 -0.05 -0.09 0.15 0.42] .- [0.0017, 0.005],
             [-0.08 0.0 0.18 0.1 -0.08
              -0.12 -0.05 -0.09 0.15 0.39
              0.14 0.34 0.12 0.06 0.13]
@@ -249,28 +248,44 @@
             PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.2, 0.4]),
             # The `GridNeighborhoodSearch` is forced to round up the cell sizes in this test
             # to avoid split cells.
-            PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.205, 0.43]),
+            # In order for the points to have the same relative positions inside their cells
+            # with the two cell lists, we need to offset the coordinates and periodic box
+            # to make the grid aligned with the origin.
+            PeriodicBox(min_corner = [-0.1, -0.2] .- [0.0017, 0.005],
+                        max_corner = [0.205, 0.43] .- [0.0017, 0.005]),
             PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35])
         ]
 
         @testset verbose=true "$(names[i])" for i in eachindex(names)
             coords = coordinates[i]
 
-            nhs = GridNeighborhoodSearch{size(coords, 1)}(search_radius = 0.1,
-                                                          n_points = size(coords, 2),
-                                                          periodic_box = periodic_boxes[i])
+            # `DictionaryCellList`
+            nhs1 = GridNeighborhoodSearch{size(coords, 1)}(search_radius = 0.1,
+                                                           n_points = size(coords, 2),
+                                                           periodic_box = periodic_boxes[i])
 
-            initialize_grid!(nhs, coords)
+            # `FullGridCellList`
+            cell_list = FullGridCellList(; min_corner = periodic_boxes[i].min_corner,
+                                         max_corner = periodic_boxes[i].max_corner,
+                                         search_radius = 0.1)
+            nhs2 = GridNeighborhoodSearch{size(coords, 1)}(search_radius = 0.1,
+                                                           n_points = size(coords, 2),
+                                                           periodic_box = periodic_boxes[i],
+                                                           cell_list = cell_list)
 
-            neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
-                         for i in 1:5]
+            for nhs in (nhs1, nhs2)
+                initialize_grid!(nhs, coords)
 
-            # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
-            @test neighbors[1] == [1, 2, 3, 5]
-            @test neighbors[2] == [1, 2, 3]
-            @test neighbors[3] == [1, 2, 3]
-            @test neighbors[4] == [4]
-            @test neighbors[5] == [1, 5]
+                neighbors = [sort(collect(PointNeighbors.eachneighbor(coords[:, i], nhs)))
+                             for i in 1:5]
+
+                # Note that (1, 2) and (2, 3) are not neighbors, but they are in neighboring cells
+                @test neighbors[1] == [1, 2, 3, 5]
+                @test neighbors[2] == [1, 2, 3]
+                @test neighbors[3] == [1, 2, 3]
+                @test neighbors[4] == [4]
+                @test neighbors[5] == [1, 5]
+            end
         end
 
         @testset "Offset Domain Triggering Split Cells" begin

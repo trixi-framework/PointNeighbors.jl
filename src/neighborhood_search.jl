@@ -262,13 +262,17 @@ See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks
                      point, point_coords, search_radius)
 end
 
+@inline foreach_neighbor_op(::Any, ::Any) = nothing
+
 # This is a function barrier to prevent the `@inbounds` in `foreach_neighbor`
 # from propagating into the neighbor loop, which is not safe.
 @inline function foreach_neighbor(f, neighbor_coords,
                                   neighborhood_search::AbstractNeighborhoodSearch,
                                   point, point_coords, search_radius)
-    foreach_neighbor_inner(f, neighbor_coords, neighborhood_search,
-                           point, point_coords, search_radius)
+    mapreduce_neighbor_inner(f, foreach_neighbor_op,
+                             neighbor_coords, neighborhood_search,
+                             point, point_coords, search_radius, nothing)
+    return nothing
 end
 
 """
@@ -312,8 +316,70 @@ Note that all these bounds checks are safe to skip if
     point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
                                              point)
 
-    @inbounds foreach_neighbor_inner(f, neighbor_coords, neighborhood_search,
-                                     point, point_coords, search_radius)
+    @inbounds mapreduce_neighbor_inner(f, foreach_neighbor_op,
+                                       neighbor_coords, neighborhood_search,
+                                       point, point_coords, search_radius, nothing)
+    return nothing
+end
+
+"""
+    mapreduce_neighbor(f, op, system_coords, neighbor_coords,
+                       neighborhood_search::AbstractNeighborhoodSearch, point;
+                       init, search_radius = search_radius(neighborhood_search))
+
+Apply `f(i, j, pos_diff, d)` to every neighbor of `point` and reduce the results with
+the binary operator `op`, analogous to `mapreduce(f, op, collection)`.
+
+The keyword argument `init` is required. It provides the starting value for
+the reduction. Choose `init` so that combining it with the first mapped neighbor value
+using `op` gives the desired result, typically the identity element of `op`.
+
+This method performs the same bounds checks as [`foreach_neighbor`](@ref).
+See [`mapreduce_neighbor_unsafe`](@ref) for a version that skips all bounds checks.
+"""
+@propagate_inbounds function mapreduce_neighbor(f, op, system_coords, neighbor_coords,
+                                                neighborhood_search::AbstractNeighborhoodSearch,
+                                                point; init,
+                                                search_radius = search_radius(neighborhood_search))
+    point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+
+    mapreduce_neighbor(f, op, neighbor_coords, neighborhood_search,
+                       point, point_coords, search_radius, init)
+end
+
+# This is a function barrier to prevent the `@inbounds` in `mapreduce_neighbor`
+# from propagating into the neighbor loop, which is not safe.
+@inline function mapreduce_neighbor(f, op, neighbor_coords,
+                                    neighborhood_search::AbstractNeighborhoodSearch,
+                                    point, point_coords, search_radius, init)
+    mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search,
+                             point, point_coords, search_radius, init)
+end
+
+"""
+    mapreduce_neighbor_unsafe(f, op, system_coords, neighbor_coords,
+                              neighborhood_search::AbstractNeighborhoodSearch, point;
+                              init, search_radius = search_radius(neighborhood_search))
+
+Like [`mapreduce_neighbor`](@ref), but skips **all** bounds checks.
+
+See [`foreach_neighbor_unsafe`](@ref) for details on which bounds checks are skipped
+and when it is safe to skip them.
+
+!!! warning
+    Use this only when `point` is known to be in bounds of `system_coords`
+    and when `neighborhood_search` is known to be initialized correctly for
+    `system_coords` and `neighbor_coords`.
+"""
+@inline function mapreduce_neighbor_unsafe(f, op, system_coords, neighbor_coords,
+                                           neighborhood_search::AbstractNeighborhoodSearch,
+                                           point; init,
+                                           search_radius = search_radius(neighborhood_search))
+    point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
+                                             point)
+
+    @inbounds mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search,
+                                       point, point_coords, search_radius, init)
 end
 
 # This is the generic function that is called for `TrivialNeighborhoodSearch`.
@@ -321,10 +387,13 @@ end
 # performance. `PrecomputedNeighborhoodSearch` can skip the distance check altogether.
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
-@propagate_inbounds function foreach_neighbor_inner(f, neighbor_coords,
-                                                    neighborhood_search::AbstractNeighborhoodSearch,
-                                                    point, point_coords, search_radius)
+@propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
+                                                      neighborhood_search::AbstractNeighborhoodSearch,
+                                                      point, point_coords,
+                                                      search_radius, init)
     (; periodic_box) = neighborhood_search
+
+    reduced = init
 
     for neighbor in eachneighbor(point_coords, neighborhood_search)
         neighbor_point_coords = extract_svector(neighbor_coords,
@@ -341,11 +410,14 @@ end
         if distance2 <= search_radius^2
             distance = sqrt(distance2)
 
-            # Inline to avoid loss of performance
-            # compared to not using `foreach_point_neighbor`.
-            @inline f(point, neighbor, pos_diff, distance)
+            # Inline to avoid loss of performance compared to not using this function
+            # and unrolling everything.
+            value = @inline f(point, neighbor, pos_diff, distance)
+            reduced = @inline op(reduced, value)
         end
     end
+
+    return reduced
 end
 
 @inline function compute_periodic_distance(pos_diff, distance2, search_radius,
@@ -365,12 +437,15 @@ end
 
 # TODO export?
 @inline function periodic_coords(coords, periodic_box)
-    (; min_corner, size) = periodic_box
+    (; min_corner, max_corner, size) = periodic_box
 
     # Move coordinates into the periodic box
     box_offset = floor.((coords .- min_corner) ./ size)
+    coords_periodic = coords - box_offset .* size
 
-    return coords - box_offset .* size
+    # Secure against floating point rounding errors that can lead to coordinates
+    # being slightly outside the periodic box.
+    return min.(max.(coords_periodic, min_corner), max_corner)
 end
 
 @inline function periodic_coords(coords, periodic_box::Nothing)

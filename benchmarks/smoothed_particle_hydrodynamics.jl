@@ -92,10 +92,11 @@ function __benchmark_wcsph_inner(neighborhood_search, initial_condition, state_e
         smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
     end
 
-    fluid_system = WeaklyCompressibleSPHSystem(initial_condition, ContinuityDensity(),
+    fluid_system = WeaklyCompressibleSPHSystem(initial_condition;
+                                               density_calculator = ContinuityDensity(),
                                                state_equation, smoothing_kernel,
-                                               smoothing_length, viscosity = viscosity,
-                                               density_diffusion = density_diffusion)
+                                               smoothing_length, viscosity,
+                                               density_diffusion)
 
     system = PointNeighbors.Adapt.adapt(parallelization_backend, fluid_system)
 
@@ -140,8 +141,9 @@ function benchmark_tlsph(neighborhood_search, coordinates;
         smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
     end
 
-    solid_system = TotalLagrangianSPHSystem(solid, smoothing_kernel, smoothing_length,
-                                            material.E, material.nu)
+    solid_system = TotalLagrangianSPHSystem(solid; smoothing_kernel, smoothing_length,
+                                            young_modulus = material.E,
+                                            poisson_ratio = material.nu)
     semi = DummySemidiscretization(neighborhood_search, parallelization_backend, true)
 
     v = copy(solid.velocity)
