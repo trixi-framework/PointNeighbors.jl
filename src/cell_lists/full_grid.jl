@@ -81,33 +81,16 @@ function FullGridCellList(; min_corner, max_corner,
     return FullGridCellList(cells, linear_indices, min_corner, max_corner)
 end
 
-@inline function cell_coords(coords, periodic_box::Nothing, cell_list::FullGridCellList,
-                             cell_size)
-    (; min_corner) = cell_list
-
-    # Subtract `min_corner` to offset coordinates so that the min corner of the grid
+@inline function nonperiodic_cell_coords(coords, cell_list::FullGridCellList, cell_size)
+    # The finite grid of the `FullGridCellList` is padded with one layer of cells
+    # in each direction to make sure that neighbor cells exist.
+    # The unpadded min corner (that is passed by the user) corresponds to the (2, 2, 2) cell
+    # of the padded grid. The stored `min_corner` includes the padding and therefore
+    # corresponds to the (1, 1, 1) cell of the padded grid.
+    #
+    # Subtract `min_corner` to offset the coordinates so that `min_corner`
     # corresponds to the (1, 1, 1) cell.
-    return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
-end
-
-@inline function cell_coords(coords, periodic_box::PeriodicBox, cell_list::FullGridCellList,
-                             cell_size)
-    # Subtract `periodic_box.min_corner` to offset coordinates so that the min corner
-    # of the grid corresponds to the (0, 0, 0) cell.
-    offset_coords = periodic_coords(coords, periodic_box) .- periodic_box.min_corner
-
-    # Add 2, so that the min corner will be the (2, 2, 2)-cell.
-    # With this, we still have one padding layer in each direction around the periodic box,
-    # just like without using a periodic box.
-    # This is not needed for finding neighbor cells, but to make the bounds check
-    # work the same way as without a periodic box.
-    return Tuple(floor_to_int.(offset_coords ./ cell_size)) .+ 2
-end
-
-@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells,
-                                     cell_list::FullGridCellList)
-    # 2-based modulo to match the indexing of the periodic box explained above.
-    return mod.(cell_index .- 2, n_cells) .+ 2
+    return Tuple(floor_to_int.((coords .- cell_list.min_corner) ./ cell_size) .+ 1)
 end
 
 function Base.empty!(cell_list::FullGridCellList)
