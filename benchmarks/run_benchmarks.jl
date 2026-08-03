@@ -250,6 +250,53 @@ function run_benchmark_full_grid(benchmark, n_points_per_dimension, iterations;
 end
 
 """
+    run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations; kwargs...)
+
+Shortcut to call [`run_benchmark`](@ref) with a `PrecomputedNeighborhoodSearch`.
+This is the neighborhood search implementation that is used in TrixiParticles.jl for
+Total Lagrangian SPH, where the neighborhood is computed in initial coordinates.
+Use this function to benchmark and profile TrixiParticles.jl kernels.
+
+# Arguments
+- `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
+                            [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
+                            and [`benchmark_tlsph`](@ref).
+- `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
+                            of points. For example, use `(100, 100)` for a 2D benchmark or
+                            `(10, 10, 10)` for a 3D benchmark.
+- `iterations`:             Number of refinement iterations
+
+# Keywords
+See [`run_benchmark`](@ref) for a list of available keywords.
+
+# Examples
+```julia
+include("benchmarks/benchmarks.jl")
+
+run_benchmark_precomputed(benchmark_n_body, (10, 10), 3)
+```
+"""
+function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations;
+                                   parallelization_backend = PolyesterBackend(), kwargs...)
+    NDIMS = length(n_points_per_dimension)
+
+    min_corner = 0.0f0 .* n_points_per_dimension
+    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
+    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
+    grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
+                                             update_strategy = ParallelUpdate())
+    transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
+    neighborhood_searches = [PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
+                                                                  update_neighborhood_search = grid_nhs,
+                                                                  transpose_backend)]
+
+    names = ["PrecomputedNeighborhoodSearch";;]
+
+    run_benchmark(benchmark, n_points_per_dimension, iterations,
+                  neighborhood_searches; names, parallelization_backend, kwargs...)
+end
+
+"""
     plot_benchmark(n_particles_vec, times; kwargs...)
 
 Plot the results of a benchmark run with [`run_benchmark`](@ref).
