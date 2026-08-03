@@ -18,8 +18,8 @@ function point_cloud(n_points_per_dimension, search_radius;
     for i in axes(coordinates, 2)
         point_coords = SVector(Tuple(cartesian_indices[i]))
         coordinates[:, i] .= point_coords
-        cell_coords[i] = PointNeighbors.cell_coords(point_coords, nothing, nothing,
-                                                    cell_size) .+ 1
+        cell_coords[i] = PointNeighbors.nonperiodic_cell_coords(point_coords, nothing,
+                                                                cell_size) .+ 1
     end
 
     # A standard deviation of 0.05 in the particle coordinates
