@@ -177,7 +177,7 @@ run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 ```
 """
 function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
-                           parallelization_backend=PolyesterBackend(), kwargs...)
+                           parallelization_backend = PolyesterBackend(), kwargs...)
     NDIMS = length(n_points_per_dimension)
 
     min_corner = 0.0f0 .* n_points_per_dimension
@@ -186,17 +186,13 @@ function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
     grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
                                              update_strategy = ParallelUpdate())
     transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
-    neighborhood_searches = [
-        grid_nhs
-        PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
-                                             update_neighborhood_search = grid_nhs,
-                                             transpose_backend)#, max_neighbors=128)
-    ]
+    neighborhood_searches = [grid_nhs
+                             PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
+                                                                  update_neighborhood_search = grid_nhs,
+                                                                  transpose_backend)]
 
-    names = [
-        "GridNeighborhoodSearch with FullGridCellList";;
-        "PrecomputedNeighborhoodSearch"
-    ]
+    names = ["GridNeighborhoodSearch with FullGridCellList";;
+             "PrecomputedNeighborhoodSearch"]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
                   neighborhood_searches; names, parallelization_backend, kwargs...)
@@ -230,7 +226,7 @@ run_benchmark_full_grid(benchmark_n_body, (10, 10), 3)
 ```
 """
 function run_benchmark_full_grid(benchmark, n_points_per_dimension, iterations;
-                           parallelization_backend=PolyesterBackend(), kwargs...)
+                                 parallelization_backend = PolyesterBackend(), kwargs...)
     NDIMS = length(n_points_per_dimension)
 
     min_corner = 0.0f0 .* n_points_per_dimension
