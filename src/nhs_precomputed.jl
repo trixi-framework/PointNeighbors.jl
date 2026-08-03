@@ -205,12 +205,23 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     end
 end
 
+macro optional_loopinfo(simd, loop)
+    return esc(quote
+        if $simd
+            @loopinfo vectorwidth=8 predicate $loop
+        else
+            $loop
+        end
+    end)
+end
+
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
 @propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
                                                       neighborhood_search::PrecomputedNeighborhoodSearch,
                                                       point, point_coords,
-                                                      search_radius, init)
+                                                      search_radius, init,
+                                                      ::Val{SIMD}) where {SIMD}
     (; periodic_box, neighbor_lists) = neighborhood_search
 
     # Making the following `@inbounds` is not safe because the neighbor list
@@ -218,7 +229,7 @@ end
     neighbors = neighbor_lists[point]
     reduced = init
 
-    for neighbor_ in eachindex(neighbors)
+    @optional_loopinfo SIMD for neighbor_ in eachindex(neighbors)
         neighbor = @inbounds neighbors[neighbor_]
 
         # Making this `@inbounds` is not safe because
@@ -235,7 +246,8 @@ end
          distance2) = compute_periodic_distance(pos_diff, distance2, search_radius,
                                                 periodic_box)
 
-        distance = sqrt(distance2)
+        # We need `@fastmath` here when SIMD-vectorizing this loop.
+        @fastmath distance = sqrt(distance2)
 
         # Inline to avoid loss of performance compared to not using this function
         # and unrolling everything.
