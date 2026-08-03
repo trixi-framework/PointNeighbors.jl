@@ -271,7 +271,7 @@ end
                                   point, point_coords, search_radius)
     mapreduce_neighbor_inner(f, foreach_neighbor_op,
                              neighbor_coords, neighborhood_search,
-                             point, point_coords, search_radius, nothing)
+                             point, point_coords, search_radius, nothing, Val(false))
     return nothing
 end
 
@@ -318,7 +318,8 @@ Note that all these bounds checks are safe to skip if
 
     @inbounds mapreduce_neighbor_inner(f, foreach_neighbor_op,
                                        neighbor_coords, neighborhood_search,
-                                       point, point_coords, search_radius, nothing)
+                                       point, point_coords, search_radius, nothing,
+                                       Val(false))
     return nothing
 end
 
@@ -353,7 +354,7 @@ end
                                     neighborhood_search::AbstractNeighborhoodSearch,
                                     point, point_coords, search_radius, init)
     mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search,
-                             point, point_coords, search_radius, init)
+                             point, point_coords, search_radius, init, Val(false))
 end
 
 """
@@ -374,12 +375,13 @@ and when it is safe to skip them.
 @inline function mapreduce_neighbor_unsafe(f, op, system_coords, neighbor_coords,
                                            neighborhood_search::AbstractNeighborhoodSearch,
                                            point; init,
-                                           search_radius = search_radius(neighborhood_search))
+                                           search_radius = search_radius(neighborhood_search),
+                                           simd = Val(false))
     point_coords = @inbounds extract_svector(system_coords, Val(ndims(neighborhood_search)),
                                              point)
 
     @inbounds mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search,
-                                       point, point_coords, search_radius, init)
+                                       point, point_coords, search_radius, init, simd)
 end
 
 # This is the generic function that is called for `TrivialNeighborhoodSearch`.
@@ -390,7 +392,7 @@ end
 @propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
                                                       neighborhood_search::AbstractNeighborhoodSearch,
                                                       point, point_coords,
-                                                      search_radius, init)
+                                                      search_radius, init, _)
     (; periodic_box) = neighborhood_search
 
     reduced = init

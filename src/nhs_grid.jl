@@ -513,7 +513,7 @@ end
 @propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
                                                       neighborhood_search::GridNeighborhoodSearch,
                                                       point, point_coords,
-                                                      search_radius, init)
+                                                      search_radius, init, _)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
     reduced = init
