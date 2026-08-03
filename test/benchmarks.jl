@@ -22,9 +22,9 @@
         end
 
         @testset verbose=true "`benchmark_wcsph` Float32" begin
-            @trixi_test_nowarn run_benchmark_default(benchmark_wcsph_fp32, size, 2,
+            @trixi_test_nowarn run_benchmark_default(benchmark_wcsph, size, 2,
                                                      search_radius_factor = 3.0f0)
-            @trixi_test_nowarn run_benchmark_gpu(benchmark_wcsph_fp32, size, 2,
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_wcsph, size, 2,
                                                  search_radius_factor = 3.0f0)
         end
 

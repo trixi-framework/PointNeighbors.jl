@@ -6,9 +6,10 @@ include("../test/point_cloud.jl")
 
 """
     run_benchmarks(benchmark, n_points_per_dimension, iterations, neighborhood_searches;
+                   search_radius_factor = 3.0,
                    parallelization_backend = PolyesterBackend(),
-                   names = ["NeighborhoodSearch 1" "NeighborhoodSearch 2" ...],
-                   seed = 1, perturbation_factor_position = 1.0)
+                   names = ["Neighborhood search 1" "Neighborhood search 2" ...],
+                   seed = 1, perturbation_factor_position = 1.0, shuffle = false)
 
 Run a benchmark with several neighborhood searches multiple times for increasing numbers
 of points and return the results as `(n_particles_vec, times)`, where `n_particles_vec`
@@ -25,21 +26,28 @@ See also
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            [`benchmark_wcsph_fp32`](@ref) and [`benchmark_tlsph`](@ref).
+                            and [`benchmark_tlsph`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
 - `iterations`:             Number of refinement iterations
 
 # Keywords
+- `search_radius_factor = 3.0`: Search radius as a multiple of the point spacing.
+                            If supported by the benchmark, the type
+                            of `search_radius_factor` determines if the benchmark
+                            is run in single or double precision.
 - `parallelization_backend = PolyesterBackend()`: Parallelization strategy to use. See
-                                                  [`@threaded`](@ref) for a list of available
-                                                  backends.
+                            [`@threaded`](@ref) for a list of available backends.
+- `names = ["Neighborhood search 1" ...]`: Names of the neighborhood searches used in the
+                            benchmark output.
 - `seed = 1`:               Seed to perturb the point positions. Different seeds yield
                             slightly different point positions.
 - `perturbation_factor_position = 1.0`: Scale the point position perturbation by this factor.
-                                        A factor of `1.0` corresponds to a standard deviation
-                                        similar to that of a realistic simulation.
+                            A factor of `1.0` corresponds to a standard deviation
+                            similar to that of a realistic simulation.
+- `shuffle = false`:        Randomly shuffle the point ordering instead of sorting points by
+                            cell index.
 
 # Examples
 ```julia
@@ -73,7 +81,6 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
         # Normalize domain size to 1
         coordinates ./= domain_size
 
-        # Make this Float32 to make sure that Float32 benchmarks use Float32 exclusively
         search_radius = search_radius_factor / domain_size
         n_particles = size(coordinates, 2)
 
@@ -112,7 +119,7 @@ implementations:
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            [`benchmark_wcsph_fp32`](@ref) and [`benchmark_tlsph`](@ref).
+                            and [`benchmark_tlsph`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
@@ -160,7 +167,7 @@ implementations:
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            [`benchmark_wcsph_fp32`](@ref) and [`benchmark_tlsph`](@ref).
+                            and [`benchmark_tlsph`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
@@ -209,7 +216,7 @@ Use this function to benchmark and profile TrixiParticles.jl kernels.
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            [`benchmark_wcsph_fp32`](@ref) and [`benchmark_tlsph`](@ref).
+                            and [`benchmark_tlsph`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.

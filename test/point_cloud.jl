@@ -3,7 +3,7 @@ using Random
 # Generate a rectangular point cloud, optionally with a perturbation in the point positions
 function point_cloud(n_points_per_dimension, search_radius;
                      seed = 1, perturbation_factor_position = 1.0,
-                     sort = true, shuffle = false)
+                     shuffle = false, sort = !shuffle)
     # Fixed seed to ensure reproducibility
     Random.seed!(seed)
 
@@ -42,7 +42,7 @@ function point_cloud(n_points_per_dimension, search_radius;
         coordinates .= coordinates[:, permutation]
     elseif shuffle
         # Sort randomly
-        permutation = shuffle(axes(coordinates, 2))
+        permutation = Random.shuffle(axes(coordinates, 2))
         coordinates .= coordinates[:, permutation]
     end
 
