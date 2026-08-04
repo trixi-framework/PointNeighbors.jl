@@ -105,12 +105,45 @@ end
     benchmark_tlsph(neighborhood_search, coordinates;
                     parallelization_backend = default_backend(coordinates))
 
-A benchmark of the right-hand side of a full real-life Total Lagrangian
+A benchmark of the interaction forces of a full real-life Total Lagrangian
 Smoothed Particle Hydrodynamics (TLSPH) simulation with TrixiParticles.jl.
 This method is used to simulate an elastic structure.
+
+The right-hand side of the TLSPH equations consists of two main parts:
+- The deformation gradient ([`benchmark_tlsph_deformation_grad`](@ref)).
+- The interaction forces ([`benchmark_tlsph`](@ref)).
 """
 function benchmark_tlsph(neighborhood_search, coordinates;
                          parallelization_backend = default_backend(coordinates))
+    dv, v, system, semi = setup_tlsph(neighborhood_search, coordinates,
+                                      parallelization_backend)
+
+    return @belapsed TrixiParticles.interact_structure_structure!($dv, $v, $system, $semi)
+end
+
+"""
+    benchmark_tlsph_deformation_grad(neighborhood_search, coordinates;
+                                     parallelization_backend = default_backend(coordinates))
+
+A benchmark of the deformation gradient computation of a full real-life Total Lagrangian
+Smoothed Particle Hydrodynamics (TLSPH) simulation with TrixiParticles.jl.
+This method is used to simulate an elastic structure.
+
+The right-hand side of the TLSPH equations consists of two main parts:
+- The deformation gradient ([`benchmark_tlsph_deformation_grad`](@ref)).
+- The interaction forces ([`benchmark_tlsph`](@ref)).
+"""
+function benchmark_tlsph_deformation_grad(neighborhood_search, coordinates;
+                                          parallelization_backend = default_backend(coordinates))
+    dv, v, system, semi = setup_tlsph(neighborhood_search, coordinates,
+                                      parallelization_backend)
+    deformation_grad = system.deformation_grad
+
+    return @belapsed TrixiParticles.calc_deformation_grad!($deformation_grad, $system,
+                                                           $semi)
+end
+
+function setup_tlsph(neighborhood_search, coordinates, parallelization_backend)
     # System initialization has to happen on the CPU
     coordinates_cpu = PointNeighbors.Adapt.adapt(Array, coordinates)
 
@@ -152,5 +185,5 @@ function benchmark_tlsph(neighborhood_search, coordinates;
     # Initialize the system
     TrixiParticles.initialize!(system, semi)
 
-    return @belapsed TrixiParticles.interact_structure_structure!($dv, $v, $system, $semi)
+    return dv, v, system, semi
 end

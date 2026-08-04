@@ -33,6 +33,12 @@
             @trixi_test_nowarn run_benchmark_gpu(benchmark_tlsph, size, 2)
         end
 
+        @testset verbose=true "`benchmark_tlsph_deformation_grad`" begin
+            @trixi_test_nowarn run_benchmark_default(benchmark_tlsph_deformation_grad,
+                                                     size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_tlsph_deformation_grad, size, 2)
+        end
+
         @testset verbose=true "`benchmark_initialize`" begin
             @trixi_test_nowarn run_benchmark_default(benchmark_initialize, size, 2)
             @trixi_test_nowarn run_benchmark_gpu(benchmark_initialize, size, 2)
