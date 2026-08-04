@@ -241,8 +241,8 @@ end
          distance2) = compute_periodic_distance(pos_diff, distance2, search_radius,
                                                 periodic_box)
 
-        # We need `@fastmath` here when SIMD-vectorizing this loop.
-        @fastmath distance = sqrt(distance2)
+        # We need `@fastmath` here for performance when SIMD-vectorizing this loop.
+        distance = @fastmath sqrt(distance2)
 
         # Inline to avoid loss of performance compared to not using this function
         # and unrolling everything.
