@@ -115,8 +115,8 @@ The right-hand side of the TLSPH equations consists of two main parts:
 """
 function benchmark_tlsph(neighborhood_search, coordinates;
                          parallelization_backend = default_backend(coordinates))
-    dv, v, system, semi = setup_tlsph(neighborhood_search, coordinates,
-                                      parallelization_backend)
+    (dv, v, system,
+     semi) = setup_tlsph(neighborhood_search, coordinates, parallelization_backend)
 
     return @belapsed TrixiParticles.interact_structure_structure!($dv, $v, $system, $semi)
 end
@@ -135,8 +135,8 @@ The right-hand side of the TLSPH equations consists of two main parts:
 """
 function benchmark_tlsph_deformation_grad(neighborhood_search, coordinates;
                                           parallelization_backend = default_backend(coordinates))
-    dv, v, system, semi = setup_tlsph(neighborhood_search, coordinates,
-                                      parallelization_backend)
+    (dv, v, system,
+     semi) = setup_tlsph(neighborhood_search, coordinates, parallelization_backend)
     deformation_grad = system.deformation_grad
 
     return @belapsed TrixiParticles.calc_deformation_grad!($deformation_grad, $system,
