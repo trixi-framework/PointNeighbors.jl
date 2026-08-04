@@ -202,12 +202,12 @@ end
 
 macro optional_loopinfo(simd, loop)
     return esc(quote
-        if $simd
-            @loopinfo vectorwidth=8 predicate $loop
-        else
-            $loop
-        end
-    end)
+                   if $simd
+                       @loopinfo vectorwidth=8 predicate $loop
+                   else
+                       $loop
+                   end
+               end)
 end
 
 # Note that calling this function with `@inbounds` is not safe.
