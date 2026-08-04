@@ -13,8 +13,8 @@ using PointNeighbors
 # search or template, but with a (different) concrete configuration.
 #
 # For the simplest example, we can work with the [`TrivialNeighborhoodSearch`](@ref),
-# which simply loops over all points, resulting in quadratic runtime for finding neighbors
-# of a particle.
+# which simply loops over all points, resulting in quadratic runtime for finding all
+# neighbors of a particle.
 n_points = 1000
 search_radius = 1.0
 nhs = TrivialNeighborhoodSearch{2}(; search_radius, eachpoint = 1:n_points)

@@ -19,7 +19,7 @@ nothing # hide
 
 # Each particle gets a mass in [1e10, 2e10].
 mass = 1.0e10 .* (rand(n_particles) .+ 1)
-G = Float32(6.6743e-11)
+G = 6.6743e-11
 accelerations = similar(coordinates)
 nothing # hide
 

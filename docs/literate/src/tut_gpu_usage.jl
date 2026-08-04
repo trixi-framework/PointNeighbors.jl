@@ -35,7 +35,7 @@ nothing # hide
 
 # ## Create and initialize the neighborhood search
 
-# After taking computing the difference between coordinates of neighboring particles,
+# After computing the difference between coordinates of neighboring particles,
 # [`foreach_point_neighbor`](@ref) converts the result to the type of `search_radius` before
 # computing the distance. The type of `search_radius` therefore determines the types of
 # `pos_diff` and `distance` inside `foreach_point_neighbor`. We need to make sure to choose
