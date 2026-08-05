@@ -195,6 +195,7 @@ function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
     transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
     neighborhood_searches = [grid_nhs
                              PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
+                                                                  max_neighbors=128,
                                                                   update_neighborhood_search = grid_nhs,
                                                                   transpose_backend)]
 
@@ -287,6 +288,7 @@ function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations
                                              update_strategy = ParallelUpdate())
     transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
     neighborhood_searches = [PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
+                                                                  max_neighbors=128,
                                                                   update_neighborhood_search = grid_nhs,
                                                                   transpose_backend)]
 
