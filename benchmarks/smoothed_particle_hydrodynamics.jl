@@ -184,6 +184,7 @@ function setup_tlsph(neighborhood_search, coordinates, parallelization_backend)
 
     # Initialize the system
     TrixiParticles.initialize!(system, semi)
+    TrixiParticles.compute_pk1_corrected!(system, semi)
 
     return dv, v, system, semi
 end
