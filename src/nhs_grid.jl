@@ -32,8 +32,9 @@ since not sorting makes our implementation a lot faster (although less paralleli
                             with [`copy_neighborhood_search`](@ref).
                             Note that the type of `search_radius` determines the type used
                             for the distance computations.
-- `n_points = 0`:           Total number of points. The default of `0` is useful together
-                            with [`copy_neighborhood_search`](@ref).
+- `n_points = 0`:           Maximum total number of points in the neighbor coordinates array.
+                            The default of `0` is useful together with
+                            [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
 - `cell_list`:              The cell list that maps a cell index to a list of points inside
@@ -89,6 +90,11 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         throw(ArgumentError("$update_strategy is not a valid update strategy for " *
                             "this cell list. Available options are " *
                             "$(supported_update_strategies(cell_list))"))
+    end
+
+    if search_radius isa Integer
+        throw(ArgumentError("`search_radius` cannot be an integer type, since computed " *
+                            "distances will be converted to this type"))
     end
 
     update_buffer = create_update_buffer(update_strategy, cell_list, n_points)

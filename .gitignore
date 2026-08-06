@@ -3,6 +3,7 @@ docs/build
 docs/src/index.md
 docs/src/authors.md
 docs/src/license.md
+docs/src/tutorials
 public/
 coverage/
 coverage_report/

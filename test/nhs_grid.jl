@@ -9,6 +9,9 @@
         # Default cell list doesn't support fully parallel update
         @test_throws "ParallelUpdate() $error_str" GridNeighborhoodSearch{2}(update_strategy = ParallelUpdate())
 
+        error_str = "`search_radius` cannot be an integer type"
+        @test_throws error_str GridNeighborhoodSearch{2}(search_radius = 1)
+
         nhs = GridNeighborhoodSearch{3}(update_strategy = SerialUpdate())
         nhs2 = @trixi_test_nowarn PointNeighbors.Adapt.adapt_structure(Array, nhs)
 
@@ -34,7 +37,7 @@
 
         @test copy.cell_list isa FullGridCellList
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
-        @test copy.update_strategy == ParallelIncrementalUpdate()
+        @test copy.update_strategy == ParallelUpdate()
 
         # Full grid cell list with `Vector{Vector}` backend
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
