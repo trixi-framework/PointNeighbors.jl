@@ -30,6 +30,8 @@ since not sorting makes our implementation a lot faster (although less paralleli
 # Keywords
 - `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
                             with [`copy_neighborhood_search`](@ref).
+                            Note that the type of `search_radius` determines the type used
+                            for the distance computations.
 - `n_points = 0`:           Total number of points. The default of `0` is useful together
                             with [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
@@ -75,6 +77,11 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
                                        periodic_box = nothing,
                                        cell_list = DictionaryCellList{NDIMS}(),
                                        update_strategy = nothing) where {NDIMS}
+    if ndims(cell_list) != NDIMS
+        throw(ArgumentError("a $(NDIMS)D cell list is required for " *
+                            "a GridNeighborhoodSearch{$(NDIMS)}"))
+    end
+
     if isnothing(update_strategy)
         # Automatically choose best available update option for this cell list
         update_strategy = first(supported_update_strategies(cell_list))()
@@ -224,7 +231,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
         return neighborhood_search
     end
 
-    @boundscheck checkbounds(y, eachindex_y)
+    @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
 
     # Ignore the parallelization backend here. This cannot be parallelized.
     for point in eachindex_y
@@ -541,14 +548,21 @@ end
 
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
-@inline function foreach_neighbor(f, neighbor_system_coords,
-                                  neighborhood_search::GridNeighborhoodSearch,
-                                  point, point_coords, search_radius)
+# Note that calling this function with `@inbounds` is not safe.
+# See the comments in `foreach_neighbor_unsafe`.
+@propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
+                                                      neighborhood_search::GridNeighborhoodSearch,
+                                                      point, point_coords,
+                                                      search_radius, init)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
+    reduced = init
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
+
+        # Making the following `@inbounds` is not safe because we don't know if
+        # `neighbor_cell` is in bounds of the grid.
         neighbors = points_in_cell(neighbor_cell, neighborhood_search)
 
         # Boolean to indicate if this cell has a collision (only with `SpatialHashingCellList`)
@@ -557,35 +571,41 @@ end
 
         for neighbor_ in eachindex(neighbors)
             neighbor = @inbounds neighbors[neighbor_]
-            # Making the following `@inbounds` yields a ~2% speedup on an NVIDIA H100.
-            # But we don't know if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_coords = extract_svector(neighbor_system_coords,
-                                              Val(ndims(neighborhood_search)), neighbor)
 
-            pos_diff = point_coords - neighbor_coords
+            # Making the following `@inbounds` is not safe because we don't know
+            # if `neighbor` (extracted from the cell list) is in bounds.
+            neighbor_point_coords = extract_svector(neighbor_coords,
+                                                    Val(ndims(neighborhood_search)),
+                                                    neighbor)
+
+            pos_diff = convert.(eltype(neighborhood_search),
+                                point_coords - neighbor_point_coords)
             distance2 = dot(pos_diff, pos_diff)
 
-            pos_diff,
-            distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                  search_radius, periodic_box)
+            (pos_diff,
+             distance2) = compute_periodic_distance(pos_diff, distance2,
+                                                    search_radius, periodic_box)
 
             if distance2 <= search_radius^2
-                distance = sqrt(distance2)
-
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
                 if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_coords, cell_list,
+                   check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
                                    neighborhood_search)
                     continue
                 end
 
-                # Inline to avoid loss of performance
-                # compared to not using `foreach_point_neighbor`.
-                @inline f(point, neighbor, pos_diff, distance)
+                distance = sqrt(distance2)
+
+                # Inline to avoid loss of performance compared to not using this function
+                # and unrolling everything.
+                value = @inline f(point, neighbor, pos_diff, distance)
+                reduced = @inline op(reduced, value)
             end
         end
     end
+
+    return reduced
 end
 
 @inline function neighboring_cells(cell, neighborhood_search)
@@ -611,37 +631,44 @@ end
 end
 
 @inline function periodic_cell_index(cell_index, neighborhood_search)
-    (; n_cells, periodic_box, cell_list) = neighborhood_search
+    (; n_cells, periodic_box) = neighborhood_search
 
-    periodic_cell_index(cell_index, periodic_box, n_cells, cell_list)
+    periodic_cell_index(cell_index, periodic_box, n_cells)
 end
 
-@inline periodic_cell_index(cell_index, ::Nothing, n_cells, cell_list) = cell_index
+@inline periodic_cell_index(cell_index, ::Nothing, n_cells) = cell_index
 
-@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells, cell_list)
-    # 1-based modulo
-    return mod1.(cell_index, n_cells)
+@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells)
+    # With the `FullGridCellList`, nonperiodic cell coords are in the range 2:n_cells+1,
+    # so we need an offset of 2 to preserve this, so that the min corner will still
+    # be the (2, 2, 2)-cell.
+    # With this, we still have one padding layer in each direction around the periodic box,
+    # just like without using a periodic box.
+    # This padding is not needed for finding neighbor cells, but to make the bounds check
+    # work the same way as without a periodic box (cells in bounds are 2:end-1).
+    #
+    # With the `DictionaryCellList`, the grid is conceptually infinite,
+    # so we can use any offset for the modulo operation.
+    # The offset only determines to which part of R^n the periodic box is mapped.
+    return mod.(cell_index .- 2, n_cells) .+ 2
 end
 
 @inline function cell_coords(coords, neighborhood_search)
-    (; periodic_box, cell_list, cell_size) = neighborhood_search
+    # Compute cell coordinates ignoring periodicity at first
+    nonperiodic_cell_coords_ = nonperiodic_cell_coords(coords, neighborhood_search)
 
-    return cell_coords(coords, periodic_box, cell_list, cell_size)
+    # Now return (without periodicity) or convert to periodic cell index (with periodicity)
+    return periodic_cell_index(nonperiodic_cell_coords_, neighborhood_search)
 end
 
-@inline function cell_coords(coords, periodic_box::Nothing, cell_list, cell_size)
+@inline function nonperiodic_cell_coords(coords, neighborhood_search)
+    (; cell_list, cell_size) = neighborhood_search
+
+    return nonperiodic_cell_coords(coords, cell_list, cell_size)
+end
+
+@inline function nonperiodic_cell_coords(coords, cell_list, cell_size)
     return Tuple(floor_to_int.(coords ./ cell_size))
-end
-
-@inline function cell_coords(coords, periodic_box::PeriodicBox, cell_list, cell_size)
-    # Subtract `min_corner` to offset coordinates so that the min corner of the periodic
-    # box corresponds to the (0, 0, 0) cell of the NHS.
-    # This way, there are no partial cells in the domain if the domain size is an integer
-    # multiple of the cell size (which is required, see the constructor).
-    offset_coords = periodic_coords(coords, periodic_box) .- periodic_box.min_corner
-
-    # Add one for 1-based indexing. The min corner will be the (1, 1, 1)-cell.
-    return Tuple(floor_to_int.(offset_coords ./ cell_size)) .+ 1
 end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;

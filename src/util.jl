@@ -80,7 +80,7 @@ For GPU arrays, the respective `KernelAbstractions.Backend` is returned.
 """
 @inline default_backend(::AbstractArray) = PolyesterBackend()
 @inline default_backend(x::AbstractGPUArray) = KernelAbstractions.get_backend(x)
-@inline default_backend(x::DynamicVectorOfVectors) = default_backend(x.backend)
+@inline default_backend(x::PermutedDimsArray) = default_backend(x.parent)
 
 """
     @threaded backend for ... end

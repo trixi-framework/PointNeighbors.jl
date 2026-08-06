@@ -11,8 +11,8 @@ using LinearAlgebra: dot
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
 
-include("vector_of_vectors.jl")
 include("util.jl")
+include("vector_of_vectors.jl")
 include("neighborhood_search.jl")
 include("nhs_trivial.jl")
 include("cell_lists/cell_lists.jl")
@@ -20,9 +20,12 @@ include("nhs_grid.jl")
 include("nhs_precomputed.jl")
 include("gpu.jl")
 
-export foreach_point_neighbor, foreach_neighbor
+export foreach_point_neighbor, foreach_point_neighbor_unsafe,
+       foreach_neighbor, foreach_neighbor_unsafe,
+       mapreduce_neighbor, mapreduce_neighbor_unsafe
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList
+export DynamicVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
 export requires_update

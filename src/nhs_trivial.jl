@@ -10,6 +10,8 @@ Trivial neighborhood search that simply loops over all points.
 # Keywords
 - `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
                             with [`copy_neighborhood_search`](@ref).
+                            Note that the type of `search_radius` determines the type used
+                            for the distance computations.
 - `eachpoint = 1:0`:        Iterator for all point indices. Usually just `1:n_points`.
                             The default of `1:0` is useful together with
                             [`copy_neighborhood_search`](@ref).

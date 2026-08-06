@@ -4,6 +4,8 @@
     include("vector_of_vectors.jl")
     include("nhs_trivial.jl")
     include("nhs_grid.jl")
+    include("nhs_precomputed.jl")
     include("neighborhood_search.jl")
     include("cell_lists/full_grid.jl")
+    include("cell_lists/spatial_hashing.jl")
 end;

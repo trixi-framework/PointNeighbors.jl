@@ -21,7 +21,8 @@ See [`copy_neighborhood_search`](@ref) for more details.
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the actual
     cell lists. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
-    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits.
+    - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits
+                                       and GPU-compatible.
 - `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.
@@ -32,6 +33,8 @@ struct FullGridCellList{C, LI, MINC, MAXC} <: AbstractCellList
     min_corner     :: MINC
     max_corner     :: MAXC
 end
+
+@inline Base.ndims(cell_list::FullGridCellList) = ndims(cell_list.linear_indices)
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
     return (ParallelIncrementalUpdate, ParallelUpdate, SemiParallelUpdate,
@@ -50,6 +53,15 @@ function FullGridCellList(; min_corner, max_corner,
                           search_radius = zero(eltype(min_corner)),
                           backend = DynamicVectorOfVectors{Int32},
                           max_points_per_cell = 100)
+    if length(min_corner) != length(max_corner)
+        throw(ArgumentError("min_corner and max_corner must have the same length"))
+    end
+
+    if length(min_corner) > 100
+        throw(ArgumentError("FullGridCellList only supports up to 100 dimensions, " *
+                            "check your `min_corner` and `max_corner`"))
+    end
+
     # Add one layer in each direction to make sure neighbor cells exist.
     # Also pad domain a little more to avoid 0 in cell indices due to rounding errors.
     # We can't just use `eps()`, as one might use lower precision types.
@@ -73,33 +85,16 @@ function FullGridCellList(; min_corner, max_corner,
     return FullGridCellList(cells, linear_indices, min_corner, max_corner)
 end
 
-@inline function cell_coords(coords, periodic_box::Nothing, cell_list::FullGridCellList,
-                             cell_size)
-    (; min_corner) = cell_list
-
-    # Subtract `min_corner` to offset coordinates so that the min corner of the grid
+@inline function nonperiodic_cell_coords(coords, cell_list::FullGridCellList, cell_size)
+    # The finite grid of the `FullGridCellList` is padded with one layer of cells
+    # in each direction to make sure that neighbor cells exist.
+    # The unpadded min corner (that is passed by the user) corresponds to the (2, 2, 2) cell
+    # of the padded grid. The stored `min_corner` includes the padding and therefore
+    # corresponds to the (1, 1, 1) cell of the padded grid.
+    #
+    # Subtract `min_corner` to offset the coordinates so that `min_corner`
     # corresponds to the (1, 1, 1) cell.
-    return Tuple(floor_to_int.((coords .- min_corner) ./ cell_size)) .+ 1
-end
-
-@inline function cell_coords(coords, periodic_box::PeriodicBox, cell_list::FullGridCellList,
-                             cell_size)
-    # Subtract `periodic_box.min_corner` to offset coordinates so that the min corner
-    # of the grid corresponds to the (0, 0, 0) cell.
-    offset_coords = periodic_coords(coords, periodic_box) .- periodic_box.min_corner
-
-    # Add 2, so that the min corner will be the (2, 2, 2)-cell.
-    # With this, we still have one padding layer in each direction around the periodic box,
-    # just like without using a periodic box.
-    # This is not needed for finding neighbor cells, but to make the bounds check
-    # work the same way as without a periodic box.
-    return Tuple(floor_to_int.(offset_coords ./ cell_size)) .+ 2
-end
-
-@inline function periodic_cell_index(cell_index, ::PeriodicBox, n_cells,
-                                     cell_list::FullGridCellList)
-    # 2-based modulo to match the indexing of the periodic box explained above.
-    return mod.(cell_index .- 2, n_cells) .+ 2
+    return Tuple(floor_to_int.((coords .- cell_list.min_corner) ./ cell_size) .+ 1)
 end
 
 function Base.empty!(cell_list::FullGridCellList)
@@ -189,7 +184,7 @@ function copy_cell_list(cell_list::FullGridCellList, search_radius, periodic_box
     (; min_corner, max_corner) = cell_list
     return FullGridCellList(; min_corner, max_corner, search_radius,
                             backend = typeof(cell_list.cells),
-                            max_points_per_cell = max_points_per_cell(cell_list.cells))
+                            max_points_per_cell = max_inner_length(cell_list.cells, 100))
 end
 
 @inline function check_cell_bounds(cell_list::FullGridCellList{<:DynamicVectorOfVectors{<:Any,
