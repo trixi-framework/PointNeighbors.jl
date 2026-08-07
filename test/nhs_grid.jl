@@ -82,6 +82,72 @@
         @test PointNeighbors.cell_coords(coords3, nhs) == (typemax(Int), typemin(Int)) .+ 1
     end
 
+    @testset "Mixed Coordinate and Search Radius Types" begin
+        # Large absolute coordinates ensure that converting the coordinates themselves to
+        # Float32 would lose the particle separation. Cell-local coordinates preserve it.
+        coordinates = [1.0e12 1.0e12+0.75 1.0e12+2.0
+                       -1.0e12 -1.0e12 -1.0e12]
+        cell_list = FullGridCellList(min_corner = [1.0e12 - 2, -1.0e12 - 2],
+                                     max_corner = [1.0e12 + 4, -1.0e12 + 2],
+                                     search_radius = 1.0f0)
+        nhs = GridNeighborhoodSearch{2}(search_radius = 1.0f0,
+                                        n_points = size(coordinates, 2),
+                                        cell_list = cell_list,
+                                        update_strategy = ParallelUpdate())
+
+        initialize!(nhs, coordinates, coordinates)
+
+        @test eltype(nhs.relative_coords) == Float32
+        @test nhs.relative_coords[:, 2] - nhs.relative_coords[:, 1] ==
+              Float32[0.75, 0.0]
+
+        neighbors = Int[]
+        position_differences = Any[]
+        foreach_neighbor(coordinates, coordinates, nhs, 1) do i, j, pos_diff, distance
+            push!(neighbors, j)
+            push!(position_differences, pos_diff)
+        end
+
+        permutation = sortperm(neighbors)
+        @test neighbors[permutation] == [1, 2]
+        @test all(eltype(pos_diff) == Float32 for pos_diff in position_differences)
+        @test position_differences[permutation] == [[0.0f0, 0.0f0],
+                                                    [-0.75f0, 0.0f0]]
+
+        # Updating also refreshes the stored cell-local coordinates.
+        moved_coordinates = copy(coordinates)
+        moved_coordinates[1, 2] = moved_coordinates[1, 1] + 1.5
+        update!(nhs, moved_coordinates, moved_coordinates)
+
+        @test nhs.relative_coords[:, 2] - nhs.relative_coords[:, 1] ==
+              Float32[0.5, 0.0]
+
+        empty!(neighbors)
+        foreach_neighbor((i, j, pos_diff, distance) -> push!(neighbors, j),
+                         moved_coordinates, moved_coordinates, nhs, 1)
+        @test neighbors == [1]
+
+        # Cell-local differences also work across a periodic boundary.
+        periodic_coordinates = [0.95 0.01 0.09 0.5
+                                0.5 0.5 0.5 0.5]
+        periodic_box = PeriodicBox(min_corner = Float32[0, 0],
+                                   max_corner = Float32[1, 1])
+        periodic_cell_list = FullGridCellList(min_corner = periodic_box.min_corner,
+                                              max_corner = periodic_box.max_corner,
+                                              search_radius = 0.2f0)
+        periodic_nhs = GridNeighborhoodSearch{2}(search_radius = 0.2f0,
+                                                 n_points = 4,
+                                                 periodic_box = periodic_box,
+                                                 cell_list = periodic_cell_list,
+                                                 update_strategy = ParallelUpdate())
+        initialize!(periodic_nhs, periodic_coordinates, periodic_coordinates)
+
+        empty!(neighbors)
+        foreach_neighbor((i, j, pos_diff, distance) -> push!(neighbors, j),
+                         periodic_coordinates, periodic_coordinates, periodic_nhs, 1)
+        @test sort(neighbors) == [1, 2, 3]
+    end
+
     @testset "Rectangular Point Cloud 2D" begin
         #### Setup
         # Rectangle of equidistantly spaced points
