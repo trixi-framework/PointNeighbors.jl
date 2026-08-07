@@ -507,7 +507,26 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Paralle
     end
 
     point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
-    update!(neighborhood_search.cell_list.cells, point_to_cell)
+    sort!(neighborhood_search.cell_list.cells.values, by = p -> (point_to_cell(p), p))
+    # if Array(neighborhood_search.cell_list.cells.values) != 1:length(neighborhood_search.cell_list.cells.values)
+    #     error()
+    # end
+
+    n_particles_per_cell = KernelAbstractions.allocate(parallelization_backend, Int, neighborhood_search.cell_list.cells.n_bins[])
+    n_particles_per_cell .= 0
+    @threaded parallelization_backend for particle in axes(y, 2)
+        @inbounds Atomix.@atomic n_particles_per_cell[point_to_cell(particle)] += 1
+    end
+
+    # TODO avoid allocations
+    neighborhood_search.cell_list.cells.first_bin_index[2:end] .= cumsum(n_particles_per_cell) .+ 1
+
+    # nhs_cpu = Adapt.adapt(Array, neighborhood_search)
+    # y_cpu = Adapt.adapt(Array, y)
+    # point_to_cell = point_to_cell_wrapper(nhs_cpu, y_cpu)
+    # update!(nhs_cpu.cell_list.cells, point_to_cell)
+    # copyto!(neighborhood_search.cell_list.cells.values, nhs_cpu.cell_list.cells.values)
+    # copyto!(neighborhood_search.cell_list.cells.first_bin_index, nhs_cpu.cell_list.cells.first_bin_index)
 end
 
 function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
@@ -674,6 +693,8 @@ end
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
     (; periodic_box) = nhs
+
+    # search_radius *= 1.02
 
     cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box)
 

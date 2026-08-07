@@ -271,13 +271,14 @@ end
     start = first_bin_index[i]
     stop = first_bin_index[i + 1] - 1
     return view(values, start:stop)
+    # return start:stop
 end
 
 @inline function update!(vov::CompactVectorOfVectors, f)
     (; values, first_bin_index, n_bins) = vov
 
     # TODO figure out how to do that fast and on the GPU
-    sort!(values, by = f)
+    sort!(values, by = p -> (f(p), p))
 
     # TODO figure out how to do that fast and on the GPU
     n_particles_per_cell = zeros(n_bins[])
