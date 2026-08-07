@@ -46,6 +46,12 @@ since not sorting makes our implementation a lot faster (although less paralleli
     - [`SerialIncrementalUpdate()`](@ref)
     - [`SerialUpdate()`](@ref)
 
+When the coordinate and search-radius element types differ, [`ParallelUpdate()`](@ref)
+stores cell-local particle coordinates using the search-radius element type. Queries can then
+compute distances without loading or operating on the higher-precision coordinates in the
+neighbor loop. This optimization is only available with `ParallelUpdate`; all other update
+strategies use the original coordinates during queries.
+
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
   "GriSPy: A Python package for fixed-radius nearest neighbors search".
@@ -63,12 +69,13 @@ since not sorting makes our implementation a lot faster (although less paralleli
     to avoid the use of double precision values (for example when working with GPUs).
     When using a `periodic_box`, its type must match the type of the `search_radius`.
 """
-struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighborhoodSearch
+struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB, RC} <: AbstractNeighborhoodSearch
     cell_list       :: CL
     search_radius   :: ELTYPE
     periodic_box    :: PB
     n_cells         :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
     cell_size       :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
+    relative_coords :: RC                    # Point coordinates relative to their cell
     update_buffer   :: UB                    # Multithreaded buffer for `update!`
     update_strategy :: US
 end
@@ -118,8 +125,11 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         end
     end
 
+    relative_coords = create_relative_coords(update_strategy, search_radius, NDIMS,
+                                             n_points)
+
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
-                                  cell_size, update_buffer, update_strategy)
+                                  cell_size, relative_coords, update_buffer, update_strategy)
 end
 
 @inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -211,6 +221,13 @@ end
     push!(update_buffer, index_type(cell_list)[])
 end
 
+# Only `ParallelUpdate` uses relative coordinates.
+@inline create_relative_coords(update_strategy, search_radius, ndims, n_points) = nothing
+
+@inline function create_relative_coords(::ParallelUpdate, search_radius, ndims, n_points)
+    return Matrix{typeof(search_radius)}(undef, ndims, n_points)
+end
+
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
@@ -277,7 +294,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                       ParallelUpdate},
                           y::AbstractMatrix; parallelization_backend = default_backend(y),
                           eachindex_y = axes(y, 2))
-    (; cell_list) = neighborhood_search
+    (; cell_list, relative_coords) = neighborhood_search
 
     empty!(cell_list)
 
@@ -296,6 +313,14 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
 
         # Add point to corresponding cell
         push_cell_atomic!(cell_list, cell, point)
+
+        # Store point coordinates relative to the cell corner to avoid loading Float64
+        # coordinates in the neighbor loop when the search radius is Float32 (on GPUs).
+        point_relative_coords = relative_cell_coords(point_coords, neighborhood_search)
+
+        for dimension in 1:ndims(neighborhood_search)
+            @inbounds relative_coords[dimension, point] = point_relative_coords[dimension]
+        end
     end
 
     return neighborhood_search
@@ -575,6 +600,7 @@ end
                                                       search_radius, init)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
+    query_coords = relative_query_coords(point_coords, neighbor_coords, neighborhood_search)
     reduced = init
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
@@ -593,12 +619,9 @@ end
 
             # Making the following `@inbounds` is not safe because we don't know
             # if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_point_coords = extract_svector(neighbor_coords,
-                                                    Val(ndims(neighborhood_search)),
-                                                    neighbor)
-
-            pos_diff = convert.(eltype(neighborhood_search),
-                                point_coords - neighbor_point_coords)
+            pos_diff = neighbor_position_difference(query_coords, neighbor_coords,
+                                                    neighborhood_search, neighbor,
+                                                    cell, neighbor_cell)
             distance2 = dot(pos_diff, pos_diff)
 
             (pos_diff,
@@ -609,8 +632,8 @@ end
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
                 if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
-                                   neighborhood_search)
+                   check_collision_at_point(neighbor_cell_, neighbor_coords, neighbor,
+                                            cell_list, neighborhood_search)
                     continue
                 end
 
@@ -625,6 +648,87 @@ end
     end
 
     return reduced
+end
+
+@inline function relative_query_coords(point_coords, neighbor_coords,
+                                       neighborhood_search::GridNeighborhoodSearch)
+    return point_coords
+end
+
+@inline function relative_query_coords(point_coords, neighbor_coords,
+                                       neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                  ParallelUpdate})
+    # Note that this loads higher-precision coordinates, which is unnecessary when we want
+    # to find neighbors of a point that is stored in the same NHS (self-interaction),
+    # since we already have the relative coordinates of that point.
+    # However, since we want to be able to find neighbors at any query position,
+    # we accept this higher-precision operation here outside of the neighbor loop.
+    # It is outside of the neighbor loop, so it's only performed once per thread.
+    return relative_cell_coords(point_coords, neighborhood_search)
+end
+
+@inline function relative_query_coords(point_coords,
+                                       neighbor_coords::AbstractMatrix{ELTYPE},
+                                       neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                   ParallelUpdate,
+                                                                                   <:Any,
+                                                                                   ELTYPE}) where {ELTYPE}
+    # When coordinates and search radius have the same type, we don't use cell-relative
+    # coordinates.
+    return point_coords
+end
+
+@propagate_inbounds function neighbor_position_difference(point_coords,
+                                                          neighbor_coords::AbstractMatrix{ELTYPE},
+                                                          neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                                     ParallelUpdate,
+                                                                                                     <:Any,
+                                                                                                     ELTYPE},
+                                                          neighbor, cell,
+                                                          neighbor_cell) where {ELTYPE}
+    # When coordinates and search radius have the same type, we can just compute and return
+    # the difference of the original coordinates.
+    neighbor_point_coords = extract_svector(neighbor_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+
+    return point_coords - neighbor_point_coords
+end
+
+@propagate_inbounds function neighbor_position_difference(point_coords, neighbor_coords,
+                                                          neighborhood_search::GridNeighborhoodSearch,
+                                                          neighbor, cell, neighbor_cell)
+    # When coordinates and search radius have different types, we convert the position
+    # difference to the (lower-precision) search radius type as early as possible
+    # to avoid higher-precision operations.
+    neighbor_point_coords = extract_svector(neighbor_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+
+    return convert.(eltype(neighborhood_search), point_coords - neighbor_point_coords)
+end
+
+@propagate_inbounds function neighbor_position_difference(point_coords, neighbor_coords,
+                                                          neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                                     ParallelUpdate},
+                                                          neighbor, cell, neighbor_cell)
+    # When coordinates and search radius have different types and we are using
+    # `ParallelUpdate`, we can use the cell-relative coordinates of the query and neighbor
+    # point to avoid any higher-precision operations in the neighbor loop.
+    # Note that relative coordinates are only computed and stored with `ParallelUpdate`.
+    (; relative_coords, cell_size) = neighborhood_search
+
+    neighbor_point_coords = extract_svector(relative_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+    cell_offset = (cell .- neighbor_cell) .* cell_size
+
+    return point_coords - neighbor_point_coords + SVector(cell_offset)
+end
+
+@inline function check_collision_at_point(neighbor_cell, neighbor_coords, neighbor,
+                                          cell_list, neighborhood_search)
+    neighbor_point_coords = extract_svector(neighbor_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+    return check_collision(neighbor_cell, neighbor_point_coords, cell_list,
+                           neighborhood_search)
 end
 
 @inline function neighboring_cells(cell, neighborhood_search)
@@ -684,6 +788,24 @@ end
     (; cell_list, cell_size) = neighborhood_search
 
     return nonperiodic_cell_coords(coords, cell_list, cell_size)
+end
+
+@inline function relative_cell_coords(coords, neighborhood_search)
+    (; cell_list, cell_size) = neighborhood_search
+    cell = nonperiodic_cell_coords(coords, cell_list, cell_size)
+    corner = cell_corner(cell, cell_list, cell_size, eltype(coords))
+
+    return convert.(eltype(neighborhood_search), coords - corner)
+end
+
+@inline function cell_corner(cell, cell_list, cell_size, coordinate_eltype)
+    return SVector(cell .* convert.(coordinate_eltype, cell_size))
+end
+
+@inline function cell_corner(cell, cell_list::FullGridCellList, cell_size,
+                             coordinate_eltype)
+    converted_cell_size = convert.(coordinate_eltype, cell_size)
+    return cell_list.min_corner + SVector((cell .- 1) .* converted_cell_size)
 end
 
 @inline function nonperiodic_cell_coords(coords, cell_list, cell_size)
