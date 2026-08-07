@@ -270,8 +270,8 @@ end
 
     start = first_bin_index[i]
     stop = first_bin_index[i + 1] - 1
-    return view(values, start:stop)
-    # return start:stop
+    # return view(values, start:stop)
+    return start:stop
 end
 
 @inline function update!(vov::CompactVectorOfVectors, f)

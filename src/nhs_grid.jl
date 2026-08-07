@@ -284,8 +284,30 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Par
     resize!(cell_list.cells.values, size(y, 2))
     cell_list.cells.values .= eachindex_y
 
+    # point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
+    # update!(cell_list.cells, point_to_cell)
+
     point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
-    update!(cell_list.cells, point_to_cell)
+    sort!(neighborhood_search.cell_list.cells.values, by = p -> (point_to_cell(p), p))
+    # if Array(neighborhood_search.cell_list.cells.values) != 1:length(neighborhood_search.cell_list.cells.values)
+    #     error()
+    # end
+
+    n_particles_per_cell = similar(cell_list.cells.values, neighborhood_search.cell_list.cells.n_bins[])
+    n_particles_per_cell .= 0
+    @threaded parallelization_backend for particle in axes(y, 2)
+        @inbounds Atomix.@atomic n_particles_per_cell[point_to_cell(particle)] += 1
+    end
+
+    # TODO avoid allocations
+    neighborhood_search.cell_list.cells.first_bin_index[2:end] .= cumsum(n_particles_per_cell) .+ 1
+
+    # nhs_cpu = Adapt.adapt(Array, neighborhood_search)
+    # y_cpu = Adapt.adapt(Array, y)
+    # point_to_cell = point_to_cell_wrapper(nhs_cpu, y_cpu)
+    # update!(nhs_cpu.cell_list.cells, point_to_cell)
+    # copyto!(neighborhood_search.cell_list.cells.values, nhs_cpu.cell_list.cells.values)
+    # copyto!(neighborhood_search.cell_list.cells.first_bin_index, nhs_cpu.cell_list.cells.first_bin_index)
 
     return neighborhood_search
 end
@@ -522,36 +544,35 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
     initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
 end
 
-function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate,
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                      ParallelUpdate,
                                                                   <:FullGridCellList{<:CompactVectorOfVectors}},
-                      y::AbstractMatrix; parallelization_backend = default_backend(y),
-                      eachindex_y = axes(y, 2))
-    if eachindex_y != axes(y, 2)
-        # Incremental update doesn't support inactive points
-        error("this neighborhood search/update strategy does not support inactive points")
+                          y::AbstractMatrix; parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
+    (; cell_list, relative_coords) = neighborhood_search
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
     end
 
-    point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
-    sort!(neighborhood_search.cell_list.cells.values, by = p -> (point_to_cell(p), p))
-    # if Array(neighborhood_search.cell_list.cells.values) != 1:length(neighborhood_search.cell_list.cells.values)
-    #     error()
-    # end
+    @boundscheck checkbounds(y, eachindex_y)
 
-    n_particles_per_cell = KernelAbstractions.allocate(parallelization_backend, Int, neighborhood_search.cell_list.cells.n_bins[])
-    n_particles_per_cell .= 0
-    @threaded parallelization_backend for particle in axes(y, 2)
-        @inbounds Atomix.@atomic n_particles_per_cell[point_to_cell(particle)] += 1
+    @threaded parallelization_backend for point in eachindex_y
+        # Get cell index of the point's cell
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+
+        # Store point coordinates relative to the cell corner to avoid loading Float64
+        # coordinates in the neighbor loop when the search radius is Float32 (on GPUs).
+        point_relative_coords = relative_cell_coords(point_coords, neighborhood_search)
+
+        for dimension in 1:ndims(neighborhood_search)
+            @inbounds relative_coords[dimension, point] = point_relative_coords[dimension]
+        end
     end
 
-    # TODO avoid allocations
-    neighborhood_search.cell_list.cells.first_bin_index[2:end] .= cumsum(n_particles_per_cell) .+ 1
-
-    # nhs_cpu = Adapt.adapt(Array, neighborhood_search)
-    # y_cpu = Adapt.adapt(Array, y)
-    # point_to_cell = point_to_cell_wrapper(nhs_cpu, y_cpu)
-    # update!(nhs_cpu.cell_list.cells, point_to_cell)
-    # copyto!(neighborhood_search.cell_list.cells.values, nhs_cpu.cell_list.cells.values)
-    # copyto!(neighborhood_search.cell_list.cells.first_bin_index, nhs_cpu.cell_list.cells.first_bin_index)
+    return neighborhood_search
 end
 
 function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
