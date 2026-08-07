@@ -624,6 +624,16 @@ end
     query_coords = relative_query_coords(point_coords, neighbor_coords, neighborhood_search)
     reduced = init
 
+    # cell_blocks = CartesianIndices(ntuple(i -> (cell[i + 1] - 1):(cell[i + 1] + 1),
+    #                                       Val(ndims(neighborhood_search) - 1)))
+    # for cell_block in cell_blocks
+    #     cell_block_start = (cell[1] - 1, Tuple(cell_block)...)
+    #     cell_index = @inbounds PointNeighbors.cell_index(cell_list, cell_block_start)
+    #     start = @inbounds cell_list.cells.first_bin_index[cell_index]
+    #     stop = @inbounds cell_list.cells.first_bin_index[cell_index + 3] - 1
+
+    #     for neighbor in start:stop
+
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
 
@@ -652,11 +662,11 @@ end
             if distance2 <= search_radius^2
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
-                if cell_collision &&
-                   check_collision_at_point(neighbor_cell_, neighbor_coords, neighbor,
-                                            cell_list, neighborhood_search)
-                    continue
-                end
+                # if cell_collision &&
+                #    check_collision_at_point(neighbor_cell_, neighbor_coords, neighbor,
+                #                             cell_list, neighborhood_search)
+                #     continue
+                # end
 
                 distance = sqrt(distance2)
 
