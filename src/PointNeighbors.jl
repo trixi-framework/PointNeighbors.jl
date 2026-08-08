@@ -9,6 +9,7 @@ using GPUArraysCore: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
 using Polyester: Polyester
+using SIMD: SIMD
 @reexport using StaticArrays: SVector
 
 include("util.jl")
