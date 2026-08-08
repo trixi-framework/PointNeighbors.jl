@@ -640,6 +640,110 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
            coords[hash] != PointNeighbors.coordinates_flattened(neighbor_cell)
 end
 
+@inline function mapreduce_neighbor_unsafe(f, op, system_coords, neighbor_coords,
+                                           neighborhood_search::GridNeighborhoodSearch{3,
+                                                                                       ParallelUpdate,
+                                                                                       <:FullGridCellList{<:CompactVectorOfVectors},
+                                                                                       Float32,
+                                                                                       Nothing},
+                                           point; init,
+                                           search_radius = search_radius(neighborhood_search))
+    point_coords = @inbounds extract_svector(system_coords, Val(3), point)
+
+    if system_coords === neighbor_coords
+        # When both coordinate arrays are the same, the query point belongs to the
+        # coordinate set used to initialize the neighborhood search,
+        # so its stored cell-relative coordinates can be loaded directly.
+        @inbounds mapreduce_neighbor_inner_self(f, op, neighbor_coords, neighborhood_search,
+                                                point, point_coords, search_radius, init)
+    else
+        @inbounds mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search,
+                                           point, point_coords, search_radius, init)
+    end
+end
+
+@propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
+                                                      neighborhood_search::GridNeighborhoodSearch{3,
+                                                                                                  ParallelUpdate,
+                                                                                                  <:FullGridCellList{<:CompactVectorOfVectors},
+                                                                                                  Float32,
+                                                                                                  Nothing},
+                                                      point, point_coords,
+                                                      search_radius, init)
+    cell = cell_coords(point_coords, neighborhood_search)
+    query_coords = relative_cell_coords(point_coords, neighborhood_search)
+
+    mapreduce_neighbor_inner_compact(f, op, neighborhood_search, point, cell,
+                                     query_coords, cell[1], search_radius, init)
+end
+
+@propagate_inbounds function mapreduce_neighbor_inner_self(f, op, neighbor_coords,
+                                                           neighborhood_search::GridNeighborhoodSearch{3,
+                                                                                                       ParallelUpdate,
+                                                                                                       <:FullGridCellList{<:CompactVectorOfVectors},
+                                                                                                       Float32,
+                                                                                                       Nothing},
+                                                           point, point_coords,
+                                                           search_radius, init)
+    (; relative_coords) = neighborhood_search     
+    cell = cell_coords(point_coords, neighborhood_search)
+
+    @boundscheck checkbounds(relative_coords, 4, point)
+    query_poscell = SIMD.vloada(SIMD.Vec{4, eltype(relative_coords)},
+                                pointer(relative_coords, 4 * (point - 1) + 1))
+    pos_a_x, pos_a_y, pos_a_z, encoded_cell_a = Tuple(query_poscell)
+    cell_code_a = reinterpret(UInt32, encoded_cell_a)
+    cell_a_x = Int32(cell_code_a >> 19)
+    query_coords = SVector(pos_a_x, pos_a_y, pos_a_z)
+
+    mapreduce_neighbor_inner_compact(f, op, neighborhood_search, point, cell,
+                                     query_coords, cell_a_x, search_radius, init)
+end
+
+@propagate_inbounds function mapreduce_neighbor_inner_compact(f, op, neighborhood_search,
+                                                              point, cell, query_coords,
+                                                              cell_a_x, search_radius, init)
+    (; cell_list, cell_size, relative_coords) = neighborhood_search
+    (; first_bin_index) = cell_list.cells
+    reduced = init
+
+    for cell_z in (cell[3] - 1):(cell[3] + 1),
+        cell_y in (cell[2] - 1):(cell[2] + 1)
+        block_start = (cell[1] - 1, cell_y, cell_z)
+        cell_index_ = cell_index(cell_list, block_start)
+        start = first_bin_index[cell_index_]
+        stop = first_bin_index[cell_index_ + 3] - 1
+
+        offset_y = (cell[2] - cell_y) * cell_size[2]
+        offset_z = (cell[3] - cell_z) * cell_size[3]
+
+        for neighbor in start:stop
+            neighbor_poscell = SIMD.vloada(SIMD.Vec{4, eltype(relative_coords)},
+                                           pointer(relative_coords, 4 * (neighbor - 1) + 1))
+            pos_b_x, pos_b_y, pos_b_z, encoded_cell_b = Tuple(neighbor_poscell)
+            cell_code_b = reinterpret(UInt32, encoded_cell_b)
+            cell_b_x = Int32(cell_code_b >> 19)
+
+            pos_diff = SVector(query_coords[1] - pos_b_x +
+                               (cell_a_x - cell_b_x) * cell_size[1],
+                               query_coords[2] - pos_b_y + offset_y,
+                               query_coords[3] - pos_b_z + offset_z)
+            distance2 = dot(pos_diff, pos_diff)
+
+            if distance2 <= search_radius^2
+                distance = @fastmath sqrt(distance2)
+
+                # Inline to avoid loss of performance compared to not using this function
+                # and unrolling everything.
+                value = @inline f(point, neighbor, pos_diff, distance)
+                reduced = @inline op(reduced, value)
+            end
+        end
+    end
+
+    return reduced
+end
+
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
 # Note that calling this function with `@inbounds` is not safe.
@@ -652,16 +756,6 @@ end
     cell = cell_coords(point_coords, neighborhood_search)
     query_coords = relative_query_coords(point_coords, neighbor_coords, neighborhood_search)
     reduced = init
-
-    # cell_blocks = CartesianIndices(ntuple(i -> (cell[i + 1] - 1):(cell[i + 1] + 1),
-    #                                       Val(ndims(neighborhood_search) - 1)))
-    # for cell_block in cell_blocks
-    #     cell_block_start = (cell[1] - 1, Tuple(cell_block)...)
-    #     cell_index = @inbounds PointNeighbors.cell_index(cell_list, cell_block_start)
-    #     start = @inbounds cell_list.cells.first_bin_index[cell_index]
-    #     stop = @inbounds cell_list.cells.first_bin_index[cell_index + 3] - 1
-
-    #     for neighbor in start:stop
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
         neighbor_cell = Tuple(neighbor_cell_)
