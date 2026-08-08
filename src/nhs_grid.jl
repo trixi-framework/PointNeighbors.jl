@@ -581,9 +581,15 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
 
     @boundscheck checkbounds(y, eachindex_y)
 
+    point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
+    n_particles_per_cell = similar(cell_list.cells.values, cell_list.cells.n_bins[])
+    n_particles_per_cell .= 0
+
     @threaded parallelization_backend for point in eachindex_y
         # Get cell index of the point's cell
         point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+
+        @inbounds Atomix.@atomic n_particles_per_cell[point_to_cell(point)] += 1
 
         # Store point coordinates relative to the cell corner to avoid loading Float64
         # coordinates in the neighbor loop when the search radius is Float32 (on GPUs).
@@ -592,6 +598,8 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
         store_relative_coords!(relative_coords, point_relative_coords, relative_cell,
                                point, Val(ndims(neighborhood_search)))
     end
+
+    cell_list.cells.first_bin_index[2:end] .= cumsum(n_particles_per_cell) .+ 1
 
     return neighborhood_search
 end
