@@ -225,7 +225,30 @@ end
 @inline create_relative_coords(update_strategy, search_radius, ndims, n_points) = nothing
 
 @inline function create_relative_coords(::ParallelUpdate, search_radius, ndims, n_points)
-    return Matrix{typeof(search_radius)}(undef, ndims, n_points)
+    # Benchmark-only DualSPHysics-style `poscell` layout in 3D: the first three lanes
+    # contain cell-relative coordinates and the fourth Float32 lane contains packed
+    # 13/10/9-bit cell coordinates. Besides avoiding Float64 loads in interaction
+    # kernels, four lanes make every particle record a naturally aligned 16-byte load.
+    n_relative_coords = ifelse(ndims == 3 && search_radius isa Float32, 4, ndims)
+    return Matrix{typeof(search_radius)}(undef, n_relative_coords, n_points)
+end
+
+@inline function store_relative_coords!(relative_coords, point_relative_coords,
+                                        relative_cell, point, ::Val{NDIMS}) where {NDIMS}
+    for dimension in 1:NDIMS
+        @inbounds relative_coords[dimension, point] = point_relative_coords[dimension]
+    end
+
+    if NDIMS == 3 && eltype(relative_coords) === Float32
+        # Same cell encoding as DualSPHysics' default PSCEL_CONFIG_13_10_9.
+        cell_x = UInt32(relative_cell[1] & 0x1fff)
+        cell_y = UInt32(relative_cell[2] & 0x03ff)
+        cell_z = UInt32(relative_cell[3] & 0x01ff)
+        cell_code = (cell_x << 19) | (cell_y << 9) | cell_z
+        @inbounds relative_coords[4, point] = reinterpret(Float32, cell_code)
+    end
+
+    return relative_coords
 end
 
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
@@ -288,7 +311,7 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, Par
     # update!(cell_list.cells, point_to_cell)
 
     point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
-    sort!(neighborhood_search.cell_list.cells.values, by = p -> (point_to_cell(p), p))
+    # sort!(neighborhood_search.cell_list.cells.values, by = p -> (point_to_cell(p), p))
     # if Array(neighborhood_search.cell_list.cells.values) != 1:length(neighborhood_search.cell_list.cells.values)
     #     error()
     # end
@@ -339,10 +362,9 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
         # Store point coordinates relative to the cell corner to avoid loading Float64
         # coordinates in the neighbor loop when the search radius is Float32 (on GPUs).
         point_relative_coords = relative_cell_coords(point_coords, neighborhood_search)
-
-        for dimension in 1:ndims(neighborhood_search)
-            @inbounds relative_coords[dimension, point] = point_relative_coords[dimension]
-        end
+        relative_cell = nonperiodic_cell_coords(point_coords, neighborhood_search)
+        store_relative_coords!(relative_coords, point_relative_coords, relative_cell,
+                               point, Val(ndims(neighborhood_search)))
     end
 
     return neighborhood_search
@@ -566,10 +588,9 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
         # Store point coordinates relative to the cell corner to avoid loading Float64
         # coordinates in the neighbor loop when the search radius is Float32 (on GPUs).
         point_relative_coords = relative_cell_coords(point_coords, neighborhood_search)
-
-        for dimension in 1:ndims(neighborhood_search)
-            @inbounds relative_coords[dimension, point] = point_relative_coords[dimension]
-        end
+        relative_cell = nonperiodic_cell_coords(point_coords, neighborhood_search)
+        store_relative_coords!(relative_coords, point_relative_coords, relative_cell,
+                               point, Val(ndims(neighborhood_search)))
     end
 
     return neighborhood_search
