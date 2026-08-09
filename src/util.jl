@@ -163,7 +163,7 @@ end
 
     # Call the generic kernel that is defined below, which only calls a function with
     # the global GPU index.
-    generic_kernel(backend)(ndrange = ndrange) do i
+    generic_kernel(backend)(ndrange = ndrange, workgroupsize = 128) do i
         @inbounds @inline f(iterator[indices[i]])
     end
 

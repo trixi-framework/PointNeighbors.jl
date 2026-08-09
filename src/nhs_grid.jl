@@ -47,6 +47,12 @@ since not sorting makes our implementation a lot faster (although less paralleli
     - [`SerialIncrementalUpdate()`](@ref)
     - [`SerialUpdate()`](@ref)
 
+When the coordinate and search-radius element types differ, [`ParallelUpdate()`](@ref)
+stores cell-local particle coordinates using the search-radius element type. Queries can then
+compute distances without loading or operating on the higher-precision coordinates in the
+neighbor loop. This optimization is only available with `ParallelUpdate`; all other update
+strategies use the original coordinates during queries.
+
 ## References
 - M. Chalela, E. Sillero, L. Pereyra, M.A. Garcia, J.B. Cabral, M. Lares, M. Merchán.
   "GriSPy: A Python package for fixed-radius nearest neighbors search".
@@ -64,12 +70,13 @@ since not sorting makes our implementation a lot faster (although less paralleli
     to avoid the use of double precision values (for example when working with GPUs).
     When using a `periodic_box`, its type must match the type of the `search_radius`.
 """
-struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighborhoodSearch
+struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB, RC} <: AbstractNeighborhoodSearch
     cell_list       :: CL
     search_radius   :: ELTYPE
     periodic_box    :: PB
     n_cells         :: NTuple{NDIMS, Int}    # Required to calculate periodic cell index
     cell_size       :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
+    relative_coords :: RC                    # Point coordinates relative to their cell
     update_buffer   :: UB                    # Multithreaded buffer for `update!`
     update_strategy :: US
 end
@@ -124,8 +131,11 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         end
     end
 
+    relative_coords = create_relative_coords(update_strategy, search_radius, NDIMS,
+                                             n_points)
+
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
-                                  cell_size, update_buffer, update_strategy)
+                                  cell_size, relative_coords, update_buffer, update_strategy)
 end
 
 @inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -217,6 +227,36 @@ end
     push!(update_buffer, index_type(cell_list)[])
 end
 
+# Only `ParallelUpdate` uses relative coordinates.
+@inline create_relative_coords(update_strategy, search_radius, ndims, n_points) = nothing
+
+@inline function create_relative_coords(::ParallelUpdate, search_radius, ndims, n_points)
+    # Benchmark-only DualSPHysics-style `poscell` layout in 3D: the first three lanes
+    # contain cell-relative coordinates and the fourth Float32 lane contains packed
+    # 13/10/9-bit cell coordinates. Besides avoiding Float64 loads in interaction
+    # kernels, four lanes make every particle record a naturally aligned 16-byte load.
+    n_relative_coords = ifelse(ndims == 3 && search_radius isa Float32, 4, ndims)
+    return Matrix{typeof(search_radius)}(undef, n_relative_coords, n_points)
+end
+
+@inline function store_relative_coords!(relative_coords, point_relative_coords,
+                                        relative_cell, point, ::Val{NDIMS}) where {NDIMS}
+    for dimension in 1:NDIMS
+        @inbounds relative_coords[dimension, point] = point_relative_coords[dimension]
+    end
+
+    if NDIMS == 3 && eltype(relative_coords) === Float32
+        # Same cell encoding as DualSPHysics' default PSCEL_CONFIG_13_10_9.
+        cell_x = UInt32(relative_cell[1] & 0x1fff)
+        cell_y = UInt32(relative_cell[2] & 0x03ff)
+        cell_z = UInt32(relative_cell[3] & 0x01ff)
+        cell_code = (cell_x << 19) | (cell_y << 9) | cell_z
+        @inbounds relative_coords[4, point] = reinterpret(Float32, cell_code)
+    end
+
+    return relative_coords
+end
+
 function initialize!(neighborhood_search::GridNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
@@ -252,11 +292,60 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch, y::Abstra
     return neighborhood_search
 end
 
+function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any, ParallelUpdate,
+                                                                      <:FullGridCellList{<:CompactVectorOfVectors}},
+                          y::AbstractMatrix;
+                          parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
+    (; cell_list) = neighborhood_search
+
+    if eachindex_y != axes(y, 2)
+        # Incremental update doesn't support inactive points
+        error("this neighborhood search/update strategy does not support inactive points")
+    end
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    resize!(cell_list.cells.values, size(y, 2))
+    cell_list.cells.values .= eachindex_y
+
+    # point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
+    # update!(cell_list.cells, point_to_cell)
+
+    point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
+    # sort!(neighborhood_search.cell_list.cells.values, by = p -> (point_to_cell(p), p))
+    # if Array(neighborhood_search.cell_list.cells.values) != 1:length(neighborhood_search.cell_list.cells.values)
+    #     error()
+    # end
+
+    n_particles_per_cell = similar(cell_list.cells.values, neighborhood_search.cell_list.cells.n_bins[])
+    n_particles_per_cell .= 0
+    @threaded parallelization_backend for particle in axes(y, 2)
+        @inbounds Atomix.@atomic n_particles_per_cell[point_to_cell(particle)] += 1
+    end
+
+    # TODO avoid allocations
+    neighborhood_search.cell_list.cells.first_bin_index[2:end] .= cumsum(n_particles_per_cell) .+ 1
+
+    # nhs_cpu = Adapt.adapt(Array, neighborhood_search)
+    # y_cpu = Adapt.adapt(Array, y)
+    # point_to_cell = point_to_cell_wrapper(nhs_cpu, y_cpu)
+    # update!(nhs_cpu.cell_list.cells, point_to_cell)
+    # copyto!(neighborhood_search.cell_list.cells.values, nhs_cpu.cell_list.cells.values)
+    # copyto!(neighborhood_search.cell_list.cells.first_bin_index, nhs_cpu.cell_list.cells.first_bin_index)
+
+    return neighborhood_search
+end
+
 function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                                                                       ParallelUpdate},
                           y::AbstractMatrix; parallelization_backend = default_backend(y),
                           eachindex_y = axes(y, 2))
-    (; cell_list) = neighborhood_search
+    (; cell_list, relative_coords) = neighborhood_search
 
     empty!(cell_list)
 
@@ -275,6 +364,13 @@ function initialize_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
 
         # Add point to corresponding cell
         push_cell_atomic!(cell_list, cell, point)
+
+        # Store point coordinates relative to the cell corner to avoid loading Float64
+        # coordinates in the neighbor loop when the search radius is Float32 (on GPUs).
+        point_relative_coords = relative_cell_coords(point_coords, neighborhood_search)
+        relative_cell = nonperiodic_cell_coords(point_coords, neighborhood_search)
+        store_relative_coords!(relative_coords, point_relative_coords, relative_cell,
+                               point, Val(ndims(neighborhood_search)))
     end
 
     return neighborhood_search
@@ -476,6 +572,44 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
     initialize_grid!(neighborhood_search, y; parallelization_backend, eachindex_y)
 end
 
+function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                      ParallelUpdate,
+                                                                  <:FullGridCellList{<:CompactVectorOfVectors}},
+                          y::AbstractMatrix; parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
+    (; cell_list, relative_coords) = neighborhood_search
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @boundscheck checkbounds(y, eachindex_y)
+
+    point_to_cell = point_to_cell_wrapper(neighborhood_search, y)
+    n_particles_per_cell = similar(cell_list.cells.values, cell_list.cells.n_bins[])
+    n_particles_per_cell .= 0
+
+    @threaded parallelization_backend for point in eachindex_y
+        # Get cell index of the point's cell
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+
+        @inbounds Atomix.@atomic n_particles_per_cell[point_to_cell(point)] += 1
+
+        # Store point coordinates relative to the cell corner to avoid loading Float64
+        # coordinates in the neighbor loop when the search radius is Float32 (on GPUs).
+        point_relative_coords = relative_cell_coords(point_coords, neighborhood_search)
+        relative_cell = nonperiodic_cell_coords(point_coords, neighborhood_search)
+        store_relative_coords!(relative_coords, point_relative_coords, relative_cell,
+                               point, Val(ndims(neighborhood_search)))
+    end
+
+    cell_list.cells.first_bin_index[2:end] .= cumsum(n_particles_per_cell) .+ 1
+
+    return neighborhood_search
+end
+
 function check_collision(neighbor_cell_, neighbor_coords, cell_list, nhs)
     # This is only relevant for the `SpatialHashingCellList`
     return false
@@ -512,6 +646,108 @@ function check_cell_collision(neighbor_cell_::CartesianIndex,
            coords[hash] != PointNeighbors.coordinates_flattened(neighbor_cell)
 end
 
+@inline function mapreduce_neighbor_unsafe(f, op, system_coords, neighbor_coords,
+                                           neighborhood_search::GridNeighborhoodSearch{3,
+                                                                                       ParallelUpdate,
+                                                                                       <:FullGridCellList{<:CompactVectorOfVectors},
+                                                                                       Float32,
+                                                                                       Nothing},
+                                           point; init,
+                                           search_radius = search_radius(neighborhood_search))
+    if system_coords === neighbor_coords
+        # When both coordinate arrays are the same, the query point belongs to the
+        # coordinate set used to initialize the neighborhood search,
+        # so its stored cell-relative coordinates can be loaded directly.
+        @inbounds mapreduce_neighbor_inner_self(f, op, neighborhood_search, point,
+                                                search_radius, init)
+    else
+        point_coords = @inbounds extract_svector(system_coords, Val(3), point)
+        @inbounds mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search,
+                                           point, point_coords, search_radius, init)
+    end
+end
+
+@propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
+                                                      neighborhood_search::GridNeighborhoodSearch{3,
+                                                                                                  ParallelUpdate,
+                                                                                                  <:FullGridCellList{<:CompactVectorOfVectors},
+                                                                                                  Float32,
+                                                                                                  Nothing},
+                                                      point, point_coords,
+                                                      search_radius, init)
+    cell = cell_coords(point_coords, neighborhood_search)
+    query_coords = relative_cell_coords(point_coords, neighborhood_search)
+
+    mapreduce_neighbor_inner_compact(f, op, neighborhood_search, point, cell,
+                                     query_coords, search_radius, init)
+end
+
+@propagate_inbounds function mapreduce_neighbor_inner_self(f, op,
+                                                           neighborhood_search::GridNeighborhoodSearch{3,
+                                                                                                       ParallelUpdate,
+                                                                                                       <:FullGridCellList{<:CompactVectorOfVectors},
+                                                                                                       Float32,
+                                                                                                       Nothing},
+                                                           point, search_radius, init)
+    (; relative_coords) = neighborhood_search
+    @boundscheck checkbounds(relative_coords, 4, point)
+    query_poscell = SIMD.vloada(SIMD.Vec{4, eltype(relative_coords)},
+                                pointer(relative_coords, 4 * (point - 1) + 1))
+    pos_a_x, pos_a_y, pos_a_z, encoded_cell_a = Tuple(query_poscell)
+    cell_code_a = reinterpret(UInt32, encoded_cell_a)
+    cell = (Int32(cell_code_a >> 19),
+            Int32((cell_code_a >> 9) & 0x03ff),
+            Int32(cell_code_a & 0x01ff))
+    query_coords = SVector(pos_a_x, pos_a_y, pos_a_z)
+
+    mapreduce_neighbor_inner_compact(f, op, neighborhood_search, point, cell,
+                                     query_coords, search_radius, init)
+end
+
+@propagate_inbounds function mapreduce_neighbor_inner_compact(f, op, neighborhood_search,
+                                                              point, cell, query_coords,
+                                                              search_radius, init)
+    (; cell_list, cell_size, relative_coords) = neighborhood_search
+    (; first_bin_index) = cell_list.cells
+    reduced = init
+
+    for cell_z in (cell[3] - 1):(cell[3] + 1),
+        cell_y in (cell[2] - 1):(cell[2] + 1)
+        block_start = (cell[1] - 1, cell_y, cell_z)
+        cell_index_ = cell_index(cell_list, block_start)
+        start = first_bin_index[cell_index_]
+        stop = first_bin_index[cell_index_ + 3] - 1
+
+        offset_y = (cell[2] - cell_y) * cell_size[2]
+        offset_z = (cell[3] - cell_z) * cell_size[3]
+
+        for neighbor in start:stop
+            neighbor_poscell = SIMD.vloada(SIMD.Vec{4, eltype(relative_coords)},
+                                           pointer(relative_coords, 4 * (neighbor - 1) + 1))
+            pos_b_x, pos_b_y, pos_b_z, encoded_cell_b = Tuple(neighbor_poscell)
+            cell_code_b = reinterpret(UInt32, encoded_cell_b)
+            cell_b_x = Int32(cell_code_b >> 19)
+
+            pos_diff = SVector(query_coords[1] - pos_b_x +
+                               (cell[1] - cell_b_x) * cell_size[1],
+                               query_coords[2] - pos_b_y + offset_y,
+                               query_coords[3] - pos_b_z + offset_z)
+            distance2 = dot(pos_diff, pos_diff)
+
+            if distance2 <= search_radius^2
+                distance = @fastmath sqrt(distance2)
+
+                # Inline to avoid loss of performance compared to not using this function
+                # and unrolling everything.
+                value = @inline f(point, neighbor, pos_diff, distance)
+                reduced = @inline op(reduced, value)
+            end
+        end
+    end
+
+    return reduced
+end
+
 # Specialized version of the function in `neighborhood_search.jl`, which is faster
 # than looping over `eachneighbor`.
 # Note that calling this function with `@inbounds` is not safe.
@@ -522,6 +758,7 @@ end
                                                       search_radius, init)
     (; cell_list, periodic_box) = neighborhood_search
     cell = cell_coords(point_coords, neighborhood_search)
+    query_coords = relative_query_coords(point_coords, neighbor_coords, neighborhood_search)
     reduced = init
 
     for neighbor_cell_ in neighboring_cells(cell, neighborhood_search)
@@ -540,12 +777,9 @@ end
 
             # Making the following `@inbounds` is not safe because we don't know
             # if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_point_coords = extract_svector(neighbor_coords,
-                                                    Val(ndims(neighborhood_search)),
-                                                    neighbor)
-
-            pos_diff = convert.(eltype(neighborhood_search),
-                                point_coords - neighbor_point_coords)
+            pos_diff = neighbor_position_difference(query_coords, neighbor_coords,
+                                                    neighborhood_search, neighbor,
+                                                    cell, neighbor_cell)
             distance2 = dot(pos_diff, pos_diff)
 
             (pos_diff,
@@ -555,11 +789,11 @@ end
             if distance2 <= search_radius^2
                 # If this cell has a collision, check if this point belongs to this cell
                 # (only with `SpatialHashingCellList`).
-                if cell_collision &&
-                   check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
-                                   neighborhood_search)
-                    continue
-                end
+                # if cell_collision &&
+                #    check_collision_at_point(neighbor_cell_, neighbor_coords, neighbor,
+                #                             cell_list, neighborhood_search)
+                #     continue
+                # end
 
                 distance = sqrt(distance2)
 
@@ -572,6 +806,87 @@ end
     end
 
     return reduced
+end
+
+@inline function relative_query_coords(point_coords, neighbor_coords,
+                                       neighborhood_search::GridNeighborhoodSearch)
+    return point_coords
+end
+
+@inline function relative_query_coords(point_coords, neighbor_coords,
+                                       neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                  ParallelUpdate})
+    # Note that this loads higher-precision coordinates, which is unnecessary when we want
+    # to find neighbors of a point that is stored in the same NHS (self-interaction),
+    # since we already have the relative coordinates of that point.
+    # However, since we want to be able to find neighbors at any query position,
+    # we accept this higher-precision operation here outside of the neighbor loop.
+    # It is outside of the neighbor loop, so it's only performed once per thread.
+    return relative_cell_coords(point_coords, neighborhood_search)
+end
+
+@inline function relative_query_coords(point_coords,
+                                       neighbor_coords::AbstractMatrix{ELTYPE},
+                                       neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                   ParallelUpdate,
+                                                                                   <:Any,
+                                                                                   ELTYPE}) where {ELTYPE}
+    # When coordinates and search radius have the same type, we don't use cell-relative
+    # coordinates.
+    return point_coords
+end
+
+@propagate_inbounds function neighbor_position_difference(point_coords,
+                                                          neighbor_coords::AbstractMatrix{ELTYPE},
+                                                          neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                                     ParallelUpdate,
+                                                                                                     <:Any,
+                                                                                                     ELTYPE},
+                                                          neighbor, cell,
+                                                          neighbor_cell) where {ELTYPE}
+    # When coordinates and search radius have the same type, we can just compute and return
+    # the difference of the original coordinates.
+    neighbor_point_coords = extract_svector(neighbor_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+
+    return point_coords - neighbor_point_coords
+end
+
+@propagate_inbounds function neighbor_position_difference(point_coords, neighbor_coords,
+                                                          neighborhood_search::GridNeighborhoodSearch,
+                                                          neighbor, cell, neighbor_cell)
+    # When coordinates and search radius have different types, we convert the position
+    # difference to the (lower-precision) search radius type as early as possible
+    # to avoid higher-precision operations.
+    neighbor_point_coords = extract_svector(neighbor_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+
+    return convert.(eltype(neighborhood_search), point_coords - neighbor_point_coords)
+end
+
+@propagate_inbounds function neighbor_position_difference(point_coords, neighbor_coords,
+                                                          neighborhood_search::GridNeighborhoodSearch{<:Any,
+                                                                                                     ParallelUpdate},
+                                                          neighbor, cell, neighbor_cell)
+    # When coordinates and search radius have different types and we are using
+    # `ParallelUpdate`, we can use the cell-relative coordinates of the query and neighbor
+    # point to avoid any higher-precision operations in the neighbor loop.
+    # Note that relative coordinates are only computed and stored with `ParallelUpdate`.
+    (; relative_coords, cell_size) = neighborhood_search
+
+    neighbor_point_coords = extract_svector(relative_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+    cell_offset = (cell .- neighbor_cell) .* cell_size
+
+    return point_coords - neighbor_point_coords + SVector(cell_offset)
+end
+
+@inline function check_collision_at_point(neighbor_cell, neighbor_coords, neighbor,
+                                          cell_list, neighborhood_search)
+    neighbor_point_coords = extract_svector(neighbor_coords,
+                                            Val(ndims(neighborhood_search)), neighbor)
+    return check_collision(neighbor_cell, neighbor_point_coords, cell_list,
+                           neighborhood_search)
 end
 
 @inline function neighboring_cells(cell, neighborhood_search)
@@ -633,6 +948,24 @@ end
     return nonperiodic_cell_coords(coords, cell_list, cell_size)
 end
 
+@inline function relative_cell_coords(coords, neighborhood_search)
+    (; cell_list, cell_size) = neighborhood_search
+    cell = nonperiodic_cell_coords(coords, cell_list, cell_size)
+    corner = cell_corner(cell, cell_list, cell_size, eltype(coords))
+
+    return convert.(eltype(neighborhood_search), coords - corner)
+end
+
+@inline function cell_corner(cell, cell_list, cell_size, coordinate_eltype)
+    return SVector(cell .* convert.(coordinate_eltype, cell_size))
+end
+
+@inline function cell_corner(cell, cell_list::FullGridCellList, cell_size,
+                             coordinate_eltype)
+    converted_cell_size = convert.(coordinate_eltype, cell_size)
+    return cell_list.min_corner + SVector((cell .- 1) .* converted_cell_size)
+end
+
 @inline function nonperiodic_cell_coords(coords, cell_list, cell_size)
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
@@ -641,9 +974,20 @@ function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_
                                   eachpoint = 1:n_points)
     (; periodic_box) = nhs
 
+    # search_radius *= 1.02
+
     cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box)
 
     return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
                                               cell_list,
                                               update_strategy = nhs.update_strategy)
+end
+
+@inline function point_to_cell_wrapper(neighborhood_search, y)
+    @inline function point_to_cell(point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+        return PointNeighbors.cell_index(neighborhood_search.cell_list, cell)
+    end
+    return point_to_cell
 end
