@@ -648,15 +648,14 @@ end
                                                                                        Nothing},
                                            point; init,
                                            search_radius = search_radius(neighborhood_search))
-    point_coords = @inbounds extract_svector(system_coords, Val(3), point)
-
     if system_coords === neighbor_coords
         # When both coordinate arrays are the same, the query point belongs to the
         # coordinate set used to initialize the neighborhood search,
         # so its stored cell-relative coordinates can be loaded directly.
-        @inbounds mapreduce_neighbor_inner_self(f, op, neighbor_coords, neighborhood_search,
-                                                point, point_coords, search_radius, init)
+        @inbounds mapreduce_neighbor_inner_self(f, op, neighborhood_search, point,
+                                                search_radius, init)
     else
+        point_coords = @inbounds extract_svector(system_coords, Val(3), point)
         @inbounds mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search,
                                            point, point_coords, search_radius, init)
     end
@@ -674,35 +673,34 @@ end
     query_coords = relative_cell_coords(point_coords, neighborhood_search)
 
     mapreduce_neighbor_inner_compact(f, op, neighborhood_search, point, cell,
-                                     query_coords, cell[1], search_radius, init)
+                                     query_coords, search_radius, init)
 end
 
-@propagate_inbounds function mapreduce_neighbor_inner_self(f, op, neighbor_coords,
+@propagate_inbounds function mapreduce_neighbor_inner_self(f, op,
                                                            neighborhood_search::GridNeighborhoodSearch{3,
                                                                                                        ParallelUpdate,
                                                                                                        <:FullGridCellList{<:CompactVectorOfVectors},
                                                                                                        Float32,
                                                                                                        Nothing},
-                                                           point, point_coords,
-                                                           search_radius, init)
-    (; relative_coords) = neighborhood_search     
-    cell = cell_coords(point_coords, neighborhood_search)
-
+                                                           point, search_radius, init)
+    (; relative_coords) = neighborhood_search
     @boundscheck checkbounds(relative_coords, 4, point)
     query_poscell = SIMD.vloada(SIMD.Vec{4, eltype(relative_coords)},
                                 pointer(relative_coords, 4 * (point - 1) + 1))
     pos_a_x, pos_a_y, pos_a_z, encoded_cell_a = Tuple(query_poscell)
     cell_code_a = reinterpret(UInt32, encoded_cell_a)
-    cell_a_x = Int32(cell_code_a >> 19)
+    cell = (Int32(cell_code_a >> 19),
+            Int32((cell_code_a >> 9) & 0x03ff),
+            Int32(cell_code_a & 0x01ff))
     query_coords = SVector(pos_a_x, pos_a_y, pos_a_z)
 
     mapreduce_neighbor_inner_compact(f, op, neighborhood_search, point, cell,
-                                     query_coords, cell_a_x, search_radius, init)
+                                     query_coords, search_radius, init)
 end
 
 @propagate_inbounds function mapreduce_neighbor_inner_compact(f, op, neighborhood_search,
                                                               point, cell, query_coords,
-                                                              cell_a_x, search_radius, init)
+                                                              search_radius, init)
     (; cell_list, cell_size, relative_coords) = neighborhood_search
     (; first_bin_index) = cell_list.cells
     reduced = init
@@ -725,7 +723,7 @@ end
             cell_b_x = Int32(cell_code_b >> 19)
 
             pos_diff = SVector(query_coords[1] - pos_b_x +
-                               (cell_a_x - cell_b_x) * cell_size[1],
+                               (cell[1] - cell_b_x) * cell_size[1],
                                query_coords[2] - pos_b_y + offset_y,
                                query_coords[3] - pos_b_z + offset_z)
             distance2 = dot(pos_diff, pos_diff)
