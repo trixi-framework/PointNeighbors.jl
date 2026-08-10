@@ -24,20 +24,21 @@ function benchmark_n_body(neighborhood_search, coordinates_;
 
     nhs = PointNeighbors.Adapt.adapt(parallelization_backend, neighborhood_search_)
 
-    # This preserves the data type of `coordinates`, which makes it work for GPU types
-    mass = 1e10 * (rand!(similar(coordinates, size(coordinates, 2))) .+ 1)
-    G = 6.6743e-11
+    # Preserve the data type of `coordinates`.
+    ELTYPE = eltype(coordinates)
+    mass = 10^10 * (rand!(similar(coordinates, size(coordinates, 2))) .+ 1)
+    G = convert(ELTYPE, 6.6743e-11)
 
     dv = similar(coordinates)
 
     function compute_acceleration!(dv, coordinates, mass, G, neighborhood_search,
                                    parallelization_backend)
-        dv .= 0.0
+        dv .= 0
 
         foreach_point_neighbor(coordinates, coordinates, neighborhood_search;
                                parallelization_backend) do i, j, pos_diff, distance
             # Only consider particles with a distance > 0
-            distance < sqrt(eps()) && return
+            distance < sqrt(eps(ELTYPE)) && return
 
             dv_ = -G * mass[j] * pos_diff / distance^3
 
