@@ -23,7 +23,7 @@ function point_cloud(n_points_per_dimension, search_radius;
         # grid, 1.6 for a 600 x 200 grid and 1.26 for a 1200 x 400 grid.
         # This is consistent with the standard deviation in a vortex street simulation.
         # The benchmark results are also consistent with the timer output of the simulation.
-        point_coords += perturbation_factor_position * 0.05 * randn(eltype(point_coords))
+        point_coords += perturbation_factor_position * 0.05 * randn(typeof(point_coords))
 
         coordinates[:, i] .= point_coords
         cell_coords[i] = PointNeighbors.nonperiodic_cell_coords(point_coords, nothing,
