@@ -26,7 +26,8 @@ See also
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            and [`benchmark_tlsph`](@ref).
+                            [`benchmark_tlsph`](@ref), and
+                            [`benchmark_tlsph_deformation_grad`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
@@ -124,7 +125,8 @@ implementations:
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            and [`benchmark_tlsph`](@ref).
+                            [`benchmark_tlsph`](@ref), and
+                            [`benchmark_tlsph_deformation_grad`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
@@ -172,7 +174,8 @@ implementations:
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            and [`benchmark_tlsph`](@ref).
+                            [`benchmark_tlsph`](@ref), and
+                            [`benchmark_tlsph_deformation_grad`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
@@ -190,19 +193,10 @@ run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 """
 function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
                            parallelization_backend = PolyesterBackend(), kwargs...)
-    NDIMS = length(n_points_per_dimension)
-
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
-    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
-    grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
-                                             update_strategy = ParallelUpdate())
-    transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
-    neighborhood_searches = [grid_nhs
-                             PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
-                                                                  max_neighbors=128,
-                                                                  update_neighborhood_search = grid_nhs,
-                                                                  transpose_backend)]
+    grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension)
+    precomputed_nhs = create_precomputed_neighborhood_search(grid_nhs,
+                                                             parallelization_backend)
+    neighborhood_searches = (grid_nhs, precomputed_nhs)
 
     names = ["GridNeighborhoodSearch with FullGridCellList";;
              "PrecomputedNeighborhoodSearch"]
@@ -222,7 +216,8 @@ Use this function to benchmark and profile TrixiParticles.jl kernels.
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            and [`benchmark_tlsph`](@ref).
+                            [`benchmark_tlsph`](@ref), and
+                            [`benchmark_tlsph_deformation_grad`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
@@ -240,14 +235,7 @@ run_benchmark_full_grid(benchmark_n_body, (10, 10), 3)
 """
 function run_benchmark_full_grid(benchmark, n_points_per_dimension, iterations;
                                  parallelization_backend = PolyesterBackend(), kwargs...)
-    NDIMS = length(n_points_per_dimension)
-
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
-    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
-    grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
-                                             update_strategy = ParallelUpdate())
-    neighborhood_searches = [grid_nhs]
+    neighborhood_searches = (create_full_grid_neighborhood_search(n_points_per_dimension),)
 
     names = ["GridNeighborhoodSearch with FullGridCellList";;]
 
@@ -266,7 +254,8 @@ Use this function to benchmark and profile TrixiParticles.jl kernels.
 # Arguments
 - `benchmark`:              The benchmark function. See [`benchmark_count_neighbors`](@ref),
                             [`benchmark_n_body`](@ref), [`benchmark_wcsph`](@ref),
-                            and [`benchmark_tlsph`](@ref).
+                            [`benchmark_tlsph`](@ref), and
+                            [`benchmark_tlsph_deformation_grad`](@ref).
 - `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
                             of points. For example, use `(100, 100)` for a 2D benchmark or
                             `(10, 10, 10)` for a 3D benchmark.
@@ -284,23 +273,34 @@ run_benchmark_precomputed(benchmark_n_body, (10, 10), 3)
 """
 function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations;
                                    parallelization_backend = PolyesterBackend(), kwargs...)
-    NDIMS = length(n_points_per_dimension)
-
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
-    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
-    grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
-                                             update_strategy = ParallelUpdate())
-    transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
-    neighborhood_searches = [PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
-                                                                  max_neighbors=128,
-                                                                  update_neighborhood_search = grid_nhs,
-                                                                  transpose_backend)]
+    grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension)
+    precomputed_nhs = create_precomputed_neighborhood_search(grid_nhs,
+                                                             parallelization_backend)
+    neighborhood_searches = (precomputed_nhs,)
 
     names = ["PrecomputedNeighborhoodSearch";;]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
                   neighborhood_searches; names, parallelization_backend, kwargs...)
+end
+
+function create_full_grid_neighborhood_search(n_points_per_dimension)
+    NDIMS = length(n_points_per_dimension)
+
+    min_corner = 0.0f0 .* n_points_per_dimension
+    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
+    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
+    return GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
+                                         update_strategy = ParallelUpdate())
+end
+
+function create_precomputed_neighborhood_search(grid_nhs, parallelization_backend)
+    NDIMS = ndims(grid_nhs)
+    transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
+    return PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
+                                                max_neighbors = 128,
+                                                update_neighborhood_search = grid_nhs,
+                                                transpose_backend)
 end
 
 """
