@@ -37,7 +37,7 @@ end
 @inline Base.ndims(cell_list::FullGridCellList) = ndims(cell_list.linear_indices)
 
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
-    return (ParallelIncrementalUpdate, ParallelUpdate, SemiParallelUpdate,
+    return (ParallelUpdate, ParallelIncrementalUpdate, SemiParallelUpdate,
             SerialIncrementalUpdate, SerialUpdate)
 end
 
