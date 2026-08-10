@@ -17,6 +17,14 @@ function point_cloud(n_points_per_dimension, search_radius;
 
     for i in axes(coordinates, 2)
         point_coords = SVector(Tuple(cartesian_indices[i]))
+
+        # A standard deviation of 0.05 in the particle coordinates
+        # corresponds to a standard deviation of 2 in the number of neighbors for a 300 x 100
+        # grid, 1.6 for a 600 x 200 grid and 1.26 for a 1200 x 400 grid.
+        # This is consistent with the standard deviation in a vortex street simulation.
+        # The benchmark results are also consistent with the timer output of the simulation.
+        point_coords += perturbation_factor_position * 0.05 * randn(eltype(point_coords))
+
         coordinates[:, i] .= point_coords
         cell_coords[i] = PointNeighbors.nonperiodic_cell_coords(point_coords, nothing,
                                                                 cell_size) .+ 1
@@ -29,7 +37,7 @@ function point_cloud(n_points_per_dimension, search_radius;
     # The benchmark results are also consistent with the timer output of the simulation.
     perturb!(coordinates, perturbation_factor_position * 0.05)
 
-    # Sort by linear cell index
+    # Sort by the cell coordinates of the perturbed points.
     if sort
         if shuffle
             throw(ArgumentError("cannot sort and shuffle at the same time"))

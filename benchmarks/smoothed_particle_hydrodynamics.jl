@@ -179,7 +179,6 @@ function setup_tlsph(neighborhood_search, coordinates, parallelization_backend)
     semi = DummySemidiscretization(nhs, parallelization_backend, true)
 
     v = Adapt.adapt(parallelization_backend, copy(solid.velocity))
-    u = Adapt.adapt(parallelization_backend, copy(solid.coordinates))
     dv = zero(v)
 
     # Initialize the system

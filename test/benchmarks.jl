@@ -9,6 +9,8 @@
         @testset verbose=true "`benchmark_count_neighbors`" begin
             @trixi_test_nowarn run_benchmark_default(benchmark_count_neighbors, size, 2)
             @trixi_test_nowarn run_benchmark_gpu(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_full_grid(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_precomputed(benchmark_count_neighbors, size, 2)
         end
 
         @testset verbose=true "`benchmark_n_body`" begin

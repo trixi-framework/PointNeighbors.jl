@@ -63,6 +63,11 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
                        names = ["Neighborhood search $i"
                                 for i in 1:length(neighborhood_searches)]',
                        seed = 1, perturbation_factor_position = 1.0, shuffle = false)
+    if !(search_radius_factor isa AbstractFloat && isfinite(search_radius_factor) &&
+         search_radius_factor > 0)
+        throw(ArgumentError("`search_radius_factor` must be a finite, positive float"))
+    end
+
     # Multiply number of points in each iteration (roughly) by this factor
     scaling_factor = 4
     per_dimension_factor = scaling_factor^(1 / length(n_points_per_dimension))
