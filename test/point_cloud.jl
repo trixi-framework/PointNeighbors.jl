@@ -16,7 +16,7 @@ function point_cloud(n_points_per_dimension, search_radius;
     cell_size = ntuple(dim -> search_radius, n_dims)
 
     for i in axes(coordinates, 2)
-        point_coords = SVector(Tuple(cartesian_indices[i]))
+        point_coords = SVector(Float64.(Tuple(cartesian_indices[i])))
 
         # A standard deviation of 0.05 in the particle coordinates
         # corresponds to a standard deviation of 2 in the number of neighbors for a 300 x 100
