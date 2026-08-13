@@ -28,7 +28,7 @@
 | ------------- | ------------- | --- | :--: | :--: | :--: |
 | `GridNeighborhoodSearch` with `DictionaryCellList` | Grid-based NHS with Julia `Dict` backend | Infinite domain | Fast | Fast | ❌ |
 | `GridNeighborhoodSearch` with `FullGridCellList` | Grid-based NHS allocating all cells of the domain | Finite domain, but efficient memory layout for densely filled domain. | Faster | Fastest | ✅ |
-| `PrecomputedNeighborhoodSearch` | Precompute neighbor lists | Best for [TLSPH](https://trixi-framework.github.io/TrixiParticles.jl/stable/systems/total_lagrangian_sph/) without NHS updates. Not suitable for updates in every time step. | Fastest | Very slow | ❌ |
+| `PrecomputedNeighborhoodSearch` | Precompute neighbor lists | Best for [TLSPH](https://trixi-framework.github.io/TrixiParticles.jl/stable/systems/total_lagrangian_sph/) without NHS updates. Not suitable for updates in every time step. | Fastest | Very slow | ✅ |
 
 ## Benchmarks by Implementation
 
