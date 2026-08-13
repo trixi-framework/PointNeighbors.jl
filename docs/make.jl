@@ -33,8 +33,7 @@ end
 
 # Replace links to pictures in the README with relative paths to make it work in previews.
 copy_file("README.md",
-          "https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/" =>
-          "assets/benchmarks/",
+          "https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/" => "assets/benchmarks/",
           new_filename = "index.md")
 copy_file("AUTHORS.md",
           "in the [LICENSE.md](LICENSE.md) file" => "under [License](@ref)")
