@@ -41,7 +41,7 @@ function plot_benchmark!(p, n_particles_vec, times; kwargs...)
 
     plot!(p, n_particles_vec, n_particles_vec ./ times .* 1e-6;
           xaxis = :log, xticks = (n_particles_vec, xticks), linewidth = 2,
-          xlabel = "#particles", ylabel = "million particle updates per second",
+          xlabel = "#particles", ylabel = "million particles processed per second",
           legend = :outerright, size = (700, 350), dpi = 600, margin = 4 * Plots.mm,
           palette = palette(:tab10), kwargs...)
 end
