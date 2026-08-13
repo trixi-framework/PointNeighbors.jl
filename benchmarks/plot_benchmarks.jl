@@ -60,7 +60,8 @@ end
 # - AMD Instinct MI300A
 # - 2x AMD EPYC 9965 x 192 (2 sockets, 384 cores total)
 function plot_machines_wcsph()
-    n_particles_vec = [1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 65450827]
+    n_particles_vec = [
+        1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 65450827]
 
     # _, times = run_benchmark_full_grid(benchmark_wcsph, ...)
     times_h100_fp64 = [0.000337699; 0.000401732; 0.000480261; 0.000522277; 0.001476047; 0.006047292; 0.023739696; 0.099076906; 0.397741399;;]
@@ -72,7 +73,7 @@ function plot_machines_wcsph()
     times = hcat(times_5090_fp32,
                  times_h100_fp32,
                  times_h100_fp64,
-                 times_9965_384_fp64,)
+                 times_9965_384_fp64)
 
     names = ["Nvidia RTX 5090 FP32";;
              "Nvidia H100 FP32";;
@@ -84,7 +85,8 @@ function plot_machines_wcsph()
 end
 
 function plot_machines_tlsph()
-    n_particles_vec = [1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 65450827]
+    n_particles_vec = [
+        1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 65450827]
 
     # _, times = run_benchmark_precomputed(benchmark_tlsph, ...)
     times_h100_fp64 = [0.000221666; 0.000277315; 0.000313635; 0.000581413; 0.001525038; 0.006187035; 0.024247305; 0.097844431; 0.391956402;;]
@@ -93,7 +95,8 @@ function plot_machines_tlsph()
     # vectorization are not yet merged into main.
 
     # The RTX 5090 ran out of memory for the largest problem size with the precomputed NHS.
-    n_particles_5090 = [1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 42875000]
+    n_particles_5090 = [
+        1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 42875000]
     times_5090_fp32 = [0.000142039; 0.000204024; 0.000230026; 0.00025992; 0.001077512; 0.004450762; 0.017486176; 0.070821013;;]
     time_5090_fp32_42875000 = 0.182653038
     times_5090 = vcat(times_5090_fp32, [time_5090_fp32_42875000])
@@ -102,7 +105,7 @@ function plot_machines_tlsph()
                        title = "Structure Interaction Forces (TLSPH)")
 
     times = hcat(times_h100_fp32,
-                 times_h100_fp64,)
+                 times_h100_fp64)
 
     names = ["Nvidia H100 FP32";;
              "Nvidia H100 FP64";;]
@@ -111,7 +114,8 @@ function plot_machines_tlsph()
 end
 
 function plot_machines_tlsph_deformation_grad()
-    n_particles_vec = [1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 65450827]
+    n_particles_vec = [
+        1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 65450827]
 
     # _, times = run_benchmark_precomputed(benchmark_tlsph_deformation_grad, ...)
     times_h100 = [9.0017e-5; 0.000100993; 0.000106274; 0.000113377; 0.000363843; 0.001423087; 0.005557113; 0.022579336; 0.089809181;;]
@@ -120,14 +124,15 @@ function plot_machines_tlsph_deformation_grad()
     # The RTX 5090 ran out of memory for the largest problem size with the precomputed NHS.
     times_5090_fp32 = [5.6569e-5; 6.894e-5; 7.6672e-5; 8.3602e-5; 0.000313116; 0.00099187; 0.003671176; 0.015459844;;]
     time_5090_fp32_42875000 = 0.041021319
-    n_particles_5090 = [1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 42875000]
+    n_particles_5090 = [
+        1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064, 42875000]
     times_5090 = vcat(times_5090_fp32, [time_5090_fp32_42875000])
 
     p = plot_benchmark(n_particles_5090, times_5090; label = "Nvidia RTX 5090 FP32",
                        title = "Deformation Gradient (TLSPH)")
 
     times = hcat(times_h100_fp32,
-                 times_h100,)
+                 times_h100)
 
     names = ["Nvidia H100 FP32";;
              "Nvidia H100 FP64";;]
