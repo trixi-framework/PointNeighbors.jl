@@ -47,13 +47,13 @@ Benchmark of a full right-hand side evaluation of a WCSPH simulation (note the l
 ## Benchmarks by Machine
 
 Fluid interaction force performance for a Weakly Compressible SPH (WCSPH) simulation:
-![WCSPH benchmark by machine](https://trixi-framework.github.io/PointNeighbors.jl/dev/assets/benchmarks/machines_wcsph.png)
+![WCSPH benchmark by machine](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/machines_wcsph.png)
 
 Structure interaction force performance for a Total Lagrangian SPH (TLSPH) simulation:
-![TLSPH benchmark by machine](https://trixi-framework.github.io/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph.png)
+![TLSPH benchmark by machine](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph.png)
 
 Deformation gradient performance for a Total Lagrangian SPH (TLSPH) simulation:
-![TLSPH deformation gradient benchmark by machine](https://trixi-framework.github.io/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph_deformation_gradient.png)
+![TLSPH deformation gradient benchmark by machine](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph_deformation_gradient.png)
 
 ## Packages using PointNeighbors.jl
 
