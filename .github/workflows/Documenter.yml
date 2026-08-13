@@ -43,9 +43,8 @@ jobs:
         env:
           GKSwstype: '100'
         run: |
-          julia --project=test -e 'using Pkg; Pkg.instantiate()'
-          julia --project=test -e '
-            include("benchmarks/plot_machines.jl")
+          julia --project=docs/ -e '
+            include("benchmarks/plot_benchmarks.jl")
             output_directory = joinpath("docs", "src", "assets", "benchmarks")
             mkpath(output_directory)
             savefig(plot_machines_wcsph(),
