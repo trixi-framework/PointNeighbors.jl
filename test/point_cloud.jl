@@ -1,8 +1,9 @@
 using Random
 
 # Generate a rectangular point cloud, optionally with a perturbation in the point positions
-function point_cloud(n_points_per_dimension;
-                     seed = 1, perturbation_factor_position = 1.0)
+function point_cloud(n_points_per_dimension, search_radius;
+                     seed = 1, perturbation_factor_position = 1.0,
+                     shuffle = false, sort = !shuffle)
     # Fixed seed to ensure reproducibility
     Random.seed!(seed)
 
@@ -10,8 +11,23 @@ function point_cloud(n_points_per_dimension;
     coordinates = Array{Float64}(undef, n_dims, prod(n_points_per_dimension))
     cartesian_indices = CartesianIndices(n_points_per_dimension)
 
+    # Extra data structures for the sorting code below
+    cell_coords = Vector{SVector{n_dims, Int}}(undef, size(coordinates, 2))
+    cell_size = ntuple(dim -> search_radius, n_dims)
+
     for i in axes(coordinates, 2)
-        coordinates[:, i] .= Tuple(cartesian_indices[i])
+        point_coords = SVector(Float64.(Tuple(cartesian_indices[i])))
+
+        # A standard deviation of 0.05 in the particle coordinates
+        # corresponds to a standard deviation of 2 in the number of neighbors for a 300 x 100
+        # grid, 1.6 for a 600 x 200 grid and 1.26 for a 1200 x 400 grid.
+        # This is consistent with the standard deviation in a vortex street simulation.
+        # The benchmark results are also consistent with the timer output of the simulation.
+        point_coords += perturbation_factor_position * 0.05 * randn(typeof(point_coords))
+
+        coordinates[:, i] .= point_coords
+        cell_coords[i] = PointNeighbors.nonperiodic_cell_coords(point_coords, nothing,
+                                                                cell_size) .+ 1
     end
 
     # A standard deviation of 0.05 in the particle coordinates
@@ -20,6 +36,23 @@ function point_cloud(n_points_per_dimension;
     # This is consistent with the standard deviation in a vortex street simulation.
     # The benchmark results are also consistent with the timer output of the simulation.
     perturb!(coordinates, perturbation_factor_position * 0.05)
+
+    # Sort by the cell coordinates of the perturbed points.
+    if sort
+        if shuffle
+            throw(ArgumentError("cannot sort and shuffle at the same time"))
+        end
+
+        # Sort by Z index (with `using Morton`)
+        # permutation = sortperm(cell_coords, by = c -> cartesian2morton(c))
+
+        permutation = sortperm(cell_coords)
+        coordinates .= coordinates[:, permutation]
+    elseif shuffle
+        # Sort randomly
+        permutation = Random.shuffle(axes(coordinates, 2))
+        coordinates .= coordinates[:, permutation]
+    end
 
     return coordinates
 end

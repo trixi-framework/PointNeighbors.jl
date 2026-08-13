@@ -9,6 +9,8 @@
         @testset verbose=true "`benchmark_count_neighbors`" begin
             @trixi_test_nowarn run_benchmark_default(benchmark_count_neighbors, size, 2)
             @trixi_test_nowarn run_benchmark_gpu(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_full_grid(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_precomputed(benchmark_count_neighbors, size, 2)
         end
 
         @testset verbose=true "`benchmark_n_body`" begin
@@ -21,14 +23,22 @@
             @trixi_test_nowarn run_benchmark_gpu(benchmark_wcsph, size, 2)
         end
 
-        @testset verbose=true "`benchmark_wcsph_fp32`" begin
-            @trixi_test_nowarn run_benchmark_default(benchmark_wcsph_fp32, size, 2)
-            @trixi_test_nowarn run_benchmark_gpu(benchmark_wcsph_fp32, size, 2)
+        @testset verbose=true "`benchmark_wcsph` Float32" begin
+            @trixi_test_nowarn run_benchmark_default(benchmark_wcsph, size, 2,
+                                                     search_radius_factor = 3.0f0)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_wcsph, size, 2,
+                                                 search_radius_factor = 3.0f0)
         end
 
         @testset verbose=true "`benchmark_tlsph`" begin
             @trixi_test_nowarn run_benchmark_default(benchmark_tlsph, size, 2)
             @trixi_test_nowarn run_benchmark_gpu(benchmark_tlsph, size, 2)
+        end
+
+        @testset verbose=true "`benchmark_tlsph_deformation_grad`" begin
+            @trixi_test_nowarn run_benchmark_default(benchmark_tlsph_deformation_grad,
+                                                     size, 2)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_tlsph_deformation_grad, size, 2)
         end
 
         @testset verbose=true "`benchmark_initialize`" begin
