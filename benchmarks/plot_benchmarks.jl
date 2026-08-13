@@ -151,20 +151,20 @@ function plot_machines_tlsph_deformation_grad()
 end
 
 function plot_implementations_wcsph()
-    times = benchmark_runtimes.wcsph_w9_3475x_trivial
-    p = plot_benchmark(benchmark_runtimes.n_particles[1:length(times)], times;
-                       label = "TrivialNeighborhoodSearch")
-
-    times = hcat(benchmark_runtimes.wcsph_w9_3475x_dictionary,
+    times = hcat(benchmark_runtimes.wcsph_w9_3475x_precomputed,
                  benchmark_runtimes.wcsph_w9_3475x_fullgrid,
-                 benchmark_runtimes.wcsph_w9_3475x_precomputed)
+                 benchmark_runtimes.wcsph_w9_3475x_dictionary)
 
-    names = ["GridNeighborhoodSearch";;
+    names = ["PrecomputedNeighborhoodSearch";;
              "GNHS with FullGridCellList";;
-             "PrecomputedNeighborhoodSearch";;]
+             "GridNeighborhoodSearch";;]
 
-    plot_benchmark!(p, benchmark_runtimes.n_particles, times; label = names,
-                    title = "WCSPH on Intel Xeon W9-3475X (x36)")
+    p = plot_benchmark(benchmark_runtimes.n_particles, times; label = names,
+                       title = "WCSPH on Intel Xeon W9-3475X (x36)")
+
+    times = benchmark_runtimes.wcsph_w9_3475x_trivial
+    plot_benchmark!(p, benchmark_runtimes.n_particles[1:length(times)], times;
+                    label = "TrivialNeighborhoodSearch")
 end
 
 function plot_update_strategies()
