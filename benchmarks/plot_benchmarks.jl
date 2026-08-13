@@ -156,7 +156,7 @@ function plot_implementations_wcsph()
                  benchmark_runtimes.wcsph_w9_3475x_dictionary)
 
     names = ["PrecomputedNeighborhoodSearch";;
-             "GNHS with FullGridCellList";;
+             "GNHS & FullGridCellList";;
              "GridNeighborhoodSearch";;]
 
     p = plot_benchmark(benchmark_runtimes.n_particles, times; label = names,
@@ -173,9 +173,9 @@ function plot_update_strategies()
                  benchmark_runtimes.update_w9_3475x_semi_parallel,
                  benchmark_runtimes.update_w9_3475x_precomputed)
 
-    names = ["GNHS with ParallelUpdate";;
-             "GNHS with ParallelIncrementalUpdate";;
-             "GNHS with SemiParallelUpdate";;
+    names = ["GNHS & ParallelUpdate";;
+             "GNHS & ParallelIncrementalUpdate";;
+             "GNHS & SemiParallelUpdate";;
              "PrecomputedNeighborhoodSearch";;]
 
     plot_benchmark(benchmark_runtimes.n_particles, times; label = names,
