@@ -21,8 +21,8 @@
 - Designed as a "playground" to easily switch between different implementations and data
   structures
 - Common API over all implementations
-- Extensive benchmark suite to study different implementations (work in progress)
-- GPU compatibility (work in progress)
+- Extensive benchmark suite to study different implementations
+- GPU compatibility
 
 | Implementation  | Description | Features | Query | Update | GPU-compatible |
 | ------------- | ------------- | --- | :--: | :--: | :--: |
