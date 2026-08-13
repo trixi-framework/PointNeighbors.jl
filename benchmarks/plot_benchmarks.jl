@@ -95,7 +95,8 @@ benchmark_runtimes = (n_particles = [
                       wcsph_w9_3475x_dictionary = [9.539e-5; 0.000507708; 0.001999838; 0.008442291; 0.034369512; 0.145935124; 0.581081578; 2.341472385; 9.445755411;;],
                       wcsph_w9_3475x_fullgrid = [6.0765e-5; 0.000402875; 0.001569317; 0.006578832; 0.026040483; 0.108027132; 0.434874618; 1.755279267; 7.07428452;;],
                       wcsph_w9_3475x_precomputed = [3.7762e-5; 0.000148563; 0.00054964; 0.002274807; 0.00899912; 0.037950566; 0.151298558; 0.607103175; 2.440462785;;],
-                      wcsph_w9_3475x_trivial = [6.3518e-5; 0.000669186; 0.008641863; 0.135930064; 2.468379663; 43.607518925;;],
+                      # NaN values are just placeholders because the benchmark took too long.
+                      wcsph_w9_3475x_trivial = [6.3518e-5; 0.000669186; 0.008641863; 0.135930064; 2.468379663; 43.607518925; NaN; NaN; NaN;;],
                       # Benchmarking the difference between update strategies on an
                       # Intel Xeon W9-3475X (x36).
                       # _, times = run_benchmark_updates((10, 10, 10), 9)
@@ -153,18 +154,16 @@ end
 function plot_implementations_wcsph()
     times = hcat(benchmark_runtimes.wcsph_w9_3475x_precomputed,
                  benchmark_runtimes.wcsph_w9_3475x_fullgrid,
-                 benchmark_runtimes.wcsph_w9_3475x_dictionary)
+                 benchmark_runtimes.wcsph_w9_3475x_dictionary,
+                 benchmark_runtimes.wcsph_w9_3475x_trivial)
 
     names = ["PrecomputedNeighborhoodSearch";;
              "GNHS & FullGridCellList";;
-             "GridNeighborhoodSearch";;]
+             "GridNeighborhoodSearch";;
+             "TrivialNeighborhoodSearch";;]
 
-    p = plot_benchmark(benchmark_runtimes.n_particles, times; label = names,
-                       title = "WCSPH on Intel Xeon W9-3475X (x36)")
-
-    times = benchmark_runtimes.wcsph_w9_3475x_trivial
-    plot_benchmark!(p, benchmark_runtimes.n_particles[1:length(times)], times;
-                    label = "TrivialNeighborhoodSearch")
+    plot_benchmark(benchmark_runtimes.n_particles, times; label = names,
+                   title = "WCSPH on Intel Xeon W9-3475X (x36)")
 end
 
 function plot_update_strategies()
