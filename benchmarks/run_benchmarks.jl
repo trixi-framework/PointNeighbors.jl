@@ -325,6 +325,11 @@ plot_benchmark(n_particles_vec, times; title = "Count neighbors benchmark")
 ```
 """
 function plot_benchmark(n_particles_vec, times; kwargs...)
+    p = plot()
+    plot_benchmark!(p, n_particles_vec, times; kwargs...)
+end
+
+function plot_benchmark!(p, n_particles_vec, times; kwargs...)
     function format_n_particles(n)
         if n >= 1_000_000
             return "$(round(Int, n / 1_000_000))M"
@@ -336,10 +341,9 @@ function plot_benchmark(n_particles_vec, times; kwargs...)
     end
     xticks = format_n_particles.(n_particles_vec)
 
-    plot(n_particles_vec, times ./ n_particles_vec .* 1e9;
-         xaxis = :log,
-         xticks = (n_particles_vec, xticks), linewidth = 2,
-         xlabel = "#particles", ylabel = "runtime per particle [ns]",
-         legend = :outerright, size = (700, 350), dpi = 200, margin = 4 * Plots.mm,
-         palette = palette(:tab10), kwargs...)
+    plot!(p, n_particles_vec, n_particles_vec ./ times .* 1e-6;
+          xaxis = :log, xticks = (n_particles_vec, xticks), linewidth = 2,
+          xlabel = "#particles", ylabel = "million particle updates per second",
+          legend = :outerright, size = (700, 350), dpi = 600, margin = 4 * Plots.mm,
+          palette = palette(:tab10), kwargs...)
 end

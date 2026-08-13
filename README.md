@@ -30,7 +30,7 @@
 | `GridNeighborhoodSearch` with `FullGridCellList` | Grid-based NHS allocating all cells of the domain | Finite domain, but efficient memory layout for densely filled domain. | Faster | Fastest | ✅ |
 | `PrecomputedNeighborhoodSearch` | Precompute neighbor lists | Best for [TLSPH](https://trixi-framework.github.io/TrixiParticles.jl/stable/systems/total_lagrangian_sph/) without NHS updates. Not suitable for updates in every time step. | Fastest | Very slow | ❌ |
 
-## Benchmarks
+## Benchmarks by Implementation
 
 The following benchmarks were conducted on an AMD Ryzen Threadripper 3990X using 128 threads.
 
@@ -43,6 +43,17 @@ Benchmark of an incremental update similar to a WCSPH simulation (note the log s
 Benchmark of a full right-hand side evaluation of a WCSPH simulation (note the log scale):
 ![rhs](https://github.com/trixi-framework/PointNeighbors.jl/assets/44124897/ac328a96-1b9f-4319-a785-dce9d862fd70)
 
+
+## Benchmarks by Machine
+
+Fluid interaction force performance for a Weakly Compressible SPH (WCSPH) simulation:
+![WCSPH benchmark by machine](https://trixi-framework.github.io/PointNeighbors.jl/dev/assets/benchmarks/machines_wcsph.png)
+
+Structure interaction force performance for a Total Lagrangian SPH (TLSPH) simulation:
+![TLSPH benchmark by machine](https://trixi-framework.github.io/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph.png)
+
+Deformation gradient performance for a Total Lagrangian SPH (TLSPH) simulation:
+![TLSPH deformation gradient benchmark by machine](https://trixi-framework.github.io/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph_deformation_gradient.png)
 
 ## Packages using PointNeighbors.jl
 
