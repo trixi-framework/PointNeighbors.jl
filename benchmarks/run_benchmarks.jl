@@ -283,14 +283,36 @@ function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations
                   neighborhood_searches; names, parallelization_backend, kwargs...)
 end
 
-function create_full_grid_neighborhood_search(n_points_per_dimension)
+function run_benchmark_updates(n_points_per_dimension, iterations;
+                               parallelization_backend = PolyesterBackend(), kwargs...)
+    parallel = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                    update_strategy = ParallelUpdate())
+    parallel_incremental = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                                update_strategy = ParallelIncrementalUpdate())
+    semi_parallel = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                         update_strategy = SemiParallelUpdate())
+    precomputed_nhs = create_precomputed_neighborhood_search(parallel,
+                                                             parallelization_backend)
+    neighborhood_searches = (parallel, parallel_incremental, semi_parallel, precomputed_nhs)
+
+    names = ["GNHS with ParallelUpdate";;
+             "GNHS with ParallelIncrementalUpdate";;
+             "GNHS with SemiParallelUpdate";;
+             "PrecomputedNeighborhoodSearch";;]
+
+    run_benchmark(benchmark_update_alternating, n_points_per_dimension, iterations,
+                  neighborhood_searches; names, parallelization_backend, kwargs...)
+end
+
+function create_full_grid_neighborhood_search(n_points_per_dimension;
+                                              update_strategy = ParallelUpdate())
     NDIMS = length(n_points_per_dimension)
 
     min_corner = 0.0f0 .* n_points_per_dimension
     max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
     cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
     return GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
-                                         update_strategy = ParallelUpdate())
+                                         update_strategy)
 end
 
 function create_precomputed_neighborhood_search(grid_nhs, parallelization_backend)

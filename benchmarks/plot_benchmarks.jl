@@ -41,6 +41,8 @@ function plot_benchmark!(p, n_particles_vec, times; kwargs...)
 
     plot!(p, n_particles_vec, n_particles_vec ./ times .* 1e-6;
           xaxis = :log, xticks = (n_particles_vec, xticks), linewidth = 2,
+          # Make sure the plot starts at y = 0.
+          ylimits = (0, Inf), widen = true,
           xlabel = "#particles", ylabel = "million particles processed per second",
           legend = :outerright, size = (700, 350), dpi = 600, margin = 4 * Plots.mm,
           palette = palette(:tab10), kwargs...)
@@ -86,7 +88,22 @@ benchmark_runtimes = (n_particles = [
                       n_particles_tlsph_deformation_grad_5090 = [
                           1000, 4096, 15625, 64000, 250047, 1030301, 4096000, 16387064,
                           42875000],
-                      tlsph_deformation_grad_5090_fp32 = [5.6569e-5; 6.894e-5; 7.6672e-5; 8.3602e-5; 0.000313116; 0.00099187; 0.003671176; 0.015459844; 0.041021319;;])
+                      tlsph_deformation_grad_5090_fp32 = [5.6569e-5; 6.894e-5; 7.6672e-5; 8.3602e-5; 0.000313116; 0.00099187; 0.003671176; 0.015459844; 0.041021319;;],
+                      # Benchmarking the difference between implementations on an
+                      # Intel Xeon W9-3475X (x36).
+                      # _, times = run_benchmark_default(benchmark_wcsph, ...)
+                      wcsph_w9_3475x_dictionary = [9.539e-5; 0.000507708; 0.001999838; 0.008442291; 0.034369512; 0.145935124; 0.581081578; 2.341472385; 9.445755411;;],
+                      wcsph_w9_3475x_fullgrid = [6.0765e-5; 0.000402875; 0.001569317; 0.006578832; 0.026040483; 0.108027132; 0.434874618; 1.755279267; 7.07428452;;],
+                      wcsph_w9_3475x_precomputed = [3.7762e-5; 0.000148563; 0.00054964; 0.002274807; 0.00899912; 0.037950566; 0.151298558; 0.607103175; 2.440462785;;],
+                      wcsph_w9_3475x_trivial = [6.3518e-5; 0.000669186; 0.008641863; 0.135930064; 2.468379663; 43.607518925;;],
+                      # Benchmarking the difference between update strategies on an
+                      # Intel Xeon W9-3475X (x36).
+                      # _, times = run_benchmark_updates((10, 10, 10), 9)
+                      update_w9_3475x_parallel = [1.42395e-5; 1.9205e-5; 3.3569e-5; 7.6216e-5; 0.0001972665; 0.000657154; 0.002366056; 0.008558718; 0.0328478125;;],
+                      update_w9_3475x_parallel_incremental = [1.05465e-5; 1.41955e-5; 2.36415e-5; 6.3423e-5; 0.000185218; 0.0007833225; 0.0052182165; 0.025595217; 0.103340834;;],
+                      update_w9_3475x_semi_parallel = [1.00805e-5; 1.78505e-5; 4.28215e-5; 0.000153458; 0.0006931965; 0.0026806445; 0.0158252845; 0.079710013; 0.329653309;;],
+                      update_w9_3475x_precomputed = [0.000156829; 0.0005617385; 0.0021646195; 0.009024255; 0.0354495175; 0.1443668715; 0.5821228515; 2.341333004; 9.381562997;;],
+)
 
 function plot_machines_wcsph()
     times = hcat(benchmark_runtimes.wcsph_5090_fp32,
@@ -131,4 +148,36 @@ function plot_machines_tlsph_deformation_grad()
              "Nvidia H100 FP64";;]
 
     plot_benchmark!(p, benchmark_runtimes.n_particles, times; label = names)
+end
+
+function plot_implementations_wcsph()
+    times = benchmark_runtimes.wcsph_w9_3475x_trivial
+    p = plot_benchmark(benchmark_runtimes.n_particles[1:length(times)], times;
+                       label = "TrivialNeighborhoodSearch")
+
+    times = hcat(benchmark_runtimes.wcsph_w9_3475x_dictionary,
+                 benchmark_runtimes.wcsph_w9_3475x_fullgrid,
+                 benchmark_runtimes.wcsph_w9_3475x_precomputed)
+
+    names = ["GridNeighborhoodSearch";;
+             "GNHS with FullGridCellList";;
+             "PrecomputedNeighborhoodSearch";;]
+
+    plot_benchmark!(p, benchmark_runtimes.n_particles, times; label = names,
+                    title = "WCSPH on Intel Xeon W9-3475X (x36)")
+end
+
+function plot_update_strategies()
+    times = hcat(benchmark_runtimes.update_w9_3475x_parallel,
+                 benchmark_runtimes.update_w9_3475x_parallel_incremental,
+                 benchmark_runtimes.update_w9_3475x_semi_parallel,
+                 benchmark_runtimes.update_w9_3475x_precomputed)
+
+    names = ["GNHS with ParallelUpdate";;
+             "GNHS with ParallelIncrementalUpdate";;
+             "GNHS with SemiParallelUpdate";;
+             "PrecomputedNeighborhoodSearch";;]
+
+    plot_benchmark(benchmark_runtimes.n_particles, times; label = names,
+                   title = "Update strategies on Intel Xeon W9-3475X (x36)")
 end
