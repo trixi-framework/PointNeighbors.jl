@@ -53,6 +53,10 @@ jobs:
                     joinpath(output_directory, "machines_tlsph.png"))
             savefig(plot!(plot_machines_tlsph_deformation_grad(); title = ""),
                     joinpath(output_directory, "machines_tlsph_deformation_gradient.png"))
+            savefig(plot!(plot_implementations_wcsph(); title = ""),
+                    joinpath(output_directory, "implementations_wcsph.png"))
+            savefig(plot!(plot_update_strategies(); title = ""),
+                    joinpath(output_directory, "update_strategies.png"))
           '
       - name: Build and deploy
         env:
