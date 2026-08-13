@@ -64,6 +64,7 @@ the `PrecomputedNeighborhoodSearch` implementation:
 - [TrixiParticles.jl](https://github.com/trixi-framework/TrixiParticles.jl)
 - [Peridynamics.jl](https://github.com/kaipartmann/Peridynamics.jl)
 - [PeriLab.jl](https://github.com/PeriHub/PeriLab.jl)
+- [GraphNetSim.jl](https://github.com/una-auxme/GraphNetSim.jl)
 
 If you're using PointNeighbors.jl in your package, please feel free to open a PR adding it
 to this list.
