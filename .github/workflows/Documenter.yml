@@ -39,6 +39,21 @@ jobs:
         uses: julia-actions/julia-buildpkg@v1
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - name: Generate benchmark plots
+        env:
+          GKSwstype: '100'
+        run: |
+          julia --project=docs/ -e '
+            include("benchmarks/plot_benchmarks.jl")
+            output_directory = joinpath("docs", "src", "assets", "benchmarks")
+            mkpath(output_directory)
+            savefig(plot!(plot_machines_wcsph(); title = ""),
+                    joinpath(output_directory, "machines_wcsph.png"))
+            savefig(plot!(plot_machines_tlsph(); title = ""),
+                    joinpath(output_directory, "machines_tlsph.png"))
+            savefig(plot!(plot_machines_tlsph_deformation_grad(); title = ""),
+                    joinpath(output_directory, "machines_tlsph_deformation_gradient.png"))
+          '
       - name: Build and deploy
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

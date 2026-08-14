@@ -28,9 +28,9 @@
 | ------------- | ------------- | --- | :--: | :--: | :--: |
 | `GridNeighborhoodSearch` with `DictionaryCellList` | Grid-based NHS with Julia `Dict` backend | Infinite domain | Fast | Fast | ❌ |
 | `GridNeighborhoodSearch` with `FullGridCellList` | Grid-based NHS allocating all cells of the domain | Finite domain, but efficient memory layout for densely filled domain. | Faster | Fastest | ✅ |
-| `PrecomputedNeighborhoodSearch` | Precompute neighbor lists | Best for [TLSPH](https://trixi-framework.github.io/TrixiParticles.jl/stable/systems/total_lagrangian_sph/) without NHS updates. Not suitable for updates in every time step. | Fastest | Very slow | ❌ |
+| `PrecomputedNeighborhoodSearch` | Precompute neighbor lists | Best for [TLSPH](https://trixi-framework.github.io/TrixiParticles.jl/stable/systems/total_lagrangian_sph/) without NHS updates. Not suitable for updates in every time step. | Fastest | Very slow | ✅ |
 
-## Benchmarks
+## Benchmarks by Implementation
 
 The following benchmarks were conducted on an AMD Ryzen Threadripper 3990X using 128 threads.
 
@@ -43,6 +43,21 @@ Benchmark of an incremental update similar to a WCSPH simulation (note the log s
 Benchmark of a full right-hand side evaluation of a WCSPH simulation (note the log scale):
 ![rhs](https://github.com/trixi-framework/PointNeighbors.jl/assets/44124897/ac328a96-1b9f-4319-a785-dce9d862fd70)
 
+
+## Benchmarks by Machine
+
+Benchmark of a single force computation step of a Weakly Compressible SPH (WCSPH) simulation
+with the `GridNeighborhoodSearch` and `FullGridCellList` implementation:
+![WCSPH benchmark by machine](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/machines_wcsph.png)
+
+Benchmark of a single force computation step of a Total Lagrangian SPH (TLSPH) simulation
+with the `PrecomputedNeighborhoodSearch` implementation (TLSPH is looking for neighbors
+in the initial configuration, so the NHS does not need to be updated):
+![TLSPH benchmark by machine](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph.png)
+
+Deformation gradient performance for a TLSPH simulation with
+the `PrecomputedNeighborhoodSearch` implementation:
+![TLSPH deformation gradient benchmark by machine](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/machines_tlsph_deformation_gradient.png)
 
 ## Packages using PointNeighbors.jl
 

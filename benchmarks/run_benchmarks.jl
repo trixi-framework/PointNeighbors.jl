@@ -1,4 +1,3 @@
-using Plots
 using BenchmarkTools
 
 # Generate a rectangular point cloud
@@ -301,45 +300,4 @@ function create_precomputed_neighborhood_search(grid_nhs, parallelization_backen
                                                 max_neighbors = 128,
                                                 update_neighborhood_search = grid_nhs,
                                                 transpose_backend)
-end
-
-"""
-    plot_benchmark(n_particles_vec, times; kwargs...)
-
-Plot the results of a benchmark run with [`run_benchmark`](@ref).
-Note that the arguments are the outputs of that function.
-
-# Arguments
-- `n_particles_vec`: Vector containing the number of particles for each iteration.
-- `times`:           Matrix containing the runtimes for each neighborhood search and iteration.
-
-# Keywords
-Keyword arguments are passed to `Plots.plot`. For example, use `title = "My title"`.
-
-# Examples
-```julia
-include("benchmarks/benchmarks.jl")
-
-n_particles_vec, times = run_benchmark_default(benchmark_count_neighbors, (10, 10), 3)
-plot_benchmark(n_particles_vec, times; title = "Count neighbors benchmark")
-```
-"""
-function plot_benchmark(n_particles_vec, times; kwargs...)
-    function format_n_particles(n)
-        if n >= 1_000_000
-            return "$(round(Int, n / 1_000_000))M"
-        elseif n >= 1_000
-            return "$(round(Int, n / 1_000))k"
-        else
-            return string(n)
-        end
-    end
-    xticks = format_n_particles.(n_particles_vec)
-
-    plot(n_particles_vec, times ./ n_particles_vec .* 1e9;
-         xaxis = :log,
-         xticks = (n_particles_vec, xticks), linewidth = 2,
-         xlabel = "#particles", ylabel = "runtime per particle [ns]",
-         legend = :outerright, size = (700, 350), dpi = 200, margin = 4 * Plots.mm,
-         palette = palette(:tab10), kwargs...)
 end
