@@ -283,6 +283,37 @@ function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations
                   neighborhood_searches; names, parallelization_backend, kwargs...)
 end
 
+"""
+    run_benchmark_updates(n_points_per_dimension, iterations; kwargs...)
+
+Benchmark [`benchmark_update_alternating`](@ref) with the update strategies
+[`ParallelUpdate`](@ref), [`ParallelIncrementalUpdate`](@ref), and
+[`SemiParallelUpdate`](@ref), as well as with a [`PrecomputedNeighborhoodSearch`](@ref)
+using [`ParallelUpdate`](@ref) internally.
+
+The benchmark alternates between two perturbed point clouds. In 3D, approximately 0.7% of
+the particles change cells between them, representative of an SPH update. This fraction is
+not relevant for [`ParallelUpdate`](@ref), which reinitializes all particles on every
+update.
+
+Returns `(n_particles_vec, times)` as described for [`run_benchmark`](@ref).
+
+# Arguments
+- `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
+                            of points. For example, use `(100, 100)` for a 2D benchmark or
+                            `(10, 10, 10)` for a 3D benchmark.
+- `iterations`:             Number of refinement iterations
+
+# Keywords
+See [`run_benchmark`](@ref) for a list of available keywords.
+
+# Examples
+```julia
+include("benchmarks/benchmarks.jl")
+
+run_benchmark_updates((10, 10, 10), 3)
+```
+"""
 function run_benchmark_updates(n_points_per_dimension, iterations;
                                parallelization_backend = PolyesterBackend(), kwargs...)
     parallel = create_full_grid_neighborhood_search(n_points_per_dimension;

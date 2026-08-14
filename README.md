@@ -37,7 +37,11 @@ The following benchmarks were conducted on an Intel Xeon W9-3475X using 36 threa
 Benchmark of a single force computation step of a Weakly Compressible SPH (WCSPH) simulation:
 ![WCSPH benchmark by implementation](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/implementations_wcsph.png)
 
-Benchmark of different neighborhood search update strategies:
+Benchmark of different neighborhood search update strategies. The benchmark alternates
+between two perturbed point clouds. In 3D, only about 0.7% of the particles change cells
+between updates, which is similar to a dam break simulation.
+This is not relevant for `ParallelUpdate`, which reinitializes all particles
+in every update step.
 ![Benchmark by update strategy](https://trixi-framework.org/PointNeighbors.jl/dev/assets/benchmarks/update_strategies.png)
 
 

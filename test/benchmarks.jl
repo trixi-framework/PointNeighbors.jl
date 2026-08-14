@@ -51,4 +51,8 @@
             @trixi_test_nowarn run_benchmark_gpu(benchmark_update_alternating, size, 2)
         end
     end
+
+    @testset verbose=true "`run_benchmark_updates`" begin
+        @trixi_test_nowarn run_benchmark_updates((5, 5, 5), 2)
+    end
 end;
