@@ -208,8 +208,8 @@ run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 ```
 """
 function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
-                           parallelization_backend = PolyesterBackend(), max_neighbors = 128,
-                           kwargs...)
+                           parallelization_backend = PolyesterBackend(),
+                           max_neighbors = 128, kwargs...)
     grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension)
     precomputed_nhs = create_precomputed_neighborhood_search(grid_nhs,
                                                              parallelization_backend;
