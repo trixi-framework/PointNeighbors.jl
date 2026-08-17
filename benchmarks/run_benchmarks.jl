@@ -152,7 +152,7 @@ function run_benchmark_default(benchmark, n_points_per_dimension, iterations; kw
         GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
                                       cell_list = FullGridCellList(; search_radius = 0.0f0,
                                                                    min_corner, max_corner)),
-        PrecomputedNeighborhoodSearch{NDIMS}()
+        PrecomputedNeighborhoodSearch{NDIMS}(sort_neighbor_lists = true)
     ]
 
     names = ["GridNeighborhoodSearch";;
@@ -353,5 +353,6 @@ function create_precomputed_neighborhood_search(grid_nhs, parallelization_backen
     return PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
                                                 max_neighbors = 128,
                                                 update_neighborhood_search = grid_nhs,
+                                                sort_neighbor_lists = true,
                                                 transpose_backend)
 end
