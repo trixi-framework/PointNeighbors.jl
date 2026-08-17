@@ -8,7 +8,7 @@ PointNeighbors.jl includes a benchmark suite for comparing neighborhood search
 implementations and update strategies. Load it with
 
 ```julia
-using PointNeighbors
+using PointNeighbors, BenchmarkTools, TrixiParticles
 include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 ```
 
@@ -34,7 +34,7 @@ Order = [:function]
 Load the plotting utilities with
 
 ```julia
-using PointNeighbors
+using PointNeighbors, Plots
 include(joinpath(pkgdir(PointNeighbors), "benchmarks", "plot_benchmarks.jl"));
 ```
 
