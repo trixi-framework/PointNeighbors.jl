@@ -30,7 +30,7 @@ an update in 2D and ~0.7% in 3D.
 function benchmark_update_alternating(neighborhood_search, coordinates;
                                       parallelization_backend = default_backend(coordinates))
     coordinates2 = copy(coordinates)
-    # Perturb all coordinates with a perturbation factor of `0.015`.
+    # Perturb all coordinates with a perturbation factor of `4e-4`.
     # This factor was tuned so that ~0.5% of the particles change their cell during an
     # update in 2D and ~0.7% in 3D.
     # These values are the same as the experimentally computed averages in 2D and 3D SPH
