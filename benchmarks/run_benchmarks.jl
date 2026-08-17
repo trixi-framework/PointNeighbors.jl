@@ -52,7 +52,7 @@ See also
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark(benchmark_count_neighbors, (10, 10), 3,
               [TrivialNeighborhoodSearch{2}(), GridNeighborhoodSearch{2}()])
@@ -137,7 +137,7 @@ See [`run_benchmark`](@ref) for a list of available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_default(benchmark_n_body, (10, 10), 3)
 ```
@@ -186,7 +186,7 @@ See [`run_benchmark`](@ref) for a list of available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 ```
@@ -228,7 +228,7 @@ See [`run_benchmark`](@ref) for a list of available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_full_grid(benchmark_n_body, (10, 10), 3)
 ```
@@ -266,7 +266,7 @@ See [`run_benchmark`](@ref) for a list of available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_precomputed(benchmark_n_body, (10, 10), 3)
 ```
@@ -310,7 +310,7 @@ See [`run_benchmark`](@ref) for a list of available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_updates((10, 10, 10), 3)
 ```

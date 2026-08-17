@@ -15,8 +15,8 @@ Keyword arguments are passed to `Plots.plot`. For example, use `title = "My titl
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
-include("benchmarks/plot_benchmarks.jl")
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "plot_benchmarks.jl"));
 
 n_particles_vec, times = run_benchmark_default(benchmark_count_neighbors, (10, 10), 3)
 plot_benchmark(n_particles_vec, times; title = "Count neighbors benchmark")
