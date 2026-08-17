@@ -60,14 +60,8 @@ Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_gpu_usage.jl"),
 Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_advanced_usage.jl"),
                   joinpath(@__DIR__, "src", "tutorials"))
 
-# Run doctests separately so that `Main` can be used below to locate benchmark docstrings
-# without also running doctests for every binding imported into `Main`.
-Documenter.doctest(PointNeighbors)
-
 # Make documentation
-makedocs(modules = [PointNeighbors, Main],
-         doctest = false,
-         checkdocs = :none,
+makedocs(modules = [PointNeighbors],
          sitename = "PointNeighbors.jl",
          # Provide additional formatting options
          format = Documenter.HTML(

@@ -14,25 +14,19 @@ include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 ## Benchmark Runners
 
-```@docs
-run_benchmark
-run_benchmark_default
-run_benchmark_gpu
-run_benchmark_full_grid
-run_benchmark_precomputed
-run_benchmark_updates
+```@autodocs
+Modules = [Main]
+Pages = ["run_benchmarks.jl"]
+Order = [:function]
 ```
 
 ## Benchmark Workloads
 
-```@docs
-benchmark_count_neighbors
-benchmark_n_body
-benchmark_wcsph
-benchmark_tlsph
-benchmark_tlsph_deformation_grad
-benchmark_initialize
-benchmark_update_alternating
+```@autodocs
+Modules = [Main]
+Pages = ["count_neighbors.jl", "n_body.jl",
+         "smoothed_particle_hydrodynamics.jl", "update.jl"]
+Order = [:function]
 ```
 
 ## Plotting
@@ -44,6 +38,8 @@ using PointNeighbors
 include(joinpath(pkgdir(PointNeighbors), "benchmarks", "plot_benchmarks.jl"));
 ```
 
-```@docs
-plot_benchmark
+```@autodocs
+Modules = [Main]
+Pages = ["plot_benchmarks.jl"]
+Order = [:function]
 ```
