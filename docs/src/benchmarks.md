@@ -5,7 +5,7 @@ CurrentModule = Main
 ```
 
 PointNeighbors.jl includes a benchmark suite for comparing neighborhood search
-implementations and update strategies. From the repository root, load it with
+implementations and update strategies. Load it with
 
 ```julia
 using PointNeighbors
