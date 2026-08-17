@@ -7,10 +7,13 @@
 
     @testset verbose=true "$(length(size))D" for size in [(50,), (10, 10), (5, 5, 5)]
         @testset verbose=true "`benchmark_count_neighbors`" begin
-            @trixi_test_nowarn run_benchmark_default(benchmark_count_neighbors, size, 2)
-            @trixi_test_nowarn run_benchmark_gpu(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_default(benchmark_count_neighbors, size, 2;
+                                                     max_neighbors = 128)
+            @trixi_test_nowarn run_benchmark_gpu(benchmark_count_neighbors, size, 2;
+                                                 max_neighbors = 128)
             @trixi_test_nowarn run_benchmark_full_grid(benchmark_count_neighbors, size, 2)
-            @trixi_test_nowarn run_benchmark_precomputed(benchmark_count_neighbors, size, 2)
+            @trixi_test_nowarn run_benchmark_precomputed(benchmark_count_neighbors, size,
+                                                         2; max_neighbors = 128)
         end
 
         @testset verbose=true "`benchmark_n_body`" begin
@@ -53,6 +56,6 @@
     end
 
     @testset verbose=true "`run_benchmark_updates`" begin
-        @trixi_test_nowarn run_benchmark_updates((5, 5, 5), 2)
+        @trixi_test_nowarn run_benchmark_updates((5, 5, 5), 2; max_neighbors = 128)
     end
 end;

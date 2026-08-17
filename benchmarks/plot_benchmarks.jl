@@ -15,6 +15,7 @@ Keyword arguments are passed to `Plots.plot`. For example, use `title = "My titl
 
 # Examples
 ```julia
+using PointNeighbors
 include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "plot_benchmarks.jl"));
 
@@ -52,6 +53,7 @@ end
 # Run these benchmarks like this. The type of `search_radius_factor` determines
 # if the benchmark is run in Float32 or Float64.
 #
+# using PointNeighbors
 # include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 # _, times = run_benchmark_full_grid(benchmark_wcsph, (10, 10, 10), 9,
 #                                    search_radius_factor=3.0f0,

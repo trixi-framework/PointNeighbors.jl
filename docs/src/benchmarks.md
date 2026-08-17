@@ -8,6 +8,7 @@ PointNeighbors.jl includes a benchmark suite for comparing neighborhood search
 implementations and update strategies. From the repository root, load it with
 
 ```julia
+using PointNeighbors
 include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 ```
 
@@ -39,6 +40,7 @@ benchmark_update_alternating
 Load the plotting utilities with
 
 ```julia
+using PointNeighbors
 include(joinpath(pkgdir(PointNeighbors), "benchmarks", "plot_benchmarks.jl"));
 ```
 
