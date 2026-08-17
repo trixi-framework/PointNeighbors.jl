@@ -12,6 +12,11 @@ end
 
 using PointNeighbors
 
+# The benchmark files are scripts that users include into `Main`. Load them the same way
+# here so their docstrings are documented under their actual `Main.<name>` bindings.
+include(joinpath(trixibase_root_dir, "benchmarks", "benchmarks.jl"))
+include(joinpath(trixibase_root_dir, "benchmarks", "plot_benchmarks.jl"))
+
 # Define module-wide setups such that the respective modules are available in doctests
 DocMeta.setdocmeta!(PointNeighbors, :DocTestSetup,
                     :(using PointNeighbors); recursive = true)
@@ -55,8 +60,14 @@ Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_gpu_usage.jl"),
 Literate.markdown(joinpath(@__DIR__, "literate", "src", "tut_advanced_usage.jl"),
                   joinpath(@__DIR__, "src", "tutorials"))
 
+# Run doctests separately so that `Main` can be used below to locate benchmark docstrings
+# without also running doctests for every binding imported into `Main`.
+Documenter.doctest(PointNeighbors)
+
 # Make documentation
-makedocs(modules = [PointNeighbors],
+makedocs(modules = [PointNeighbors, Main],
+         doctest = false,
+         checkdocs = :none,
          sitename = "PointNeighbors.jl",
          # Provide additional formatting options
          format = Documenter.HTML(
@@ -76,7 +87,8 @@ makedocs(modules = [PointNeighbors],
                  "GPU Usage" => joinpath("tutorials", "tut_gpu_usage.md"),
                  "Advanced Usage" => joinpath("tutorials", "tut_advanced_usage.md")
              ],
-             "API reference" => "reference.md",
+             "API Reference" => "reference.md",
+             "Benchmark Suite" => "benchmarks.md",
              "Authors" => "authors.md",
              "License" => "license.md"
          ])

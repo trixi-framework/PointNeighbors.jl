@@ -38,7 +38,8 @@ See also
                             of `search_radius_factor` determines if the benchmark
                             is run in single or double precision.
 - `parallelization_backend = PolyesterBackend()`: Parallelization strategy to use. See
-                            [`@threaded`](@ref) for a list of available backends.
+                            [`PointNeighbors.@threaded`](@ref) for a list of available
+                            backends.
 - `names = ["Neighborhood search 1" ...]`: Names of the neighborhood searches used in the
                             benchmark output.
 - `seed = 1`:               Seed to perturb the point positions. Different seeds yield
