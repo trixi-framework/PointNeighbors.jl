@@ -24,16 +24,21 @@ A very simple benchmark for neighborhood search update, alternating between two 
 perturbed point clouds.
 
 This is a good benchmark for incremental updates, since most particles stay in their cells.
+Similar to 3D dam break simulations, ~0.5% of the particles change their cell during
+an update in 2D and ~0.7% in 3D.
 """
 function benchmark_update_alternating(neighborhood_search, coordinates;
                                       parallelization_backend = default_backend(coordinates))
     coordinates2 = copy(coordinates)
-    # Perturb all coordinates with a perturbation factor of `0.015`.
+    # Perturb all coordinates with a perturbation factor of `4e-4`.
     # This factor was tuned so that ~0.5% of the particles change their cell during an
     # update in 2D and ~0.7% in 3D.
     # These values are the same as the experimentally computed averages in 2D and 3D SPH
     # dam break simulations. So this benchmark replicates a real-life SPH update.
-    perturb!(coordinates2, 4e-4 * PointNeighbors.search_radius(neighborhood_search))
+    # Use the same perturbation every time to make comparisons fair and reproducible.
+    rng = Random.Xoshiro(1)
+    perturb!(coordinates2,
+             4e-4 * PointNeighbors.search_radius(neighborhood_search); rng)
 
     function update_alternating!(neighborhood_search, coordinates, coordinates2,
                                  parallelization_backend)
