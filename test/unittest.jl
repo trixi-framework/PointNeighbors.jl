@@ -8,4 +8,5 @@
     include("neighborhood_search.jl")
     include("cell_lists/full_grid.jl")
     include("cell_lists/spatial_hashing.jl")
+    include("cell_list_map.jl")
 end;

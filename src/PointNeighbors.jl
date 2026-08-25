@@ -33,5 +33,16 @@ export initialize!, update!, initialize_grid!, update_grid!
 export SerialBackend, PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend,
        default_backend
 export PeriodicBox, copy_neighborhood_search
+export CellListMapNeighborhoodSearch
+
+"""
+    CellListMapNeighborhoodSearch(NDIMS; search_radius = 1.0, points_equal_neighbors = false)
+
+Neighborhood search based on the package
+[CellListMap.jl](https://github.com/m3g/CellListMap.jl).
+This is only available when CellListMap.jl is loaded (this function is implemented in the
+package extension `PointNeighborsCellListMapExt`).
+"""
+function CellListMapNeighborhoodSearch end
 
 end # module PointNeighbors
