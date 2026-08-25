@@ -39,6 +39,13 @@ println("Water benchmark: spacing = $(round(WATER_SPACING, digits = 3)) Å, " *
         "cutoff = $CUTOFF Å, search_radius_factor = $(round(SEARCH_RADIUS_FACTOR, digits = 3)), " *
         "average neighbors/particle ≈ $(round(Int, 4 / 3 * pi * CUTOFF^3 * WATER_DENSITY))")
 
+# Average occupancy of a `search_radius`-sized (cube) cell is `WATER_DENSITY * CUTOFF^3`
+# (≈173 here). `FullGridCellList`'s default `max_points_per_cell = 100` silently drops
+# points beyond that limit instead of erroring (the bounds check that would catch this is
+# skipped in the parallel update for performance), so it must be raised for this density;
+# a 4x safety margin comfortably covers the Poisson fluctuations across many cells.
+const MAX_POINTS_PER_CELL = round(Int, 4 * WATER_DENSITY * CUTOFF^3)
+
 function run_water_benchmark(benchmark, n_points_per_dimension = (12, 12, 12), iterations = 4;
                              kwargs...)
     NDIMS = length(n_points_per_dimension)
@@ -49,7 +56,8 @@ function run_water_benchmark(benchmark, n_points_per_dimension = (12, 12, 12), i
         GridNeighborhoodSearch{NDIMS}(),
         GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
                                       cell_list = FullGridCellList(; search_radius = 0.0f0,
-                                                                   min_corner, max_corner)),
+                                                                   min_corner, max_corner,
+                                                                   max_points_per_cell = MAX_POINTS_PER_CELL)),
         CellListMapNeighborhoodSearch(NDIMS)
     ]
 
