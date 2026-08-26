@@ -28,6 +28,14 @@ This is just a wrapper to use CellListMap.jl with the PointNeighbors.jl API.
 !!! warning "Experimental implementation"
     This is an experimental feature and may change in future releases.
     `eachindex_y` (searching within only a subset of the neighbor candidates) is not supported.
+
+!!! warning "Parallelization is not point-partitioned"
+    Unlike every other `AbstractNeighborhoodSearch`, [`foreach_point_neighbor`](@ref) here is
+    parallelized by CellListMap.jl's own cell-pair batching, not by splitting the `points`
+    loop. Unsynchronized per-point accumulation in the callback (the idiomatic pattern used
+    throughout PointNeighbors.jl/TrixiParticles.jl, e.g. `dv[:, i] += ...`) is only safe with
+    `SerialBackend()`. See the docstring of `PointNeighbors.CellListMapNeighborhoodSearch` for
+    details.
 """
 struct CellListMapNeighborhoodSearch{NDIMS, PS} <: PointNeighbors.AbstractNeighborhoodSearch
     particle_system        :: PS
@@ -77,11 +85,14 @@ function PointNeighbors.update!(neighborhood_search::CellListMapNeighborhoodSear
                                 parallelization_backend = nothing, eachindex_y = nothing)
     (; particle_system, points_equal_neighbors) = neighborhood_search
 
+    # `rebuild = true` forces the cell list to be rebuilt immediately (CellListMap.jl >= 0.10.5),
+    # instead of lazily deferring it to the next `pairwise!` call. This matches the eager
+    # contract of `update!`/`initialize!` (see their docstrings in PointNeighbors.jl).
     if points_equal_neighbors
         @assert x===y "when `points_equal_neighbors == true`, `x` must be equal to `y`"
-        CellListMap.update!(particle_system; xpositions = x)
+        CellListMap.update!(particle_system; xpositions = x, rebuild = true)
     else
-        CellListMap.update!(particle_system; xpositions = x, ypositions = y)
+        CellListMap.update!(particle_system; xpositions = x, ypositions = y, rebuild = true)
     end
 
     return neighborhood_search
@@ -91,6 +102,11 @@ end
 # Otherwise, unspecialized code will cause a lot of allocations
 # and heavily impact performance.
 # See https://docs.julialang.org/en/v1/manual/performance-tips/#Be-aware-of-when-Julia-avoids-specializing
+#
+# NOTE: `parallelization_backend` here controls CellListMap.jl's own cell-pair-batched
+# parallelism, not a per-point partition like every other NHS. `f` can therefore be called
+# concurrently for the same point index. See the "Parallelization is not point-partitioned"
+# warning on `CellListMapNeighborhoodSearch`'s docstring.
 function PointNeighbors.foreach_point_neighbor(f::T, system_coords, neighbor_coords,
                                                neighborhood_search::CellListMapNeighborhoodSearch;
                                                parallelization_backend::PointNeighbors.ParallelizationBackend = PointNeighbors.default_backend(system_coords),

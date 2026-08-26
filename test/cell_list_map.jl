@@ -42,22 +42,39 @@
             initialize!(nhs, coords_initialize, coords_initialize)
             update!(nhs, coords, coords)
 
-            for backend in (SerialBackend(), PolyesterBackend())
-                neighbors = [Int[] for _ in axes(coords, 2)]
-                foreach_point_neighbor(coords, coords, nhs,
-                                       parallelization_backend = backend) do point, neighbor,
-                                                                              pos_diff,
-                                                                              distance
-                    push!(neighbors[point], neighbor)
+            # `CellListMapNeighborhoodSearch` parallelizes by CellListMap.jl's own cell-pair
+            # batches, not by splitting the `points` loop like every other NHS (see the
+            # "Parallelization is not point-partitioned" warning on its docstring). So the
+            # per-point `push!`/`@test` pattern below (unsynchronized, and safe with every
+            # other NHS) is only valid with `SerialBackend()`; a given point index can be
+            # visited from more than one thread with any other backend. We only check exact
+            # per-point neighbor lists (and cross-check `pos_diff`/`distance`) serially, and
+            # separately check just the (thread-safe, atomic) total pair count under
+            # `PolyesterBackend()` to still exercise CellListMap.jl's parallel traversal.
+            neighbors = [Int[] for _ in axes(coords, 2)]
+            foreach_point_neighbor(coords, coords, nhs,
+                                   parallelization_backend = SerialBackend()) do point, neighbor,
+                                                                                  pos_diff,
+                                                                                  distance
+                push!(neighbors[point], neighbor)
 
-                    # Cross-check the returned `pos_diff` and `distance` against the
-                    # trivial definition.
-                    @test pos_diff ≈ coords[:, point] - coords[:, neighbor]
-                    @test distance ≈ sqrt(sum(abs2, pos_diff))
-                end
-
-                @test sort.(neighbors) == neighbors_expected
+                # Cross-check the returned `pos_diff` and `distance` against the
+                # trivial definition.
+                @test pos_diff ≈ coords[:, point] - coords[:, neighbor]
+                @test distance ≈ sqrt(sum(abs2, pos_diff))
             end
+            @test sort.(neighbors) == neighbors_expected
+
+            n_pairs_expected = sum(length, neighbors_expected)
+            n_pairs = Threads.Atomic{Int}(0)
+            foreach_point_neighbor(coords, coords, nhs,
+                                   parallelization_backend = PolyesterBackend()) do point,
+                                                                                    neighbor,
+                                                                                    pos_diff,
+                                                                                    distance
+                Threads.atomic_add!(n_pairs, 1)
+            end
+            @test n_pairs[] == n_pairs_expected
 
             # Also test a freshly created ("copied") template neighborhood search,
             # as is done when a simulation code needs several `CellListMapNeighborhoodSearch`s.

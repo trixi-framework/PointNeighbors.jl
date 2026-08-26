@@ -1,9 +1,3 @@
-using PointNeighbors
-using CellListMap: CellListMap
-
-include("benchmarks.jl")
-include("plot_benchmarks.jl")
-
 """
 Benchmark `CellListMapNeighborhoodSearch` against `GridNeighborhoodSearch`
 (`DictionaryCellList` and `FullGridCellList`) at a density/cutoff combination typical of
@@ -19,11 +13,20 @@ This gives a characteristic interatomic spacing of ``\\rho^{-1/3} \\approx 2.15\
 average of ``\\frac{4}{3}\\pi \\cdot 12^3 \\cdot \\rho \\approx 726`` neighbors per particle,
 much denser than PointNeighbors' typical SPH benchmarks (~30-60 neighbors per particle).
 
+All three phases of neighborhood search usage are benchmarked separately: building the lists
+(`initialize!`), updating them for a realistic small perturbation (`update!`), and mapping
+over neighbor pairs (`foreach_point_neighbor`, both a cheap and a heavier callback). See
+`cell_list_map_common.jl` for why `SerialBackend()` is used throughout (not just for
+comparability, but because `CellListMapNeighborhoodSearch` is not safe with a parallel
+backend for the unsynchronized per-point accumulation these benchmarks use).
+
 Run with
 ```julia
 include("benchmarks/cell_list_map_water.jl")
 ```
 """
+
+include("cell_list_map_common.jl")
 
 # Atomic number density of water in Å⁻³ (O + 2×H per molecule)
 const WATER_DENSITY = 0.1003
@@ -46,33 +49,7 @@ println("Water benchmark: spacing = $(round(WATER_SPACING, digits = 3)) Å, " *
 # a 4x safety margin comfortably covers the Poisson fluctuations across many cells.
 const MAX_POINTS_PER_CELL = round(Int, 4 * WATER_DENSITY * CUTOFF^3)
 
-function run_water_benchmark(benchmark, n_points_per_dimension = (12, 12, 12), iterations = 4;
-                             kwargs...)
-    NDIMS = length(n_points_per_dimension)
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
+run_water_benchmark = run_cell_list_map_benchmark(Float32(SEARCH_RADIUS_FACTOR);
+                                                  max_points_per_cell = MAX_POINTS_PER_CELL)
 
-    neighborhood_searches = [
-        GridNeighborhoodSearch{NDIMS}(),
-        GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
-                                      cell_list = FullGridCellList(; search_radius = 0.0f0,
-                                                                   min_corner, max_corner,
-                                                                   max_points_per_cell = MAX_POINTS_PER_CELL)),
-        CellListMapNeighborhoodSearch(NDIMS)
-    ]
-
-    names = ["GridNeighborhoodSearch (DictionaryCellList)";;
-             "GridNeighborhoodSearch (FullGridCellList)";;
-             "CellListMapNeighborhoodSearch"]
-
-    run_benchmark(benchmark, n_points_per_dimension, iterations, neighborhood_searches;
-                  search_radius_factor = Float32(SEARCH_RADIUS_FACTOR), names, kwargs...)
-end
-
-n_particles_count, times_count = run_water_benchmark(benchmark_count_neighbors)
-plot_benchmark(n_particles_count, times_count;
-              title = "Count neighbors, water density, $(CUTOFF)Å cutoff")
-
-n_particles_nbody, times_nbody = run_water_benchmark(benchmark_n_body)
-plot_benchmark(n_particles_nbody, times_nbody;
-              title = "N-body, water density, $(CUTOFF)Å cutoff")
+run_cell_list_map_all_phases(run_water_benchmark, "water density, $(CUTOFF)Å cutoff")

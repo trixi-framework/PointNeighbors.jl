@@ -12,7 +12,7 @@ TrixiTest = "0a316866-cbd0-4425-8bcb-08103b2c1f26"
 [compat]
 Adapt = "4"
 BenchmarkTools = "1"
-CellListMap = "0.10"
+CellListMap = "0.10.5"
 KernelAbstractions = "0.9"
 Plots = "1"
 Test = "1"

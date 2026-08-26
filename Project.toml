@@ -22,7 +22,7 @@ PointNeighborsCellListMapExt = "CellListMap"
 [compat]
 Adapt = "4"
 Atomix = "1"
-CellListMap = "0.10"
+CellListMap = "0.10.5"
 GPUArraysCore = "0.2"
 KernelAbstractions = "0.9"
 LinearAlgebra = "1"
