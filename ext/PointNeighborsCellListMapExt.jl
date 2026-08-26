@@ -82,17 +82,23 @@ end
 function PointNeighbors.update!(neighborhood_search::CellListMapNeighborhoodSearch,
                                 x::AbstractMatrix, y::AbstractMatrix;
                                 points_moving = (true, true),
-                                parallelization_backend = nothing, eachindex_y = nothing)
+                                parallelization_backend = PointNeighbors.default_backend(x),
+                                eachindex_y = nothing)
     (; particle_system, points_equal_neighbors) = neighborhood_search
 
     # `rebuild = true` forces the cell list to be rebuilt immediately (CellListMap.jl >= 0.10.5),
     # instead of lazily deferring it to the next `pairwise!` call. This matches the eager
     # contract of `update!`/`initialize!` (see their docstrings in PointNeighbors.jl).
+    # The rebuild itself (unlike `foreach_point_neighbor`) never calls back into user code,
+    # so honoring `parallelization_backend` here is safe with any backend.
+    parallel = !(parallelization_backend isa PointNeighbors.SerialBackend)
+
     if points_equal_neighbors
         @assert x===y "when `points_equal_neighbors == true`, `x` must be equal to `y`"
-        CellListMap.update!(particle_system; xpositions = x, rebuild = true)
+        CellListMap.update!(particle_system; xpositions = x, rebuild = true, parallel)
     else
-        CellListMap.update!(particle_system; xpositions = x, ypositions = y, rebuild = true)
+        CellListMap.update!(particle_system; xpositions = x, ypositions = y, rebuild = true,
+                            parallel)
     end
 
     return neighborhood_search
