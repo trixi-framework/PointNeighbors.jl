@@ -226,6 +226,13 @@
             min_corner = minimum(coords, dims = 2) .- search_radius
             max_corner = maximum(coords, dims = 2) .+ search_radius
 
+            # TreeGridCellList requires min/max corners as Tuples or SVectors
+            min_corner_tuple = Tuple(min_corner)
+            max_corner_tuple = Tuple(max_corner)
+            tree_cell_list = TreeGridCellList(; min_corner = min_corner_tuple,
+                                              max_corner = max_corner_tuple,
+                                              max_level = 3,
+                                              max_points_per_cell = n_points)
             neighborhood_searches = [
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               update_strategy = SemiParallelUpdate()),
@@ -262,7 +269,10 @@
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points,
-                                                                                        backend = Vector{Vector{Int32}}))
+                                                                                        backend = Vector{Vector{Int32}})),
+                TreeNeighborhoodSearch{NDIMS}(; search_radius, n_points,
+                                              cell_list = tree_cell_list,
+                                              update_strategy = ParallelUpdate())
             ]
 
             names = [
@@ -276,7 +286,8 @@
                 "`PrecomputedNeighborhoodSearch`",
                 "`PrecomputedNeighborhoodSearch` with `Vector{Vector}`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `DynamicVectorOfVectors`",
-                "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `Vector{Vector}`"
+                "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `Vector{Vector}`",
+                "`TreeNeighborhoodSearch` with `ParallelUpdate`"
             ]
 
             # Also test copied templates
@@ -301,7 +312,13 @@
                                                                                                     n_points)),
                 GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points,
-                                                                                        backend = Vector{Vector{Int32}}))
+                                                                                        backend = Vector{Vector{Int32}})),
+                TreeNeighborhoodSearch{NDIMS}(cell_list = TreeGridCellList(;
+                                                                           min_corner = min_corner_tuple,
+                                                                           max_corner = max_corner_tuple,
+                                                                           max_level = 3,
+                                                                           max_points_per_cell = n_points),
+                                              update_strategy = ParallelUpdate())
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)

@@ -590,7 +590,7 @@ end
                       for cell in neighboring_cells(cell, neighborhood_search))
 end
 
-@propagate_inbounds function points_in_cell(cell_index, neighborhood_search)
+@propagate_inbounds function points_in_cell(cell_index, neighborhood_search::GridNeighborhoodSearch)
     (; cell_list) = neighborhood_search
 
     return cell_list[periodic_cell_index(cell_index, neighborhood_search)]

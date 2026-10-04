@@ -9,6 +9,7 @@ using GPUArraysCore: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
 using Polyester: Polyester
+using Morton: _Compact1By1, _Compact1By2, cartesian2morton, cartesian3morton
 @reexport using StaticArrays: SVector
 
 include("util.jl")
@@ -19,12 +20,13 @@ include("cell_lists/cell_lists.jl")
 include("nhs_grid.jl")
 include("nhs_precomputed.jl")
 include("gpu.jl")
+include("nhs_tree.jl")
 
 export foreach_point_neighbor, foreach_point_neighbor_unsafe,
        foreach_neighbor, foreach_neighbor_unsafe,
        mapreduce_neighbor, mapreduce_neighbor_unsafe
-export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch
-export DictionaryCellList, FullGridCellList, SpatialHashingCellList
+export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch, TreeNeighborhoodSearch
+export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeGridCellList
 export DynamicVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
