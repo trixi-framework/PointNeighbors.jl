@@ -36,7 +36,7 @@ end
 @inline Base.ndims(cell_list::TreeGridCellList) = ndims(cell_list.linear_indices)
 
 function supported_update_strategies(::TreeGridCellList)
-    return (ParallelUpdate, SerialUpdate)
+    return (ParallelUpdate,)
 end
 
 function TreeGridCellList(; min_corner, max_corner,
@@ -46,13 +46,12 @@ function TreeGridCellList(; min_corner, max_corner,
         throw(ArgumentError("min_corner and max_corner must have the same length"))
     end
 
-    if length(min_corner) > 100
-        throw(ArgumentError("TreeGridCellList only supports up to 100 dimensions, " *
-                            "check your `min_corner` and `max_corner`"))
-    end
-
     NDIMS = length(min_corner)
     n_cells_per_dimension = 2^max_level
+
+    if NDIMS != 2 || NDIMS != 3
+        throw(ArgumentError("TreeGridCellList only supports 2 or 3 dimensions."))
+    end
 
     # Pad domain a little more to avoid 0 in cell indices due to rounding errors.
     length_grid = maximum(max_corner .- min_corner)
@@ -69,32 +68,11 @@ function TreeGridCellList(; min_corner, max_corner,
         n_cells = n_cells_per_dimension^NDIMS
         linear_indices = LinearIndices(ntuple(_ -> n_cells_per_dimension, NDIMS))
         cells = construct_backend(backend, n_cells, max_points_per_cell)
-
-        n_cells = n_cells_per_dimension^NDIMS
         cell_levels = Vector{Int8}(undef, n_cells)
     end
 
     return TreeGridCellList(cells, linear_indices, min_corner, max_corner, cell_levels,
                             max_level, capacity_per_cell)
-end
-
-# TODO: Make this more efficient 
-# For a given point, compute the cell it belongs to based on its coordinates
-@inline function cell_coords(coords, cell_list::TreeGridCellList)
-    (; max_level, cell_levels) = cell_list
-
-    morton_code = morton_cell_index(coords, cell_list, cell_list.max_level) # 37
-
-    for level in 1:max_level
-        # For a given level, we identify a cell on this level with the smallest cell on the `max_level` that is part of it. 
-        # For example, for `max_level = 2`, we identify cell 2 on level 1 with cell 5.
-        offset = level_offset(cell_list, level)
-        cell = div(morton_code - 1, offset) * offset + 1 # Map Morton code to the cell index we identify the cell with 
-
-        cell_levels[cell] != -1 && return cell
-    end
-
-    return 0
 end
 
 @inline function morton_cell_index(coords, cell_list::TreeGridCellList,
@@ -177,9 +155,9 @@ end
 @inline is_leaf(cell_list, cell) = cell_list.cell_levels[cell_index(cell_list, cell)] > -1
 
 function copy_cell_list(cell_list::TreeGridCellList)
-    (; min_corner, max_corner, max_level) = cell_list
+    (; min_corner, max_corner, max_level, capacity_per_cell) = cell_list
 
-    return TreeGridCellList(; min_corner, max_corner, max_level,
+    return TreeGridCellList(; min_corner, max_corner, max_level, capacity_per_cell,
                             backend = typeof(cell_list.cells),
                             max_points_per_cell = max_inner_length(cell_list.cells, 100))
 end
@@ -198,15 +176,15 @@ end
 
 @inline function morton_to_cartesian(::Val{2}, m::Integer)
     m_zero = m - 1
-    return SVector{2, Int}(Morton._Compact1By1(m_zero >> 0),
-                           Morton._Compact1By1(m_zero >> 1))
+    return SVector{2, Int}(_Compact1By1(m_zero >> 0),
+                           _Compact1By1(m_zero >> 1))
 end
 
 @inline function morton_to_cartesian(::Val{3}, m::Integer)
     m_zero = m - 1
-    return SVector{3, Int}(Morton._Compact1By2(m_zero >> 0),
-                           Morton._Compact1By2(m_zero >> 1),
-                           Morton._Compact1By2(m_zero >> 2))
+    return SVector{3, Int}(_Compact1By2(m_zero >> 0),
+                           _Compact1By2(m_zero >> 1),
+                           _Compact1By2(m_zero >> 2))
 end
 
 @inline cartesian_to_morton(c::SVector{2, <:Integer}) = cartesian2morton(c)

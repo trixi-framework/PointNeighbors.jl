@@ -3,7 +3,7 @@
     This is an experimental feature and may change in any future releases.
 """
 
-struct TreeNeighborhoodSearch{NDIMS, C, ELTYPE, US, MC} <:
+struct TreeNeighborhoodSearch{NDIMS, US, C, ELTYPE, MC} <:
        AbstractNeighborhoodSearch
     cell_list       :: C
     search_radius   :: ELTYPE
@@ -16,7 +16,7 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0,
                                        update_strategy = nothing) where {NDIMS}
     if ndims(cell_list) != NDIMS
         throw(ArgumentError("a $(NDIMS)D cell list is required for " *
-                            "a GridNeighborhoodSearch{$(NDIMS)}"))
+                            "a TreeNeighborhoodSearch{$(NDIMS)}"))
     end
 
     if isnothing(update_strategy)
@@ -34,11 +34,12 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0,
     n_cells = (2^cell_list.max_level)^NDIMS
     marked_cells = falses(n_cells)
 
-    return TreeNeighborhoodSearch{NDIMS, typeof(cell_list), typeof(search_radius),
-                                  typeof(update_strategy), typeof(marked_cells)}(cell_list,
-                                                                                 search_radius,
-                                                                                 update_strategy,
-                                                                                 marked_cells)
+    return TreeNeighborhoodSearch{NDIMS, typeof(update_strategy), typeof(cell_list),
+                                  typeof(search_radius),
+                                  typeof(marked_cells)}(cell_list,
+                                                        search_radius,
+                                                        update_strategy,
+                                                        marked_cells)
 end
 
 @inline Base.ndims(::TreeNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -56,7 +57,7 @@ end
 function initialize_tree!(neighborhood_search, y::AbstractMatrix;
                           parallelization_backend = default_backend(y),
                           eachindex_y = axes(y, 2),
-                          iters = 1)
+                          iters = neighborhood_search.cell_list.max_level)
     (; cell_list) = neighborhood_search
     (; cell_levels, capacity_per_cell, max_level) = cell_list
     NDIMS = ndims(cell_list)
@@ -64,8 +65,6 @@ function initialize_tree!(neighborhood_search, y::AbstractMatrix;
     empty!(cell_list)
     cell_levels .= -1
 
-    # Initialize the grid by pushing every point to the cell on the top-most level. 
-    cell_levels[1] = 0
     for point in eachindex_y
         point_coords = @inbounds extract_svector(y, Val(NDIMS), point)
         point_morton = morton_cell_index(point_coords, cell_list, max_level)
@@ -198,14 +197,6 @@ function update!(neighborhood_search::TreeNeighborhoodSearch,
     update_tree!(neighborhood_search, y; eachindex_y, parallelization_backend)
 end
 
-# TODO
-function update_tree!(neighborhood_search::TreeNeighborhoodSearch{<:Any, SerialUpdate},
-                      y::AbstractMatrix;
-                      parallelization_backend = default_backend(y),
-                      eachindex_y = axes(y, 2))
-    return neighborhood_search
-end
-
 function update_tree!(neighborhood_search::TreeNeighborhoodSearch{<:Any, ParallelUpdate},
                       y::AbstractMatrix;
                       parallelization_backend = default_backend(y),
@@ -215,54 +206,102 @@ function update_tree!(neighborhood_search::TreeNeighborhoodSearch{<:Any, Paralle
     return neighborhood_search
 end
 
-@inline function foreach_neighbor(f, neighbor_system_coords,
-                                  neighborhood_search::TreeNeighborhoodSearch,
-                                  point, point_coords, search_radius)
-    (; cell_list) = neighborhood_search
-    (; max_level) = cell_list
+# Maps a Morton sub-index to its coarse base index at a specific hierarchical level
+@inline function base_index(morton, level, cell_list)
+    offset = level_offset(cell_list, level)
+    return div(morton - 1, offset) * offset + 1
+end
 
+# Validates if a coordinate falls within domain limits
+@inline is_valid_cell(cartesian, max_cartesian,
+                      NDIMS) = all(1 <= cartesian[i] <= max_cartesian for i in 1:NDIMS)
+
+# Scans upward through the hierarchy to find a merged coarse leaf containing this Morton code
+@inline function find_coarse_ancestor(morton, cell_level, cell_levels, cell_list)
+    for level in 0:(cell_level - 1)
+        ancestor = base_index(morton, level, cell_list)
+        if cell_levels[ancestor] == level
+            return (ancestor, level)
+        end
+    end
+    return (0, 0) # No coarse ancestor found
+end
+
+# Look-back algorithm that checks if this is the first time our bounding box has touched this coarse cell
+@inline function is_first_encounter(current_cartesian, target_ancestor, ancestor_level,
+                                    search_bounding_box, level_step, max_cartesian, NDIMS,
+                                    cell_list)
+    for prev_cartesian in search_bounding_box
+        # If we've caught up to the current coordinate, we are the first!
+        prev_cartesian == current_cartesian && return true
+
+        !is_valid_cell(prev_cartesian, max_cartesian, NDIMS) && continue
+
+        prev_morton_base = cartesian_to_morton(SVector(Tuple(prev_cartesian)))
+        prev_morton = (prev_morton_base - 1) * level_step + 1
+
+        if base_index(prev_morton, ancestor_level, cell_list) == target_ancestor
+            return false # A previous Cartesian index in our loop already processed this
+        end
+    end
+    return true
+end
+
+@inline function foreach_neighbor_inner(f, neighbor_system_coords,
+                                        neighborhood_search::TreeNeighborhoodSearch,
+                                        point, point_coords, search_radius)
+    (; cell_list) = neighborhood_search
+    (; max_level, cell_levels) = cell_list
     NDIMS = ndims(neighborhood_search)
 
-    # First, determine the level of the cell based on the search radius.
-    # Then, compute the Morton index of the represeting cell for the given level. 
-    # Convert this index to a Cartesian index (x, y), generate the Cartesian indices
-    # of the neighbors and convert these back to Morton indices. 
+    # Calculate the level required for the given search radius
     cell_level = clamp(floor(Int, log2(grid_length(cell_list) / search_radius)), 0,
                        max_level)
-    offset = level_offset(cell_list, cell_level)
+    # Calculate the offset for this level
+    level_step = level_offset(cell_list, cell_level)
     max_cartesian = 2^cell_level
 
+    # Define grid bounding box for the search
     cell_cartesian = cartesian_cell_coords(point_coords, cell_list, cell_level)
-    neighbors_cartesian = CartesianIndices(ntuple(i -> (cell_cartesian[i] - 1):(cell_cartesian[i] + 1),
+    search_bounding_box = CartesianIndices(ntuple(i -> (cell_cartesian[i] - 1):(cell_cartesian[i] + 1),
                                                   NDIMS))
 
-    for neighbor_cartesian in neighbors_cartesian
-        # Filter out invalid cartesian coordinates 
-        !all(1 <= neighbor_cartesian[i] <= max_cartesian for i in 1:NDIMS) && continue
+    # Calculate distance and execute `f` if `target_cell` is a neighbor
+    function evaluate_cell(target_cell)
+        neighbors = points_in_cell(target_cell, neighborhood_search)
+        for neighbor_ in eachindex(neighbors)
+            neighbor = @inbounds neighbors[neighbor_]
+            neighbor_coords = extract_svector(neighbor_system_coords, Val(NDIMS), neighbor)
 
-        cartesian_svec = SVector(Tuple(neighbor_cartesian))
-        neighbor_morton_base = cartesian_to_morton(cartesian_svec)
-        neighbor_morton = (neighbor_morton_base - 1) * offset + 1
+            pos_diff = convert.(eltype(neighborhood_search), point_coords - neighbor_coords)
+            distance2 = dot(pos_diff, pos_diff)
+            pos_diff,
+            distance2 = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                                  nothing)
 
-        for_expanded_cell(cell_list, neighbor_morton, cell_level) do subcell
-            neighbors = points_in_cell(subcell, neighborhood_search)
+            if distance2 <= search_radius^2
+                @inline f(point, neighbor, pos_diff, sqrt(distance2))
+            end
+        end
+    end
 
-            for neighbor_ in eachindex(neighbors)
-                neighbor = @inbounds neighbors[neighbor_]
-                neighbor_coords = extract_svector(neighbor_system_coords,
-                                                  Val(NDIMS), neighbor)
+    for cartesian in search_bounding_box
+        !is_valid_cell(cartesian, max_cartesian, NDIMS) && continue
 
-                pos_diff = convert.(eltype(neighborhood_search),
-                                    point_coords - neighbor_coords)
-                distance2 = dot(pos_diff, pos_diff)
+        morton_base = cartesian_to_morton(SVector(Tuple(cartesian)))
+        morton = (morton_base - 1) * level_step + 1
 
-                pos_diff,
-                distance2 = compute_periodic_distance(pos_diff, distance2,
-                                                      search_radius, nothing)
+        ancestor,
+        ancestor_level = find_coarse_ancestor(morton, cell_level, cell_levels, cell_list)
 
-                !(distance2 <= search_radius^2) && continue
-                distance = sqrt(distance2)
-                @inline f(point, neighbor, pos_diff, distance)
+        if ancestor > 0
+            if is_first_encounter(cartesian, ancestor, ancestor_level, search_bounding_box,
+                                  level_step, max_cartesian, NDIMS, cell_list)
+                evaluate_cell(ancestor)
+            end
+        else
+            for_expanded_cell(cell_list, morton, cell_level) do subcell
+                evaluate_cell(subcell)
             end
         end
     end
@@ -290,7 +329,8 @@ end
     end
 end
 
-@propagate_inbounds function points_in_cell(cell_index, neighborhood_search::TreeNeighborhoodSearch)
+@propagate_inbounds function points_in_cell(cell_index,
+                                            neighborhood_search::TreeNeighborhoodSearch)
     return neighborhood_search.cell_list.cells[cell_index]
 end
 
