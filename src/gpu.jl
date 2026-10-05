@@ -10,7 +10,6 @@
 Adapt.@adapt_structure FullGridCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
 Adapt.@adapt_structure GridNeighborhoodSearch
-Adapt.@adapt_structure TrivialNeighborhoodSearch
 
 # `adapt(CuArray, ::SVector)::SVector`, but `adapt(Array, ::SVector)::Vector`.
 # We don't want to change the type of the `SVector` here.
@@ -33,6 +32,13 @@ function Adapt.adapt_structure(to, nhs::PrecomputedNeighborhoodSearch)
     return PrecomputedNeighborhoodSearch{ndims(nhs)}(neighbor_lists, search_radius,
                                                      periodic_box, neighborhood_search,
                                                      nhs.sort_neighbor_lists)
+end
+
+# `Adapt.@adapt_structure` doesn't work here because the constructor requires `NDIMS`.
+function Adapt.adapt_structure(to, nhs::TrivialNeighborhoodSearch)
+    return TrivialNeighborhoodSearch{ndims(nhs)}(Adapt.adapt(to, nhs.search_radius),
+                                                 Adapt.adapt(to, nhs.eachpoint),
+                                                 Adapt.adapt(to, nhs.periodic_box))
 end
 
 function Adapt.adapt_structure(to, cell_list::SpatialHashingCellList{NDIMS}) where {NDIMS}
