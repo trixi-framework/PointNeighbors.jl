@@ -15,12 +15,14 @@ Trivial neighborhood search that simply loops over all points.
 - `eachpoint = 1:0`:        Iterator for all point indices. Usually just `1:n_points`.
                             The default of `1:0` is useful together with
                             [`copy_neighborhood_search`](@ref).
+                            This is overwritten by the keyword `eachindex_y` of
+                            [`initialize!`](@ref) and [`update!`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
 """
 struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodSearch
     search_radius :: ELTYPE
-    eachpoint     :: EP
+    eachpoint     :: EP # `Ref` to the iterator, so that it can be updated with `eachindex_y`
     periodic_box  :: PB
 
     function TrivialNeighborhoodSearch{NDIMS}(; search_radius = 0.0, eachpoint = 1:0,
@@ -30,6 +32,11 @@ struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodS
                                 "distances will be converted to this type"))
         end
 
+        return TrivialNeighborhoodSearch{NDIMS}(search_radius, Ref(eachpoint), periodic_box)
+    end
+
+    function TrivialNeighborhoodSearch{NDIMS}(search_radius, eachpoint::Ref,
+                                              periodic_box) where {NDIMS}
         new{NDIMS, typeof(search_radius),
             typeof(eachpoint), typeof(periodic_box)}(search_radius, eachpoint, periodic_box)
     end
@@ -42,6 +49,8 @@ end
 @inline function initialize!(search::TrivialNeighborhoodSearch, x, y;
                              parallelization_backend = default_backend(x),
                              eachindex_y = axes(y, 2))
+    search.eachpoint[] = eachindex_y
+
     return search
 end
 
@@ -49,10 +58,12 @@ end
                          points_moving = (true, true),
                          parallelization_backend = default_backend(x),
                          eachindex_y = axes(y, 2))
+    search.eachpoint[] = eachindex_y
+
     return search
 end
 
-@inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachpoint
+@inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachpoint[]
 
 # Create a copy of a neighborhood search but with a different search radius and different
 # number of points.
