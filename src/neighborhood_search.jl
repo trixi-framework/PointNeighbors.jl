@@ -242,9 +242,17 @@ Loop over all neighbors of `point` and execute `f(i, j, pos_diff, d)` for every
 neighbor within `search_radius`, where `i` is `point`, `j` is the neighbor index,
 `pos_diff` is the vector from neighbor to point, and `d` is the distance.
 
+The keyword argument `search_radius` can be used to query neighbors within a smaller radius
+than the search radius that the neighborhood search was constructed with.
+It must not exceed the search radius of the neighborhood search,
+since neighbors outside of this radius might be missed.
+This is checked unless this function is called with `@inbounds`.
+Note that [`PrecomputedNeighborhoodSearch`](@ref) does not support a different
+`search_radius`, since it skips the distance check for performance reasons.
+
 This method performs bounds checks, even when called with `@inbounds`.
 `@inbounds` only skips the bounds check for loading the coordinates of `point`
-from `system_coords`.
+from `system_coords` and the check of `search_radius` explained above.
 See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks.
 """
 @propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_coords,
@@ -257,9 +265,25 @@ See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks
     # in the neighbor loop, which is not safe (that's what `foreach_neighbor_unsafe` is for).
     # To avoid this, we have to use a function barrier to disable the `@inbounds` again.
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+    @boundscheck check_search_radius(neighborhood_search, search_radius)
 
     foreach_neighbor(f, neighbor_coords, neighborhood_search,
                      point, point_coords, search_radius)
+end
+
+# Check that the query radius passed to `foreach_neighbor` or `mapreduce_neighbor`
+# is supported by this neighborhood search.
+@inline function check_search_radius(neighborhood_search::AbstractNeighborhoodSearch,
+                                     query_radius)
+    # Neighbors outside of the search radius of the neighborhood search
+    # (and therefore outside of the neighboring cells) might be missed.
+    # Note that we cannot interpolate values into the error message or concatenate
+    # strings because this might be called from within a GPU kernel.
+    if query_radius > search_radius(neighborhood_search)
+        error("query `search_radius` must not exceed the NHS search radius")
+    end
+
+    return nothing
 end
 
 @inline foreach_neighbor_op(::Any, ::Any) = nothing
@@ -283,6 +307,9 @@ end
 Like [`foreach_neighbor`](@ref), but skips **all** bounds checks.
 
 `foreach_neighbor` performs the following bounds checks that are skipped here:
+- Check that `search_radius` does not exceed the search radius of the neighborhood search
+  (or that it is identical with [`PrecomputedNeighborhoodSearch`](@ref)).
+  Passing an unsupported `search_radius` here silently yields wrong neighbors.
 - Check if `point` is in bounds of `system_coords`. This is the only bounds check
   that is skipped when calling `foreach_neighbor` with `@inbounds`, and the only one that
   is safe to skip when `point` is guaranteed to be in bounds of `system_coords`.
@@ -334,6 +361,9 @@ The keyword argument `init` is required. It provides the starting value for
 the reduction. Choose `init` so that combining it with the first mapped neighbor value
 using `op` gives the desired result, typically the identity element of `op`.
 
+The keyword argument `search_radius` can be used to query neighbors within a smaller radius.
+See [`foreach_neighbor`](@ref) for restrictions on the `search_radius`.
+
 This method performs the same bounds checks as [`foreach_neighbor`](@ref).
 See [`mapreduce_neighbor_unsafe`](@ref) for a version that skips all bounds checks.
 """
@@ -342,6 +372,7 @@ See [`mapreduce_neighbor_unsafe`](@ref) for a version that skips all bounds chec
                                                 point; init,
                                                 search_radius = search_radius(neighborhood_search))
     point_coords = extract_svector(system_coords, Val(ndims(neighborhood_search)), point)
+    @boundscheck check_search_radius(neighborhood_search, search_radius)
 
     mapreduce_neighbor(f, op, neighbor_coords, neighborhood_search,
                        point, point_coords, search_radius, init)
