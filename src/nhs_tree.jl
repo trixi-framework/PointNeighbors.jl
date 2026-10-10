@@ -22,6 +22,8 @@ The leaf size is chosen locally based on the search radii of the points,
 without any assumptions on the variation of the search radii.
 As with the [`GridNeighborhoodSearch`](@ref), a query only considers the ``3^d`` block of
 cells around the leaf containing the query point, at the level of this leaf.
+Leaves in this block are skipped when their distance to the query point is larger than
+the average of the query radius and the maximum search radius of all points in the leaf.
 
 !!! warning "Experimental implementation"
     This is an experimental feature and may change in any future releases.
@@ -286,14 +288,26 @@ end
             return reduced
         end
 
-        # First finest cell of the leaf
+        # Skip this leaf if it is too far away from the query point
         leaf_index = cell_index_ >> (NDIMS * level_difference)
+        leaf_cell = cell .>> level_difference
+        if is_out_of_reach(cell_list, leaf_cell, leaf_index, leaf_level_,
+                           point_coords, query_radius)
+            return reduced
+        end
+
+        # First finest cell of the leaf
         first_cell = leaf_index << (NDIMS * (cell_list.max_level - leaf_level_))
         last_cell = first_cell + n_finest_cells(cell_list, leaf_level_)
 
         return mapreduce_finest_cells(f, op, reduced, first_cell, last_cell,
                                       neighbor_coords, neighborhood_search,
                                       point, point_coords, query_radius)
+    end
+
+    # Skip this cell and all leaves inside if it is too far away from the query point
+    if is_out_of_reach(cell_list, cell, cell_index_, level, point_coords, query_radius)
+        return reduced
     end
 
     # Loop over all leaves inside this cell (or this cell if it is a leaf).
@@ -304,13 +318,50 @@ end
         leaf_level_ = leaf_level(cell_list, finest_cell)
         next_cell = finest_cell + n_finest_cells(cell_list, leaf_level_)
 
-        reduced = mapreduce_finest_cells(f, op, reduced, finest_cell, next_cell,
-                                         neighbor_coords, neighborhood_search,
-                                         point, point_coords, query_radius)
+        # Skip finer leaves that are too far away from the query point.
+        # Note that a leaf at `level` is this cell itself, which has been checked above.
+        level_difference = cell_list.max_level - leaf_level_
+        leaf_index = finest_cell >> (NDIMS * level_difference)
+        if leaf_level_ == level ||
+           !is_out_of_reach(cell_list,
+                            cell_coords_from_index(cell_list, leaf_index, leaf_level_),
+                            leaf_index, leaf_level_, point_coords, query_radius)
+            reduced = mapreduce_finest_cells(f, op, reduced, finest_cell, next_cell,
+                                             neighbor_coords, neighborhood_search,
+                                             point, point_coords, query_radius)
+        end
+
         finest_cell = next_cell
     end
 
     return reduced
+end
+
+# Check if all points in the cell `cell` (zero-based Cartesian coordinates) with index
+# `cell_index` at level `level` are too far away from the query point to be neighbors.
+# This is the case when the minimum distance from the query point to the cell is larger
+# than the average of the query radius and the maximum radius in this cell.
+@propagate_inbounds function is_out_of_reach(cell_list, cell, cell_index, level,
+                                             point_coords, query_radius)
+    (; min_corner, max_radius, root_cell_size, n_roots) = cell_list
+    ELTYPE = eltype(cell_list)
+
+    # Enlarge the cell by a safety margin to account for rounding errors when assigning
+    # points to cells. These are in the order of machine precision times the domain size.
+    margin = 16 * eps(ELTYPE) * root_cell_size * maximum(n_roots)
+
+    size_ = cell_size(cell_list, level)
+    cell_min = min_corner .+ SVector(cell) .* size_ .- margin
+    cell_max = cell_min .+ size_ .+ 2 * margin
+
+    # Distance vector from the query point to the closest point in the cell
+    distance_vector = max.(cell_min .- point_coords, point_coords .- cell_max, 0)
+    distance2 = dot(distance_vector, distance_vector)
+
+    max_pair_radius = (query_radius +
+                       max_radius[pyramid_index(cell_list, cell_index, level)]) / 2
+
+    return distance2 > max_pair_radius^2
 end
 
 # Reduce over all neighbors in the finest cells `first_cell:(last_cell - 1)`

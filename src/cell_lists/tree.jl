@@ -226,6 +226,60 @@ end
     return Int(x)
 end
 
+# Inverse of `cell_index`. Compute the zero-based Cartesian coordinates of the cell with
+# zero-based linear index `cell_index` at level `level`.
+@inline function cell_coords_from_index(cell_list::TreeCellList, cell_index, level)
+    (; n_roots) = cell_list
+    NDIMS = ndims(cell_list)
+
+    root_index = cell_index >> (NDIMS * level)
+    local_index = cell_index - (root_index << (NDIMS * level))
+
+    # Inverse of the column-major linear index of the root cell
+    root = ntuple(Val(NDIMS)) do dim
+        stride = prod(n_roots[1:(dim - 1)], init = 1)
+        return rem(div(root_index, stride), n_roots[dim])
+    end
+
+    return (root .<< level) .+ morton_coords(local_index, Val(NDIMS))
+end
+
+# Inverse of `morton_index`
+@inline morton_coords(index, ::Val{1}) = (index,)
+
+@inline function morton_coords(index, ::Val{2})
+    return (compact_bits_2d(index), compact_bits_2d(index >> 1))
+end
+
+@inline function morton_coords(index, ::Val{3})
+    return (compact_bits_3d(index), compact_bits_3d(index >> 1),
+            compact_bits_3d(index >> 2))
+end
+
+# Inverse of `spread_bits_2d`. Extract every second bit of `x`.
+@inline function compact_bits_2d(x)
+    x = UInt64(x) & 0x5555555555555555
+    x = (x | (x >> 1)) & 0x3333333333333333
+    x = (x | (x >> 2)) & 0x0f0f0f0f0f0f0f0f
+    x = (x | (x >> 4)) & 0x00ff00ff00ff00ff
+    x = (x | (x >> 8)) & 0x0000ffff0000ffff
+    x = (x | (x >> 16)) & 0x00000000ffffffff
+
+    return Int(x)
+end
+
+# Inverse of `spread_bits_3d`. Extract every third bit of `x`.
+@inline function compact_bits_3d(x)
+    x = UInt64(x) & 0x1249249249249249
+    x = (x | (x >> 2)) & 0x10c30c30c30c30c3
+    x = (x | (x >> 4)) & 0x100f00f00f00f00f
+    x = (x | (x >> 8)) & 0x001f0000ff0000ff
+    x = (x | (x >> 16)) & 0x001f00000000ffff
+    x = (x | (x >> 32)) & 0x00000000001fffff
+
+    return Int(x)
+end
+
 # Zero-based index of the finest cell containing the point with coordinates `coords`.
 # Points must be inside the domain.
 @inline function finest_cell_index(coords, cell_list::TreeCellList)

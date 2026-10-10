@@ -68,6 +68,11 @@
             # Each cell has a unique zero-based index
             @test sort(vec(indices)) == 0:(prod(n_cells) - 1)
 
+            # The coordinates can be recovered from the index
+            @test all(zip(cells, indices)) do (cell, index)
+                PointNeighbors.cell_coords_from_index(cell_list, index, level) == cell
+            end
+
             # The parent of a cell is obtained by removing the last 2 bits of the index
             if level > 0
                 for (cell, index) in zip(cells, indices)
@@ -121,6 +126,36 @@
         nhs = TreeNeighborhoodSearch{1}(; cell_list)
         initialize_tree!(nhs, coords, [0.1, 0.2])
         @test finest_leaf_levels(cell_list) == [1, 1, 1, 1, 1, 1, 1, 1]
+    end
+
+    @testset "Pruning of Cells Out of Reach" begin
+        # A single point in the cell [0.5, 1) x [0, 0.5) at level 1 with radius 0.2
+        cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                 max_level = 2)
+        nhs = TreeNeighborhoodSearch{2}(; cell_list)
+        initialize_tree!(nhs, [0.9; 0.1;;], [0.2])
+
+        cell = (1, 0)
+        cell_index = PointNeighbors.cell_index(cell_list, cell, 1)
+
+        # The query point (0.2, 0.25) has a distance of 0.3 to this cell.
+        # With a query radius of 0.4, points in this cell with a radius of 0.2 can be
+        # at a distance of up to (0.4 + 0.2) / 2 = 0.3 to the query point.
+        @test !PointNeighbors.is_out_of_reach(cell_list, cell, cell_index, 1,
+                                              SVector(0.2, 0.25), 0.4)
+
+        # With a query radius of 0.3, this is only (0.3 + 0.2) / 2 = 0.25
+        @test PointNeighbors.is_out_of_reach(cell_list, cell, cell_index, 1,
+                                             SVector(0.2, 0.25), 0.3)
+
+        # The same holds for the leaf containing the point at level 2
+        cell = (3, 0)
+        cell_index = PointNeighbors.cell_index(cell_list, cell, 2)
+        @test PointNeighbors.leaf_level(cell_list, cell_index) == 2
+        @test !PointNeighbors.is_out_of_reach(cell_list, cell, cell_index, 2,
+                                              SVector(0.45, 0.1), 0.4)
+        @test PointNeighbors.is_out_of_reach(cell_list, cell, cell_index, 2,
+                                             SVector(0.45, 0.1), 0.2)
     end
 
     @testset "Points Sorted Into Leaves" begin
@@ -230,6 +265,27 @@
                 tree_neighbors(nhs, x, query_radii[i], coords) ==
                 brute_force_neighbors(x, query_radii[i], coords, radii)
             end
+        end
+    end
+
+    @testset "Exact Distances on a Lattice $(NDIMS)D" for NDIMS in 2:3
+        # Points on a lattice with spacing 1/16, which is exactly representable.
+        # Many points are exactly on cell boundaries, and many pairs have a distance of
+        # exactly the average radius, which must be found (`distance <= radius`).
+        lattice = CartesianIndices(ntuple(_ -> 17, NDIMS))
+        coords = reduce(hcat, [collect(Tuple(cell) .- 1) ./ 16 for cell in vec(lattice)])
+
+        # Radii of 1/16 and 3/16, so that the average radius of mixed pairs is 2/16
+        radii = [isodd(j) ? 1 / 16 : 3 / 16 for j in axes(coords, 2)]
+
+        cell_list = TreeCellList(; min_corner = zeros(NDIMS), max_corner = ones(NDIMS),
+                                 max_level = 5)
+        nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list)
+        initialize_tree!(nhs, coords, radii)
+
+        @test all(axes(coords, 2)) do i
+            tree_neighbors(nhs, coords[:, i], radii[i], coords) ==
+            brute_force_neighbors(coords[:, i], radii[i], coords, radii)
         end
     end
 
