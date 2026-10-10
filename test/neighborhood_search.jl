@@ -179,6 +179,33 @@
                 @test sort(neighbors[3]) == [1, 3]
                 @test sort(neighbors[4]) == [4]
                 @test sort(neighbors[5]) == [1, 5]
+
+                # Query with a smaller search radius of 0.07.
+                # Points 1 and 3 have a periodic distance of 0.05 and are still neighbors.
+                # Points 1 and 5 have a periodic distance of 0.09 and are no longer neighbors.
+                if nhs isa PrecomputedNeighborhoodSearch
+                    # The precomputed neighbor lists can't be filtered by a smaller radius
+                    @test_throws "does not support" foreach_neighbor((_...) -> nothing,
+                                                                     coords, coords, nhs,
+                                                                     1,
+                                                                     search_radius = 0.07)
+                else
+                    neighbors_small = [Int[] for _ in axes(coords, 2)]
+
+                    for point in axes(coords, 2)
+                        foreach_neighbor(coords, coords, nhs, point,
+                                         search_radius = 0.07) do point, neighbor,
+                                                                  pos_diff, distance
+                            push!(neighbors_small[point], neighbor)
+                        end
+                    end
+
+                    @test sort(neighbors_small[1]) == [1, 3]
+                    @test sort(neighbors_small[2]) == [2]
+                    @test sort(neighbors_small[3]) == [1, 3]
+                    @test sort(neighbors_small[4]) == [4]
+                    @test sort(neighbors_small[5]) == [5]
+                end
             end
         end
     end
@@ -219,6 +246,26 @@
                                                                                  pos_diff,
                                                                                  distance
                 push!(neighbors_expected[point], neighbor)
+            end
+
+            # Expected neighbor lists when querying with a smaller search radius.
+            # This radius is chosen to not be a "nice" fraction of the cell size.
+            small_radius = 0.37 * search_radius
+            trivial_nhs_small = TrivialNeighborhoodSearch{NDIMS}(;
+                                                                 search_radius = small_radius,
+                                                                 eachpoint = axes(coords,
+                                                                                  2))
+
+            neighbors_expected_small = [Int[] for _ in axes(coords, 2)]
+
+            foreach_point_neighbor(coords, coords, trivial_nhs_small,
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbor,
+                                                                                 pos_diff,
+                                                                                 distance
+                # Make sure that the reported distance is the actual distance
+                @assert distance <= small_radius
+                push!(neighbors_expected_small[point], neighbor)
             end
 
             # Expand the domain by `search_radius`, as we need the neighboring cells of
@@ -463,6 +510,88 @@
                     result = mapreduce_neighbor_unsafe(f, op, coords, empty_coords,
                                                        empty_nhs, point; init = 123)
                     @test result == 123
+                end
+
+                # Query neighbors within a smaller radius than the search radius
+                # that the neighborhood search was constructed with
+                @testset "Smaller Query `search_radius`" begin
+                    if nhs isa PrecomputedNeighborhoodSearch
+                        # The precomputed neighbor lists don't store distances,
+                        # so they can't be filtered by a smaller radius.
+                        @test_throws "does not support" foreach_neighbor((_...) -> nothing,
+                                                                         coords, coords,
+                                                                         nhs, 1,
+                                                                         search_radius = small_radius)
+                        @test_throws "does not support" mapreduce_neighbor((_...) -> 0, +,
+                                                                           coords, coords,
+                                                                           nhs, 1;
+                                                                           init = 0,
+                                                                           search_radius = small_radius)
+                    else
+                        # Collect the neighbors with both the safe and the unsafe version
+                        neighbors = [Int[] for _ in axes(coords, 2)]
+                        neighbors_unsafe = [Int[] for _ in axes(coords, 2)]
+
+                        for point in axes(coords, 2)
+                            foreach_neighbor(coords, coords, nhs, point,
+                                             search_radius = small_radius) do point,
+                                                                              neighbor,
+                                                                              pos_diff,
+                                                                              distance
+                                push!(neighbors[point], neighbor)
+                            end
+
+                            foreach_neighbor_unsafe(coords, coords, nhs, point,
+                                                    search_radius = small_radius) do point,
+                                                                                     neighbor,
+                                                                                     pos_diff,
+                                                                                     distance
+                                push!(neighbors_unsafe[point], neighbor)
+                            end
+                        end
+
+                        @test sort.(neighbors) == neighbors_expected_small
+                        @test sort.(neighbors_unsafe) == neighbors_expected_small
+
+                        # Sum up the neighbor indices with both versions of `mapreduce_neighbor`
+                        neighbor_sums = map(axes(coords, 2)) do point
+                            mapreduce_neighbor(+, coords, coords, nhs, point; init = 0,
+                                               search_radius = small_radius) do point,
+                                                                                neighbor,
+                                                                                pos_diff,
+                                                                                distance
+                                neighbor
+                            end
+                        end
+                        neighbor_sums_unsafe = map(axes(coords, 2)) do point
+                            mapreduce_neighbor_unsafe(+, coords, coords, nhs, point;
+                                                      init = 0,
+                                                      search_radius = small_radius) do point,
+                                                                                       neighbor,
+                                                                                       pos_diff,
+                                                                                       distance
+                                neighbor
+                            end
+                        end
+
+                        @test neighbor_sums == sum.(neighbors_expected_small)
+                        @test neighbor_sums_unsafe == sum.(neighbors_expected_small)
+                    end
+                end
+
+                # Querying with a larger radius than the search radius of the neighborhood
+                # search might miss neighbors in cells that are not considered.
+                # The safe versions must throw an error in this case.
+                @testset "Larger Query `search_radius`" begin
+                    @test_throws ErrorException foreach_neighbor((_...) -> nothing,
+                                                                 coords, coords, nhs, 1,
+                                                                 search_radius = 2 *
+                                                                                 search_radius)
+                    @test_throws ErrorException mapreduce_neighbor((_...) -> 0, +,
+                                                                   coords, coords, nhs, 1;
+                                                                   init = 0,
+                                                                   search_radius = 2 *
+                                                                                   search_radius)
                 end
             end
         end
