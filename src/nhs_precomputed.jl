@@ -12,6 +12,10 @@ for each point during initialization and update.
 This neighborhood search maximizes the performance of neighbor loops at the cost of a much
 slower [`update!`](@ref).
 
+Since the neighbor lists are precomputed, the neighbor loop skips the distance check.
+Therefore, querying with a smaller `search_radius` in [`foreach_neighbor`](@ref)
+or [`mapreduce_neighbor`](@ref) is not supported.
+
 A [`GridNeighborhoodSearch`](@ref) is used internally to compute the neighbor lists during
 initialization and update.
 
@@ -203,6 +207,17 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     if sort_neighbor_lists
         sorteach!(neighbor_lists)
     end
+end
+
+@inline function check_search_radius(neighborhood_search::PrecomputedNeighborhoodSearch,
+                                     query_radius)
+    # The neighbor loop below skips the distance check for performance reasons,
+    # so a smaller query radius would silently be ignored.
+    if query_radius != search_radius(neighborhood_search)
+        error("`PrecomputedNeighborhoodSearch` does not support a different query `search_radius`")
+    end
+
+    return nothing
 end
 
 # Note that calling this function with `@inbounds` is not safe.
