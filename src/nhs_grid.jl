@@ -535,40 +535,17 @@ end
         cell_collision = check_cell_collision(neighbor_cell_,
                                               cell_list, neighborhood_search)
 
-        for neighbor_ in eachindex(neighbors)
-            neighbor = @inbounds neighbors[neighbor_]
-
-            # Making the following `@inbounds` is not safe because we don't know
-            # if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_point_coords = extract_svector(neighbor_coords,
-                                                    Val(ndims(neighborhood_search)),
-                                                    neighbor)
-
-            pos_diff = convert.(eltype(neighborhood_search),
-                                point_coords - neighbor_point_coords)
-            distance2 = dot(pos_diff, pos_diff)
-
-            (pos_diff,
-             distance2) = compute_periodic_distance(pos_diff, distance2,
-                                                    search_radius, periodic_box)
-
-            if distance2 <= search_radius^2
-                # If this cell has a collision, check if this point belongs to this cell
-                # (only with `SpatialHashingCellList`).
-                if cell_collision &&
+        # If this cell has a collision, skip all points that don't belong to this cell
+        # (only with `SpatialHashingCellList`).
+        skip_neighbor = @inline function (neighbor_point_coords)
+            return cell_collision &&
                    check_collision(neighbor_cell_, neighbor_point_coords, cell_list,
                                    neighborhood_search)
-                    continue
-                end
-
-                distance = sqrt(distance2)
-
-                # Inline to avoid loss of performance compared to not using this function
-                # and unrolling everything.
-                value = @inline f(point, neighbor, pos_diff, distance)
-                reduced = @inline op(reduced, value)
-            end
         end
+
+        reduced = mapreduce_points(f, op, reduced, neighbors, neighbor_coords,
+                                   neighborhood_search, point, point_coords,
+                                   search_radius, periodic_box, skip_neighbor)
     end
 
     return reduced
