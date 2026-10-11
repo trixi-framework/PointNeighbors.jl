@@ -30,7 +30,7 @@
 | `GridNeighborhoodSearch` with `DictionaryCellList` | Grid-based NHS with Julia `Dict` backend | Infinite domain | Fast | Fast | ❌ |
 | `GridNeighborhoodSearch` with `FullGridCellList` | Grid-based NHS allocating all cells of the domain | Finite domain, but efficient memory layout for densely filled domain. | Faster | Fastest | ✅ |
 | `PrecomputedNeighborhoodSearch` | Precompute neighbor lists | Best for [TLSPH](https://trixi-framework.github.io/TrixiParticles.jl/stable/systems/total_lagrangian_sph/) without NHS updates. Not suitable for updates in every time step. | Fastest | Very slow | ✅ |
-| `TreeNeighborhoodSearch` (experimental) | Quadtree/octree with a search radius for each point | Finite domain. Neighbors within the average search radius of both points. | Fast | Fast | ✅ |
+| `TreeNeighborhoodSearch` (experimental) | Quadtree/octree with a search radius for each point | Finite or periodic domain. Neighbors within the average search radius of both points. | Fast | Fast | ✅ |
 
 ## Benchmarks by Implementation
 

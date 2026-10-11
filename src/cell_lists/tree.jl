@@ -7,6 +7,8 @@ Cell list for the [`TreeNeighborhoodSearch`](@ref), storing points in the leaves
 a quadtree (2D) or octree (3D) with variable leaf sizes.
 
 The domain is covered by a grid of cubic root cells of size `root_cell_size`.
+When used with a [`PeriodicBox`](@ref) in the [`TreeNeighborhoodSearch`](@ref),
+the size of the root cells is adjusted in each dimension to tile the periodic box exactly.
 By default, a single root cell covers the whole domain.
 Each root cell is the root of a tree, in which a cell at level ``L``
 has the size `root_cell_size` ``/ 2^L``.
@@ -56,7 +58,7 @@ around this cell at level ``L``, and if it contains more than `capacity` points.
 struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL, NL} <: AbstractCellList
     min_corner     :: SVector{NDIMS, ELTYPE}
     max_corner     :: SVector{NDIMS, ELTYPE}
-    root_cell_size :: ELTYPE
+    root_cell_size :: SVector{NDIMS, ELTYPE} # Size of the root cells in each dimension
     n_roots        :: NTuple{NDIMS, Int}
     max_level      :: Int
     capacity       :: Int
@@ -93,17 +95,29 @@ function TreeCellList(; min_corner, max_corner, max_level,
                             "in $(NDIMS)D"))
     end
 
-    ELTYPE = promote_type(eltype(min_corner), eltype(max_corner), typeof(root_cell_size))
+    ELTYPE = promote_type(eltype(min_corner), eltype(max_corner), eltype(root_cell_size))
     min_corner_ = SVector{NDIMS, ELTYPE}(Tuple(min_corner))
     max_corner_ = SVector{NDIMS, ELTYPE}(Tuple(max_corner))
-    root_cell_size_ = convert(ELTYPE, root_cell_size)
 
-    if !(root_cell_size_ > 0)
+    # A scalar `root_cell_size` yields cubic root cells
+    root_cell_size_ = SVector{NDIMS, ELTYPE}(root_cell_size .* ntuple(_ -> 1, NDIMS))
+
+    if !all(root_cell_size_ .> 0)
         throw(ArgumentError("`root_cell_size` must be positive"))
     end
 
     # Number of root cells needed to cover the domain in each dimension
     n_roots = Tuple(max.(ceil.(Int, (max_corner_ .- min_corner_) ./ root_cell_size_), 1))
+
+    return TreeCellList(min_corner_, max_corner_, root_cell_size_, n_roots, max_level,
+                        capacity, backend, max_points_per_cell)
+end
+
+# Allocate the data structures for the given geometry
+function TreeCellList(min_corner, max_corner, root_cell_size, n_roots, max_level,
+                      capacity, backend, max_points_per_cell)
+    NDIMS = length(min_corner)
+    ELTYPE = eltype(min_corner)
 
     n_cells = level_offset(n_roots, max_level + 1, Val(NDIMS))
     n_finest_cells = prod(n_roots) << (NDIMS * max_level)
@@ -120,7 +134,7 @@ function TreeCellList(; min_corner, max_corner, max_level,
     # Use ~sqrt(n) chunks of ~sqrt(n) finest cells for the parallel prefix sum
     chunk_sums = zeros(Int, ceil(Int, sqrt(n_finest_cells)))
 
-    return TreeCellList(min_corner_, max_corner_, root_cell_size_, n_roots, max_level,
+    return TreeCellList(min_corner, max_corner, root_cell_size, n_roots, max_level,
                         capacity, cells, leaves, max_radius, max_radius_all,
                         n_points, leaf_level, n_lists, chunk_sums)
 end
@@ -156,11 +170,38 @@ function supported_update_strategies(::TreeCellList)
 end
 
 function copy_cell_list(cell_list::TreeCellList)
-    (; min_corner, max_corner, max_level, root_cell_size, capacity, cells) = cell_list
+    (; min_corner, max_corner, root_cell_size, n_roots, max_level, capacity,
+     cells) = cell_list
 
-    return TreeCellList(; min_corner, max_corner, max_level, root_cell_size, capacity,
-                        backend = typeof(cells),
-                        max_points_per_cell = max_inner_length(cells, 100))
+    return TreeCellList(min_corner, max_corner, root_cell_size, n_roots, max_level,
+                        capacity, typeof(cells), max_inner_length(cells, 100))
+end
+
+# Create a cell list for the periodic box `periodic_box` with the same configuration as
+# `cell_list`, but with root cells tiling the periodic box exactly.
+function periodic_cell_list(cell_list::TreeCellList, periodic_box::PeriodicBox)
+    (; min_corner, max_corner, root_cell_size, max_level, capacity, cells) = cell_list
+
+    if !(min_corner ≈ periodic_box.min_corner && max_corner ≈ periodic_box.max_corner)
+        throw(ArgumentError("the domain of the `TreeCellList` must be the periodic box"))
+    end
+
+    # Round the number of root cells to obtain root cells that are as cubic as possible
+    n_roots = Tuple(max.(round.(Int, periodic_box.size ./ root_cell_size), 1))
+
+    # With at least 3 root cells in each dimension, the 3^d block of cells around a leaf
+    # can never contain multiple periodic images of the same leaf.
+    if any(<(3), n_roots)
+        throw(ArgumentError("the `TreeCellList` needs at least 3 root cells in each " *
+                            "dimension when used with periodicity. " *
+                            "Please use a smaller `root_cell_size`."))
+    end
+
+    root_cell_size_ = periodic_box.size ./ n_roots
+
+    return TreeCellList(periodic_box.min_corner, periodic_box.max_corner, root_cell_size_,
+                        n_roots, max_level, capacity, typeof(cells),
+                        max_inner_length(cells, 100))
 end
 
 # Each pyramid array stores all cells of level 0, then all cells of level 1, and so on.
@@ -183,11 +224,11 @@ end
     return level_offset(cell_list, level) + cell_index + 1
 end
 
-# Size of the cells at level `level`
+# Size of the cells at level `level` in each dimension
 @inline function cell_size(cell_list::TreeCellList, level)
     (; root_cell_size) = cell_list
 
-    return root_cell_size / (1 << level)
+    return root_cell_size ./ (1 << level)
 end
 
 # Number of cells at the finest level that are inside one cell at level `level`
@@ -213,6 +254,11 @@ end
 
     return all(i -> 0 <= cell[i] < n_cells[i], eachindex(cell))
 end
+
+# With periodicity, map a cell outside of the grid to the corresponding cell
+# inside the grid
+@inline periodic_cell(cell, n_cells, periodic_box::Nothing) = cell
+@inline periodic_cell(cell, n_cells, periodic_box) = mod.(cell, n_cells)
 
 # Zero-based linear index of the cell with zero-based Cartesian coordinates `cell`
 # at level `level`.
@@ -357,8 +403,9 @@ end
 
 # Rebuild the tree from scratch for the points `eachindex_points` with coordinates `coords`
 # and radii `radii`. All loops are parallelized with `parallelization_backend`.
+# With a `periodic_box`, the coordinates are moved into the periodic box first.
 function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
-                  parallelization_backend)
+                  parallelization_backend, periodic_box)
     (; cells, leaves, max_level, max_radius, n_points, n_lists) = cell_list
 
     # Only the finest level has to be reset. The coarser levels are computed from it below.
@@ -384,7 +431,8 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
 
         # Note that we can't use a variable `NDIMS` here, as it would be captured
         # by the closure of the threaded loop, making `Val(NDIMS)` type-unstable.
-        point_coords = extract_svector(coords, Val(ndims(cell_list)), point)
+        point_coords = periodic_coords(extract_svector(coords, Val(ndims(cell_list)),
+                                                       point), periodic_box)
         i = pyramid_index(cell_list, finest_cell_index(point_coords, cell_list), max_level)
 
         increment!(n_points, i, one(eltype(n_points)), parallelization_backend)
@@ -405,7 +453,7 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
     # Each level only depends on the previous level.
     for level in 0:max_level
         @threaded parallelization_backend for cell in cells_on_level(cell_list, level)
-            split_cell!(cell_list, cell, level)
+            split_cell!(cell_list, cell, level, periodic_box)
         end
     end
 
@@ -457,7 +505,8 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
 
     # Add each point to its leaf
     @threaded parallelization_backend for point in eachindex_points
-        point_coords = extract_svector(coords, Val(ndims(cell_list)), point)
+        point_coords = periodic_coords(extract_svector(coords, Val(ndims(cell_list)),
+                                                       point), periodic_box)
         finest_cell = finest_cell_index(point_coords, cell_list)
         slot = leaf_slot(cell_list, leaf_first_cell(cell_list, finest_cell))
 
@@ -550,6 +599,14 @@ end
     return cell_list
 end
 
+# The maximum search radius that is supported with multiple root cells.
+# Allow small tolerance to avoid errors due to rounding errors in the root cell size,
+# for example when a periodic box of size 0.3 is divided into 3 root cells
+# and the search radius is 0.1.
+@inline function max_root_radius(cell_list)
+    return minimum(cell_list.root_cell_size) * (1 + 10 * eps(eltype(cell_list)))
+end
+
 function check_max_radius(cell_list)
     (; max_radius, max_radius_all, n_roots, root_cell_size) = cell_list
 
@@ -561,7 +618,7 @@ function check_max_radius(cell_list)
     # With a single root cell, the 3^d block around the root cell contains all points.
     # With multiple root cells, we can only guarantee to find all neighbors when
     # all radii are smaller than the root cells.
-    if prod(n_roots) > 1 && max_radius_all_ > root_cell_size
+    if prod(n_roots) > 1 && max_radius_all_ > max_root_radius(cell_list)
         error("the search radii must not exceed the `root_cell_size` of the cell list " *
               "when the domain is covered by multiple root cells")
     end
@@ -570,7 +627,7 @@ end
 # Decide whether the cell with zero-based index `cell_index_` at level `level` is split,
 # and store the level of the leaf containing this cell in `leaf_level`.
 # Note that this requires the parent level to be processed already.
-@inline function split_cell!(cell_list, cell_index_, level)
+@inline function split_cell!(cell_list, cell_index_, level, periodic_box)
     (; leaf_level, n_points, capacity, max_level) = cell_list
     NDIMS = ndims(cell_list)
 
@@ -588,7 +645,8 @@ end
 
     # This cell is a node of the tree. Split it if possible.
     if level < max_level && n_points[i] > capacity &&
-       can_split(cell_list, cell_coords_from_index(cell_list, cell_index_, level), level)
+       can_split(cell_list, cell_coords_from_index(cell_list, cell_index_, level), level,
+                 periodic_box)
         leaf_level[i] = -1
     else
         leaf_level[i] = level
@@ -603,15 +661,21 @@ end
 # at level `L` with `h_i <= cell_size(L)`, all neighbors `j` with
 # `distance <= max(h_i, h_j)` are in the 3^d block around this leaf at level `L`.
 # See the documentation of `TreeNeighborhoodSearch` for a proof.
-@inline function can_split(cell_list, cell, level)
+#
+# With periodicity, the 3^d block contains the periodic images of the cells
+# on the other side of the periodic box.
+@inline function can_split(cell_list, cell, level, periodic_box)
     (; max_radius) = cell_list
     NDIMS = ndims(cell_list)
+    n_cells = n_cells_per_dimension(cell_list, level)
 
-    child_size = cell_size(cell_list, level + 1)
+    # The cells are not necessarily cubic with periodicity. Points outside of the 3^d
+    # block are at least as far away as the smallest cell size.
+    child_size = minimum(cell_size(cell_list, level + 1))
 
     for neighbor_cell_ in CartesianIndices(ntuple(i -> (cell[i] - 1):(cell[i] + 1),
                                 Val(NDIMS)))
-        neighbor_cell = Tuple(neighbor_cell_)
+        neighbor_cell = periodic_cell(Tuple(neighbor_cell_), n_cells, periodic_box)
         is_in_grid(neighbor_cell, cell_list, level) || continue
 
         neighbor_index = cell_index(cell_list, neighbor_cell, level)

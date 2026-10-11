@@ -63,7 +63,7 @@
         @test eltype(nhs) == Float32
 
         # A single root cell covering the domain by default
-        @test cell_list.root_cell_size == 2.0f0
+        @test cell_list.root_cell_size == SVector(2.0f0, 2.0f0)
         @test cell_list.n_roots == (1, 1)
 
         # The parallel update requires atomic pushes, which are not available
@@ -433,6 +433,184 @@
         end
     end
 
+    @testset verbose=true "Periodicity" begin
+        # Brute-force reference with the distance to the nearest periodic image
+        function brute_force_neighbors_periodic(x, h, y, radii, periodic_box;
+                                                neighbor_criterion = MaximumRadius())
+            return filter(axes(y, 2)) do j
+                pos_diff = x - y[:, j]
+                pos_diff -= periodic_box.size .* round.(pos_diff ./ periodic_box.size)
+
+                return sqrt(sum(abs2, pos_diff)) <=
+                       reference_radius(neighbor_criterion, h, radii[j])
+            end
+        end
+
+        @testset verbose=true "Hand-Made Examples" begin
+            # The same examples as for the other neighborhood searches,
+            # see `test/neighborhood_search.jl`. All points have a search radius of 0.1.
+            names = [
+                "Simple Example 2D",
+                "Box Not Multiple of Search Radius 2D",
+                "Simple Example 3D"
+            ]
+
+            coordinates = [
+                [-0.08 0.0 0.18 0.1 -0.08
+                 -0.12 -0.05 -0.09 0.15 0.39],
+                [-0.08 0.0 0.18 0.1 -0.08
+                 -0.12 -0.05 -0.09 0.15 0.42],
+                [-0.08 0.0 0.18 0.1 -0.08
+                 -0.12 -0.05 -0.09 0.15 0.39
+                 0.14 0.34 0.12 0.06 0.13]
+            ]
+
+            periodic_boxes = [
+                PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.2, 0.4]),
+                # The root cells are not cubic in this example
+                PeriodicBox(min_corner = [-0.1, -0.2], max_corner = [0.205, 0.43]),
+                PeriodicBox(min_corner = [-0.1, -0.2, 0.05], max_corner = [0.2, 0.4, 0.35])
+            ]
+
+            @testset "$(names[i])" for i in eachindex(names)
+                coords = coordinates[i]
+                periodic_box = periodic_boxes[i]
+                NDIMS = size(coords, 1)
+
+                cell_list = TreeCellList(; periodic_box.min_corner, periodic_box.max_corner,
+                                         max_level = 3, root_cell_size = 0.1)
+                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, periodic_box,
+                                                    n_points = size(coords, 2))
+                initialize_tree!(nhs, coords, fill(0.1, size(coords, 2)))
+
+                @test [tree_neighbors(nhs, coords[:, i], 0.1, coords)
+                       for i in axes(coords, 2)] == [[1, 3, 5], [2], [1, 3], [4], [1, 5]]
+            end
+        end
+
+        @testset verbose=true "Compare Against Brute Force $(NDIMS)D" for NDIMS in 2:3
+            # A periodic box that is not a multiple of the root cell size,
+            # so that the root cells are not cubic
+            min_corner = fill(-0.1, NDIMS)
+            max_corner = fill(0.9, NDIMS)
+            max_corner[end] = 0.55
+            periodic_box = PeriodicBox(; min_corner, max_corner)
+
+            n_points = (2_000, 4_000)[NDIMS - 1]
+            coords = min_corner .+ periodic_box.size .* rand(NDIMS, n_points)
+
+            # Radii jumping by a factor of 10 at the periodic boundary in x-direction,
+            # where the points with small radii on the left are next to the points with
+            # large radii on the right. All radii must be smaller than the root cells.
+            radii = [coords[1, j] < 0.4 ? 0.01 : 0.1 for j in axes(coords, 2)]
+
+            cell_list = TreeCellList(; min_corner, max_corner, max_level = 4,
+                                     root_cell_size = 0.11, max_points_per_cell = n_points)
+
+            # The same queries must yield the same neighbors with and without pruning
+            @testset "$(nameof(typeof(neighbor_criterion))), Pruning = $pruning" for neighbor_criterion in
+                                                                                     neighbor_criteria,
+                                                                                     pruning in
+                                                                                     (false,
+                                                                                      true)
+
+                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, periodic_box, n_points,
+                                                    neighbor_criterion, pruning)
+                initialize_tree!(nhs, coords, radii)
+
+                # The root cells tile the periodic box exactly
+                @test nhs.cell_list.n_roots[1] == 9
+                @test nhs.cell_list.root_cell_size[1] ≈ 1 / 9
+
+                # Query each point of the tree with its own radius
+                @test all(axes(coords, 2)) do i
+                    tree_neighbors(nhs, coords[:, i], radii[i], coords) ==
+                    brute_force_neighbors_periodic(coords[:, i], radii[i], coords, radii,
+                                                   periodic_box; neighbor_criterion)
+                end
+
+                # Query arbitrary points, including points outside of the periodic box,
+                # with arbitrary radii up to the size of the root cells
+                query_coords = min_corner .- 0.5 .+
+                               2 .* periodic_box.size .* rand(NDIMS, 200)
+                query_radii = 0.09 .* rand(200)
+                @test all(axes(query_coords, 2)) do i
+                    x = query_coords[:, i]
+                    tree_neighbors(nhs, x, query_radii[i], coords) ==
+                    brute_force_neighbors_periodic(x, query_radii[i], coords, radii,
+                                                   periodic_box; neighbor_criterion)
+                end
+            end
+        end
+
+        @testset "Coarse Leaves at the Periodic Boundary" begin
+            # Many points on the left and only a few points in the strip x > 0.9
+            # at the right side of the periodic box
+            periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [1.0, 1.0])
+            coords = hcat([0.9; 1;;] .* rand(2, 5_000),
+                          [0.9; 0;;] .+ [0.1; 1;;] .* rand(2, 20))
+            radii = fill(0.03, size(coords, 2))
+
+            # With a capacity of 8, the root cells in the right strip with only a few points
+            # are not split. The other root cells are split into cells of size 0.05.
+            cell_list = TreeCellList(; periodic_box.min_corner, periodic_box.max_corner,
+                                     max_level = 3, root_cell_size = 0.1, capacity = 8)
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, periodic_box,
+                                            n_points = size(coords, 2))
+            initialize_tree!(nhs, coords, radii)
+
+            # The leaves on the left side of the periodic boundary are finer than the
+            # leaves on the right side, so the 3^d block around a leaf on the left
+            # contains coarser leaves on the other side of the periodic boundary.
+            function leaf_level(x)
+                finest_cell = PointNeighbors.finest_cell_index(SVector(x...), nhs.cell_list)
+                return PointNeighbors.leaf_level(nhs.cell_list, finest_cell)
+            end
+            @test leaf_level(coords[:, 1]) == 1
+            @test leaf_level(coords[:, end]) == 0
+
+            @test all(axes(coords, 2)) do i
+                tree_neighbors(nhs, coords[:, i], radii[i], coords) ==
+                brute_force_neighbors_periodic(coords[:, i], radii[i], coords, radii,
+                                               periodic_box)
+            end
+        end
+
+        @testset "Errors" begin
+            periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [1.0, 0.5])
+
+            # The domain of the cell list must be the periodic box
+            cell_list = TreeCellList(min_corner = [0.0, 0.0], max_corner = [1.0, 1.0],
+                                     max_level = 3, root_cell_size = 0.1)
+            error_str = "the domain of the `TreeCellList` must be the periodic box"
+            @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list, periodic_box)
+
+            # At least 3 root cells are required in each dimension
+            cell_list = TreeCellList(min_corner = [0.0, 0.0], max_corner = [1.0, 0.5],
+                                     max_level = 3, root_cell_size = 0.2)
+            error_str = "needs at least 3 root cells in each dimension"
+            @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list, periodic_box)
+
+            # The element types must match
+            cell_list = TreeCellList(min_corner = [0.0f0, 0.0f0],
+                                     max_corner = [1.0f0, 0.5f0], max_level = 3,
+                                     root_cell_size = 0.1f0)
+            error_str = "must have the same element type"
+            @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list, periodic_box)
+
+            # Query radii must not exceed the root cell size of 0.1
+            cell_list = TreeCellList(min_corner = [0.0, 0.0], max_corner = [1.0, 0.5],
+                                     max_level = 3, root_cell_size = 0.1)
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, periodic_box, n_points = 2)
+            coords = [0.1 0.5; 0.2 0.3]
+            initialize_tree!(nhs, coords, [0.05, 0.05])
+
+            error_str = "must not exceed the root cell size with periodicity"
+            @test_throws error_str foreach_neighbor((_...) -> nothing, coords, coords,
+                                                    nhs, 1, search_radius = 0.11)
+        end
+    end
+
     @testset "Neighbor Loops" begin
         # Points in 2D with a smooth radius distribution
         coords = rand(2, 1000)
@@ -525,7 +703,7 @@
         @test copy.cell_list.min_corner == cell_list.min_corner
         @test copy.cell_list.max_corner == cell_list.max_corner
         @test copy.cell_list.max_level == 4
-        @test copy.cell_list.root_cell_size == 0.5
+        @test copy.cell_list.root_cell_size == SVector(0.5, 0.5)
         @test copy.cell_list.capacity == 3
         @test PointNeighbors.uses_pruning(copy) == PointNeighbors.uses_pruning(nhs)
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors

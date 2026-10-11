@@ -49,11 +49,13 @@ end
 function Adapt.adapt_structure(to, nhs::TreeNeighborhoodSearch)
     cell_list = Adapt.adapt_structure(to, nhs.cell_list)
     search_radii = Adapt.adapt_structure(to, nhs.search_radii)
+    periodic_box = Adapt.adapt_structure(to, nhs.periodic_box)
 
     return TreeNeighborhoodSearch{ndims(nhs), uses_pruning(nhs),
                                   typeof(nhs.neighbor_criterion),
                                   typeof(nhs.update_strategy), typeof(cell_list),
-                                  typeof(search_radii)}(cell_list, search_radii,
+                                  typeof(search_radii),
+                                  typeof(periodic_box)}(cell_list, search_radii,
                                                         nhs.neighbor_criterion,
-                                                        nhs.update_strategy)
+                                                        periodic_box, nhs.update_strategy)
 end

@@ -82,15 +82,18 @@ end
         end
     end
 
-    @testset "Neighbor Counts $ELTYPE, $(nameof(typeof(neighbor_criterion))), Pruning = $pruning" for ELTYPE in
-                                                                                                      ELTYPES,
-                                                                                                      neighbor_criterion in
-                                                                                                      (MaximumRadius(),
-                                                                                                       AverageRadius(),
-                                                                                                       QueryRadius()),
-                                                                                                      pruning in
-                                                                                                      (false,
-                                                                                                       true)
+    @testset "Neighbor Counts $ELTYPE, $(nameof(typeof(neighbor_criterion))), Pruning = $pruning, Periodic = $periodic" for ELTYPE in
+                                                                                                                            ELTYPES,
+                                                                                                                            neighbor_criterion in
+                                                                                                                            (MaximumRadius(),
+                                                                                                                             AverageRadius(),
+                                                                                                                             QueryRadius()),
+                                                                                                                            pruning in
+                                                                                                                            (false,
+                                                                                                                             true),
+                                                                                                                            periodic in
+                                                                                                                            (false,
+                                                                                                                             true)
         # Points on a lattice with spacing 1/32 and search radii that are multiples of
         # 1/32. All distances and radii are exactly representable, so that the results
         # on the CPU and the GPU are identical, even for pairs with a distance of exactly
@@ -107,10 +110,20 @@ end
 
         min_corner = zeros(ELTYPE, 3)
         max_corner = ones(ELTYPE, 3)
-        cell_list = TreeCellList(; min_corner, max_corner, max_level = 4,
-                                 max_points_per_cell = size(coords, 2))
+        # With periodicity, use 4 root cells in each dimension, which are larger than
+        # all search radii
+        if periodic
+            periodic_box = PeriodicBox(; min_corner, max_corner)
+            cell_list = TreeCellList(; min_corner, max_corner, max_level = 2,
+                                     root_cell_size = ELTYPE(0.25),
+                                     max_points_per_cell = size(coords, 2))
+        else
+            periodic_box = nothing
+            cell_list = TreeCellList(; min_corner, max_corner, max_level = 4,
+                                     max_points_per_cell = size(coords, 2))
+        end
         nhs = TreeNeighborhoodSearch{3}(; cell_list, n_points = size(coords, 2),
-                                        neighbor_criterion, pruning)
+                                        neighbor_criterion, pruning, periodic_box)
         initialize_tree!(nhs, coords, radii)
 
         # Count neighbors of all points with their own search radius
