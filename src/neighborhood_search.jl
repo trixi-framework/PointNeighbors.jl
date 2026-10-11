@@ -451,6 +451,49 @@ end
     return reduced
 end
 
+# Loop over all candidates in `neighbors` (usually the points in one cell) and reduce over
+# all neighbors of `point` with `f` and `op`, starting with `reduced`.
+# This is used by all neighborhood searches that store points in cells.
+#
+# `skip_neighbor(neighbor, neighbor_point_coords, distance2)` is called for all neighbors
+# within the search radius. Return `true` to skip this neighbor.
+# Note that calling this function with `@inbounds` is not safe.
+# See the comments in `foreach_neighbor_unsafe`.
+@propagate_inbounds function mapreduce_points(f, op, reduced, neighbors, neighbor_coords,
+                                              neighborhood_search, point, point_coords,
+                                              search_radius, periodic_box,
+                                              skip_neighbor = Returns(false))
+    for neighbor_ in eachindex(neighbors)
+        neighbor = @inbounds neighbors[neighbor_]
+
+        # Making the following `@inbounds` is not safe because we don't know
+        # if `neighbor` (extracted from the cell list) is in bounds.
+        neighbor_point_coords = extract_svector(neighbor_coords,
+                                                Val(ndims(neighborhood_search)), neighbor)
+
+        pos_diff = convert.(eltype(neighborhood_search),
+                            point_coords - neighbor_point_coords)
+        distance2 = dot(pos_diff, pos_diff)
+
+        (pos_diff,
+         distance2) = compute_periodic_distance(pos_diff, distance2, search_radius,
+                                                periodic_box)
+
+        if distance2 <= search_radius^2
+            @inline(skip_neighbor(neighbor, neighbor_point_coords, distance2)) && continue
+
+            distance = sqrt(distance2)
+
+            # Inline to avoid loss of performance compared to not using this function
+            # and unrolling everything.
+            value = @inline f(point, neighbor, pos_diff, distance)
+            reduced = @inline op(reduced, value)
+        end
+    end
+
+    return reduced
+end
+
 @inline function compute_periodic_distance(pos_diff, distance2, search_radius,
                                            periodic_box::Nothing)
     return pos_diff, distance2
