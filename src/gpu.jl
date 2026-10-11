@@ -10,6 +10,7 @@
 Adapt.@adapt_structure FullGridCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
 Adapt.@adapt_structure GridNeighborhoodSearch
+Adapt.@adapt_structure TreeCellList
 
 # `adapt(CuArray, ::SVector)::SVector`, but `adapt(Array, ::SVector)::Vector`.
 # We don't want to change the type of the `SVector` here.
@@ -41,4 +42,18 @@ function Adapt.adapt_structure(to, cell_list::SpatialHashingCellList{NDIMS}) whe
     collisions = Adapt.adapt_structure(to, cell_list.collisions)
 
     return SpatialHashingCellList(NDIMS, cells, coords, collisions, list_size)
+end
+
+# `NDIMS` and `PRUNING` can't be inferred from the fields,
+# so we can't use `Adapt.@adapt_structure`.
+function Adapt.adapt_structure(to, nhs::TreeNeighborhoodSearch)
+    cell_list = Adapt.adapt_structure(to, nhs.cell_list)
+    search_radii = Adapt.adapt_structure(to, nhs.search_radii)
+
+    return TreeNeighborhoodSearch{ndims(nhs), uses_pruning(nhs),
+                                  typeof(nhs.neighbor_criterion),
+                                  typeof(nhs.update_strategy), typeof(cell_list),
+                                  typeof(search_radii)}(cell_list, search_radii,
+                                                        nhs.neighbor_criterion,
+                                                        nhs.update_strategy)
 end

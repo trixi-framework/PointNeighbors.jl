@@ -82,6 +82,10 @@ without any assumptions on the variation of the search radii.
 As with the [`GridNeighborhoodSearch`](@ref), a query only considers the ``3^d`` block of
 cells around the leaf containing the query point, at the level of this leaf.
 
+To use this neighborhood search on GPUs, move it to the GPU with Adapt.jl
+(see the GPU tutorial) and pass GPU arrays to [`initialize_tree!`](@ref)
+and [`update_tree!`](@ref).
+
 !!! warning "Experimental implementation"
     This is an experimental feature and may change in any future releases.
 
@@ -243,7 +247,10 @@ function initialize_tree!(neighborhood_search::TreeNeighborhoodSearch, y::Abstra
 
     # Copy the search radii in parallel
     search_radii_ = neighborhood_search.search_radii
-    resize!(search_radii_, length(search_radii))
+    # Only resize when necessary, since resizing GPU arrays always reallocates memory
+    if length(search_radii_) != length(search_radii)
+        resize!(search_radii_, length(search_radii))
+    end
     @threaded backend for i in eachindex(search_radii_, search_radii)
         search_radii_[i] = search_radii[i]
     end
