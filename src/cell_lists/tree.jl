@@ -53,7 +53,7 @@ around this cell at level ``L``, and if it contains more than `capacity` points.
                 Note that leaves can be larger than the search radius and contain
                 more points than the cells of a [`FullGridCellList`](@ref).
 """
-struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL} <: AbstractCellList
+struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL, NL} <: AbstractCellList
     min_corner     :: SVector{NDIMS, ELTYPE}
     max_corner     :: SVector{NDIMS, ELTYPE}
     root_cell_size :: ELTYPE
@@ -71,6 +71,8 @@ struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL} <: AbstractCellList
     max_radius_all :: MR  # Maximum radius of all points (one-element vector)
     n_points       :: NP  # Number of points in this cell
     leaf_level     :: LL  # Level of the leaf containing this cell or -1 for split cells
+    n_lists        :: NL  # Number of used lists in `cells` (one-element vector)
+    chunk_sums     :: NL  # Buffer for the parallel prefix sum to assign the lists
 end
 
 function TreeCellList(; min_corner, max_corner, max_level,
@@ -114,10 +116,13 @@ function TreeCellList(; min_corner, max_corner, max_level,
     max_radius_all = zeros(ELTYPE, 1)
     n_points = zeros(Int32, n_cells)
     leaf_level = zeros(Int8, n_cells)
+    n_lists = ones(Int, 1)
+    # Use ~sqrt(n) chunks of ~sqrt(n) finest cells for the parallel prefix sum
+    chunk_sums = zeros(Int, ceil(Int, sqrt(n_finest_cells)))
 
     return TreeCellList(min_corner_, max_corner_, root_cell_size_, n_roots, max_level,
                         capacity, cells, leaves, max_radius, max_radius_all,
-                        n_points, leaf_level)
+                        n_points, leaf_level, n_lists, chunk_sums)
 end
 
 # Return a copy of `cell_list` sharing the same tree data structures, but with lists
@@ -134,11 +139,17 @@ function allocate_leaves(cell_list::TreeCellList, n_points)
                         cell_list.root_cell_size, cell_list.n_roots, cell_list.max_level,
                         cell_list.capacity, cells_, leaves, cell_list.max_radius,
                         cell_list.max_radius_all, cell_list.n_points,
-                        cell_list.leaf_level)
+                        cell_list.leaf_level, cell_list.n_lists,
+                        cell_list.chunk_sums)
 end
 
 @inline Base.ndims(::TreeCellList{NDIMS}) where {NDIMS} = NDIMS
 @inline Base.eltype(::TreeCellList{<:Any, ELTYPE}) where {ELTYPE} = ELTYPE
+
+function supported_update_strategies(::TreeCellList{<:Any, <:Any,
+                                                    <:DynamicVectorOfVectors})
+    return (ParallelUpdate, SerialUpdate)
+end
 
 function supported_update_strategies(::TreeCellList)
     return (SerialUpdate,)
@@ -345,80 +356,173 @@ end
 end
 
 # Rebuild the tree from scratch for the points `eachindex_points` with coordinates `coords`
-# and radii `radii`.
-function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points)
-    (; cells, leaves, max_level, max_radius, n_points) = cell_list
-    NDIMS = ndims(cell_list)
+# and radii `radii`. All loops are parallelized with `parallelization_backend`.
+function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
+                  parallelization_backend)
+    (; cells, leaves, max_level, max_radius, n_points, n_lists) = cell_list
 
     # Only the finest level has to be reset. The coarser levels are computed from it below.
-    finest_cells = (level_offset(cell_list, max_level) + 1):length(n_points)
-    view(max_radius, finest_cells) .= 0
-    view(n_points, finest_cells) .= 0
+    finest_offset = level_offset(cell_list, max_level)
+    @threaded parallelization_backend for cell in cells_on_level(cell_list, max_level)
+        max_radius[finest_offset + cell + 1] = 0
+        n_points[finest_offset + cell + 1] = 0
+    end
 
-    for i in eachindex(cells)
+    @threaded parallelization_backend for i in eachindex(cells)
         emptyat!(cells, i)
     end
 
-    # Count points and compute the maximum radius of each finest cell
-    for point in eachindex_points
-        radius = radii[point]
+    # Count points and compute the maximum radius of each finest cell.
+    # The maximum of non-negative floats is the maximum of their bit patterns
+    # interpreted as unsigned integers, which is supported by atomics on all backends.
+    max_radius_bits = reinterpret(bits_type(eltype(max_radius)), max_radius)
+    @threaded parallelization_backend for point in eachindex_points
+        radius = convert(eltype(max_radius), radii[point])
         if !(radius >= 0)
             error("search radii must be non-negative")
         end
 
-        point_coords = extract_svector(coords, Val(NDIMS), point)
+        # Note that we can't use a variable `NDIMS` here, as it would be captured
+        # by the closure of the threaded loop, making `Val(NDIMS)` type-unstable.
+        point_coords = extract_svector(coords, Val(ndims(cell_list)), point)
         i = pyramid_index(cell_list, finest_cell_index(point_coords, cell_list), max_level)
-        n_points[i] += 1
-        max_radius[i] = max(max_radius[i], radius)
+
+        increment!(n_points, i, one(eltype(n_points)), parallelization_backend)
+        maximum!(max_radius_bits, i, reinterpret(eltype(max_radius_bits), radius),
+                 parallelization_backend)
     end
 
     # Compute the counts and maximum radii of all coarser cells from their children
     for level in (max_level - 1):-1:0
-        for cell in cells_on_level(cell_list, level)
+        @threaded parallelization_backend for cell in cells_on_level(cell_list, level)
             reduce_children!(cell_list, cell, level)
         end
     end
 
     check_max_radius(cell_list)
 
-    # Determine the tree structure from the coarsest to the finest level
+    # Determine the tree structure from the coarsest to the finest level.
+    # Each level only depends on the previous level.
     for level in 0:max_level
-        for cell in CartesianIndices(n_cells_per_dimension(cell_list, level))
-            # Convert one-based `CartesianIndex` to zero-based tuple
-            split_cell!(cell_list, Tuple(cell) .- 1, level)
+        @threaded parallelization_backend for cell in cells_on_level(cell_list, level)
+            split_cell!(cell_list, cell, level)
         end
     end
 
-    # Assign a list to each non-empty leaf. Leaves are identified by their first
+    # Assign a list to each non-empty leaf in Morton order, so that the lists of
+    # neighboring leaves are close in memory. Leaves are identified by their first
     # finest cell. All other finest cells and empty leaves use the empty list 1.
-    n_lists = 1
-    for finest_cell in 0:(length(leaves) - 1)
-        level = Int(cell_list.leaf_level[pyramid_index(cell_list, finest_cell, max_level)])
-        shift = NDIMS * (max_level - level)
-        leaf_index = finest_cell >> shift
-        is_first_cell = (leaf_index << shift) == finest_cell
-
-        slot = 1
-        if is_first_cell && n_points[pyramid_index(cell_list, leaf_index, level)] > 0
-            n_lists += 1
-            slot = n_lists
+    # This is a parallel prefix sum over the finest cells, which are split into chunks.
+    # First, count the leaves with lists in each chunk.
+    (; chunk_sums) = cell_list
+    @threaded parallelization_backend for chunk in eachindex(chunk_sums)
+        n_leaves = 0
+        for finest_cell in chunk_cells(cell_list, chunk)
+            n_leaves += has_list(cell_list, finest_cell)
         end
-        leaves[finest_cell + 1] = (slot << 8) | level
+        chunk_sums[chunk] = n_leaves
     end
 
-    if n_lists > length(cells)
+    # Compute the number of lists before each chunk with a serial loop over all chunks.
+    # This also works on GPUs.
+    @threaded parallelization_backend for _ in 1:1
+        n_lists_ = 1
+        for chunk in eachindex(chunk_sums)
+            n_leaves = chunk_sums[chunk]
+            chunk_sums[chunk] = n_lists_
+            n_lists_ += n_leaves
+        end
+        n_lists[1] = n_lists_
+    end
+
+    # Assign the lists in each chunk
+    @threaded parallelization_backend for chunk in eachindex(chunk_sums)
+        slot = chunk_sums[chunk]
+        for finest_cell in chunk_cells(cell_list, chunk)
+            if has_list(cell_list, finest_cell)
+                slot += 1
+                leaves[finest_cell + 1] = (slot << 8) |
+                                          pyramid_leaf_level(cell_list, finest_cell)
+            else
+                leaves[finest_cell + 1] = (1 << 8) |
+                                          pyramid_leaf_level(cell_list, finest_cell)
+            end
+        end
+    end
+
+    # Note that `maximum` avoids scalar indexing on GPUs
+    if maximum(n_lists) > length(cells)
         error("the number of points exceeds `n_points` of the neighborhood search")
     end
 
     # Add each point to its leaf
-    for point in eachindex_points
-        point_coords = extract_svector(coords, Val(NDIMS), point)
+    @threaded parallelization_backend for point in eachindex_points
+        point_coords = extract_svector(coords, Val(ndims(cell_list)), point)
         finest_cell = finest_cell_index(point_coords, cell_list)
-        pushat!(cells, leaf_slot(cell_list, leaf_first_cell(cell_list, finest_cell)), point)
+        slot = leaf_slot(cell_list, leaf_first_cell(cell_list, finest_cell))
+
+        push_point!(cells, slot, point, parallelization_backend)
     end
 
     return cell_list
 end
+
+# The finest cells (zero-based indices) in chunk `chunk` for the prefix sum in `rebuild!`
+@inline function chunk_cells(cell_list, chunk)
+    n_finest_cells = length(cell_list.leaves)
+    chunk_length = div(n_finest_cells, length(cell_list.chunk_sums), RoundUp)
+
+    return ((chunk - 1) * chunk_length):(min(chunk * chunk_length, n_finest_cells) - 1)
+end
+
+# Level of the leaf containing the finest cell `finest_cell`, read from the pyramid
+@propagate_inbounds function pyramid_leaf_level(cell_list, finest_cell)
+    (; leaf_level, max_level) = cell_list
+
+    return Int(leaf_level[pyramid_index(cell_list, finest_cell, max_level)])
+end
+
+# Check if `finest_cell` is the first finest cell of a non-empty leaf,
+# which is assigned a list of points
+@propagate_inbounds function has_list(cell_list, finest_cell)
+    (; n_points, max_level) = cell_list
+
+    level = pyramid_leaf_level(cell_list, finest_cell)
+    shift = ndims(cell_list) * (max_level - level)
+    leaf_index = finest_cell >> shift
+    is_first_cell = (leaf_index << shift) == finest_cell
+
+    return is_first_cell && n_points[pyramid_index(cell_list, leaf_index, level)] > 0
+end
+
+# Unsigned integer type with the same size as the float type `T`
+@inline bits_type(::Type{Float16}) = UInt16
+@inline bits_type(::Type{Float32}) = UInt32
+@inline bits_type(::Type{Float64}) = UInt64
+
+# Increment `values[i]` by `increment` and return the new value.
+# Use atomics to avoid race conditions, except in serial loops,
+# where atomics are unnecessarily expensive.
+@inline function increment!(values, i, increment, _)
+    return Atomix.@atomic values[i] += increment
+end
+
+@inline function increment!(values, i, increment, ::SerialBackend)
+    return values[i] += increment
+end
+
+# `values[i] = max(values[i], value)`, using atomics except in serial loops
+@inline function maximum!(values, i, value, _)
+    Atomix.@atomic values[i] max value
+end
+
+@inline function maximum!(values, i, value, ::SerialBackend)
+    values[i] = max(values[i], value)
+end
+
+# `push!(cells[i], value)`, using atomics except in serial loops
+@inline push_point!(cells, i, value, _) = pushat_atomic!(cells, i, value)
+@inline push_point!(cells, i, value, ::SerialBackend) = pushat!(cells, i, value)
 
 # Zero-based indices of all cells at level `level`
 @inline function cells_on_level(cell_list::TreeCellList, level)
@@ -463,14 +567,13 @@ function check_max_radius(cell_list)
     end
 end
 
-# Decide whether the cell with zero-based Cartesian coordinates `cell` at level `level`
-# is split, and store the level of the leaf containing this cell in `leaf_level`.
+# Decide whether the cell with zero-based index `cell_index_` at level `level` is split,
+# and store the level of the leaf containing this cell in `leaf_level`.
 # Note that this requires the parent level to be processed already.
-@inline function split_cell!(cell_list, cell, level)
+@inline function split_cell!(cell_list, cell_index_, level)
     (; leaf_level, n_points, capacity, max_level) = cell_list
     NDIMS = ndims(cell_list)
 
-    cell_index_ = cell_index(cell_list, cell, level)
     i = pyramid_index(cell_list, cell_index_, level)
 
     if level > 0
@@ -484,7 +587,8 @@ end
     end
 
     # This cell is a node of the tree. Split it if possible.
-    if level < max_level && n_points[i] > capacity && can_split(cell_list, cell, level)
+    if level < max_level && n_points[i] > capacity &&
+       can_split(cell_list, cell_coords_from_index(cell_list, cell_index_, level), level)
         leaf_level[i] = -1
     else
         leaf_level[i] = level

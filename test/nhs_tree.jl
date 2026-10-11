@@ -66,6 +66,15 @@
         @test cell_list.root_cell_size == 2.0f0
         @test cell_list.n_roots == (1, 1)
 
+        # The parallel update requires atomic pushes, which are not available
+        # for the `Vector{Vector}` backend
+        cell_list_vov = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                     max_level = 3, backend = Vector{Vector{Int32}})
+        @test TreeNeighborhoodSearch{2}(cell_list = cell_list_vov).update_strategy ==
+              SerialUpdate()
+        @test TreeNeighborhoodSearch{2}(cell_list = cell_list).update_strategy ==
+              ParallelUpdate()
+
         # A grid of 4 x 8 root cells
         cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 2.0),
                                  max_level = 3, root_cell_size = 0.25)
@@ -203,6 +212,48 @@
             # Empty cells are out of reach when their distance exceeds the query radius
             @test !is_out_of_reach(nhs, (0, 1), 1, (0.2, 0.25), 0.25)
             @test is_out_of_reach(nhs, (0, 1), 1, (0.2, 0.25), 0.24)
+        end
+    end
+
+    @testset verbose=true "Parallel Update $(NDIMS)D" for NDIMS in 2:3
+        coords = rand(NDIMS, 20_000)
+        radii = 0.02 .+ 0.1 .* coords[1, :] .^ 2
+
+        # Build the tree serially as a reference
+        min_corner = zeros(NDIMS)
+        max_corner = ones(NDIMS)
+        tree_cell_list() = TreeCellList(; min_corner, max_corner, max_level = 5,
+                                        max_points_per_cell = 500)
+        nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list = tree_cell_list(),
+                                            n_points = size(coords, 2),
+                                            update_strategy = SerialUpdate())
+        initialize_tree!(nhs, coords, radii)
+        (; cell_list) = nhs
+
+        backends = [PolyesterBackend(), ThreadsDynamicBackend(), ThreadsStaticBackend()]
+        @testset "$(nameof(typeof(backend)))" for backend in backends
+            nhs_parallel = TreeNeighborhoodSearch{NDIMS}(; cell_list = tree_cell_list(),
+                                                         n_points = size(coords, 2),
+                                                         update_strategy = ParallelUpdate())
+            initialize_tree!(nhs_parallel, coords, radii, parallelization_backend = backend)
+            cell_list_parallel = nhs_parallel.cell_list
+
+            # The tree structure must be identical
+            @test cell_list_parallel.leaf_level == cell_list.leaf_level
+            @test cell_list_parallel.n_points == cell_list.n_points
+            @test cell_list_parallel.max_radius == cell_list.max_radius
+
+            # The lists are assigned to the leaves in Morton order
+            @test cell_list_parallel.leaves == cell_list.leaves
+
+            # Each leaf must contain the same points. The order of the points within each
+            # list can be different.
+            @test all(0:(length(cell_list.leaves) - 1)) do cell
+                points = PointNeighbors.points_in_leaf(cell_list, cell)
+                points_parallel = PointNeighbors.points_in_leaf(cell_list_parallel, cell)
+
+                return sort(points_parallel) == sort(points)
+            end
         end
     end
 
