@@ -90,7 +90,8 @@ cells around the leaf containing the query point, at the level of this leaf.
 
 # Keywords
 - `cell_list`:       A [`TreeCellList`](@ref) defining the domain and the depth of the tree.
-- `n_points = 0`:    Total number of points in the neighbor coordinates array.
+- `n_points = 0`:    Maximum total number of points in the neighbor coordinates array.
+                     This is used to allocate the lists of points in the leaves.
                      The default of `0` is useful together with
                      [`copy_neighborhood_search`](@ref).
 - `pruning = false`:  Skip leaves whose distance to the query point is larger than
@@ -159,6 +160,9 @@ function TreeNeighborhoodSearch{NDIMS}(; cell_list, n_points = 0, pruning = fals
     end
 
     search_radii = zeros(eltype(cell_list), n_points)
+
+    # Allocate lists for up to `n_points` non-empty leaves
+    cell_list = allocate_leaves(cell_list, n_points)
 
     return TreeNeighborhoodSearch{NDIMS, Bool(pruning), typeof(neighbor_criterion),
                                   typeof(update_strategy), typeof(cell_list),
