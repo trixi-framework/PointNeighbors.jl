@@ -104,7 +104,8 @@ cells around the leaf containing the query point, at the level of this leaf.
 - `cell_list`:       A [`TreeCellList`](@ref) defining the domain, the size of the root
                      cells and the depth of the tree.
                      With periodicity, the domain must be the periodic box.
-- `n_points = 0`:    Total number of points in the neighbor coordinates array.
+- `n_points = 0`:    Maximum total number of points in the neighbor coordinates array.
+                     This is used to allocate the lists of points in the leaves.
                      The default of `0` is useful together with
                      [`copy_neighborhood_search`](@ref).
 - `pruning = false`:  Skip leaves whose distance to the query point is larger than
@@ -184,8 +185,9 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list, n_point
     search_radii = zeros(eltype(cell_list), n_points)
 
     # Adjust the root cells to the periodic box, choose the finest level
-    # and allocate the tree data structures
-    cell_list_ = build_tree(cell_list, search_radius_, periodic_box)
+    # and allocate the tree data structures with lists for up to `n_points`
+    # non-empty leaves
+    cell_list_ = build_tree(cell_list, search_radius_, n_points, periodic_box)
 
     return TreeNeighborhoodSearch{NDIMS, Bool(pruning), typeof(search_radius_),
                                   typeof(neighbor_criterion), typeof(update_strategy),
