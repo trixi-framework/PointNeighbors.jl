@@ -86,18 +86,21 @@ end
         end
     end
 
-    @testset "Neighbor Counts $ELTYPE, $(nameof(typeof(neighbor_criterion))), Pruning = $pruning, Periodic = $periodic" for ELTYPE in
-                                                                                                                            ELTYPES,
-                                                                                                                            neighbor_criterion in
-                                                                                                                            (MaximumRadius(),
-                                                                                                                             AverageRadius(),
-                                                                                                                             QueryRadius()),
-                                                                                                                            pruning in
-                                                                                                                            (false,
-                                                                                                                             true),
-                                                                                                                            periodic in
-                                                                                                                            (false,
-                                                                                                                             true)
+    @testset "Neighbor Counts $ELTYPE, $(nameof(backend)), $(nameof(typeof(neighbor_criterion))), Pruning = $pruning, Periodic = $periodic" for ELTYPE in
+                                                                                                                                                ELTYPES,
+                                                                                                                                                backend in
+                                                                                                                                                (DynamicVectorOfVectors{Int32},
+                                                                                                                                                 CompactVectorOfVectors{Int32}),
+                                                                                                                                                neighbor_criterion in
+                                                                                                                                                (MaximumRadius(),
+                                                                                                                                                 AverageRadius(),
+                                                                                                                                                 QueryRadius()),
+                                                                                                                                                pruning in
+                                                                                                                                                (false,
+                                                                                                                                                 true),
+                                                                                                                                                periodic in
+                                                                                                                                                (false,
+                                                                                                                                                 true)
         # Points on a lattice with spacing 1/32 and search radii that are multiples of
         # 1/32. All distances and radii are exactly representable, so that the results
         # on the CPU and the GPU are identical, even for pairs with a distance of exactly
@@ -119,7 +122,7 @@ end
         max_corner = ones(ELTYPE, 3)
         periodic_box = periodic ? PeriodicBox(; min_corner, max_corner) : nothing
         cell_list = TreeCellList(; min_corner, max_corner, root_cell_size = ELTYPE(0.25),
-                                 max_level = 2, max_points_per_cell = 1000)
+                                 max_level = 2, backend, max_points_per_cell = 1000)
         nhs = TreeNeighborhoodSearch{3}(; cell_list, n_points = size(coords, 2),
                                         neighbor_criterion, pruning, periodic_box)
         initialize_tree!(nhs, coords, radii)

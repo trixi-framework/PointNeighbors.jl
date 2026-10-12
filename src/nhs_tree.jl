@@ -115,6 +115,10 @@ and [`update_tree!`](@ref).
 - `pruning = false`:  Skip leaves whose distance to the query point is larger than
                      the pair search radius of the query radius and the maximum search radius
                      of all points in the leaf.
+                     With the `CompactVectorOfVectors` backend of the [`TreeCellList`](@ref),
+                     leaves that are larger than the query radius are searched
+                     hierarchically down to cells of the size of the query radius,
+                     skipping all parts of the leaf that are out of reach.
 - `neighbor_criterion = MaximumRadius()`: Criterion defining which points are neighbors.
                      See [`MaximumRadius`](@ref), [`AverageRadius`](@ref)
                      and [`QueryRadius`](@ref).
@@ -346,6 +350,9 @@ end
     # The cell at level `level` around which the 3^d block of cells is searched
     cell = query_cell(finest_cell, cell_list, level, periodic_box)
 
+    # Leaves coarser than this level are searched hierarchically with sub-leaf pruning
+    subleaf_level = subleaf_pruning_level(neighborhood_search, query_radius)
+
     # All neighbors are within this radius. Only for points within this radius,
     # we load their search radius to check if they are within the pair search radius.
     max_pair_radius = pair_radius(neighbor_criterion, query_radius, max_radius_all[1])
@@ -372,7 +379,7 @@ end
                                        neighbor_index(index_parts, offset), level,
                                        block_min, neighbor_coords, neighborhood_search,
                                        point, point_coords_, query_radius,
-                                       max_pair_radius, skip_neighbor)
+                                       max_pair_radius, subleaf_level, skip_neighbor)
     end
 
     return reduced
@@ -437,13 +444,35 @@ end
     end
 end
 
+# With sub-leaf pruning, leaves coarser than the returned level are searched
+# hierarchically down to this level, which is the finest level with cells that are at least
+# as large as `query_radius`. This is done when the points in the leaves are sorted by
+# finest cell, so that the points of each cell inside a leaf are contiguous.
+@inline function subleaf_pruning_level(neighborhood_search, query_radius)
+    (; cell_list) = neighborhood_search
+
+    # Never search leaves hierarchically
+    uses_subleaf_pruning(neighborhood_search) || return -1
+
+    level = cell_list.max_level
+    while level > 0 && minimum(cell_size(cell_list, level)) < query_radius
+        level -= 1
+    end
+
+    return level
+end
+
+@inline function uses_subleaf_pruning(neighborhood_search)
+    return uses_pruning(neighborhood_search) && sorts_points(neighborhood_search.cell_list)
+end
+
 # Reduce over all neighbors in the cell `cell` at level `level` of the search block,
 # which starts at the cell `block_min`.
 @propagate_inbounds function mapreduce_block_cell(f, op, reduced, cell, cell_index, level,
                                                   block_min, neighbor_coords,
                                                   neighborhood_search, point, point_coords,
                                                   query_radius, max_pair_radius,
-                                                  skip_neighbor)
+                                                  subleaf_level, skip_neighbor)
     (; cell_list) = neighborhood_search
 
     first_finest_cell = cell_index << (ndims(cell_list) * (cell_list.max_level - level))
@@ -456,6 +485,13 @@ end
                                                 max_pair_radius)
         max_pair_radius_ < 0 && return reduced
 
+        if level < subleaf_level
+            return mapreduce_subcells(f, op, reduced, first_finest_cell, cell, level,
+                                      subleaf_level, neighbor_coords, neighborhood_search,
+                                      point, point_coords, query_radius, max_pair_radius,
+                                      skip_neighbor)
+        end
+
         return mapreduce_leaf(f, op, reduced, first_finest_cell, neighbor_coords,
                               neighborhood_search, point, point_coords, max_pair_radius_,
                               skip_neighbor)
@@ -464,7 +500,7 @@ end
     return mapreduce_non_leaf(f, op, reduced, cell, cell_index, level, leaf_level_,
                               first_finest_cell, block_min, neighbor_coords,
                               neighborhood_search, point, point_coords, query_radius,
-                              max_pair_radius, skip_neighbor)
+                              max_pair_radius, subleaf_level, skip_neighbor)
 end
 
 # Reduce over all neighbors in a cell of the search block that is not a leaf.
@@ -473,7 +509,8 @@ end
                                                 leaf_level_, first_finest_cell, block_min,
                                                 neighbor_coords, neighborhood_search,
                                                 point, point_coords, query_radius,
-                                                max_pair_radius, skip_neighbor)
+                                                max_pair_radius, subleaf_level,
+                                                skip_neighbor)
     (; cell_list, periodic_box) = neighborhood_search
 
     # With periodicity, `cell` can be outside of the grid and `cell_` is the corresponding
@@ -490,13 +527,22 @@ end
             return reduced
         end
 
-        max_pair_radius_ = cell_max_pair_radius(neighborhood_search,
-                                                leaf_min .>> level_difference,
+        leaf_cell = leaf_min .>> level_difference
+        max_pair_radius_ = cell_max_pair_radius(neighborhood_search, leaf_cell,
                                                 cell_index >>
                                                 (ndims(cell_list) * level_difference),
                                                 leaf_level_, point_coords, query_radius,
                                                 max_pair_radius)
         max_pair_radius_ < 0 && return reduced
+
+        if leaf_level_ < subleaf_level
+            return mapreduce_subcells(f, op, reduced,
+                                      leaf_first_cell(cell_list, first_finest_cell),
+                                      leaf_cell, leaf_level_, subleaf_level,
+                                      neighbor_coords, neighborhood_search, point,
+                                      point_coords, query_radius, max_pair_radius,
+                                      skip_neighbor)
+        end
 
         return mapreduce_leaf(f, op, reduced,
                               leaf_first_cell(cell_list, first_finest_cell),
@@ -507,6 +553,15 @@ end
     # This cell is split. Skip it if all leaves inside are out of reach.
     cell_max_pair_radius(neighborhood_search, cell, cell_index, level, point_coords,
                          query_radius, max_pair_radius) < 0 && return reduced
+
+    if uses_subleaf_pruning(neighborhood_search)
+        # The points of each cell are contiguous, so we can search the cells inside this
+        # cell hierarchically, independent of the leaves
+        return mapreduce_subcells(f, op, reduced, first_finest_cell, cell, level,
+                                  subleaf_level, neighbor_coords, neighborhood_search,
+                                  point, point_coords, query_radius, max_pair_radius,
+                                  skip_neighbor)
+    end
 
     # Loop over all leaves inside this cell.
     # The finest cells of each leaf are contiguous, so we can jump from leaf to leaf.
@@ -525,6 +580,16 @@ end
                                                     leaf_index, leaf_level_,
                                                     point_coords, query_radius,
                                                     max_pair_radius)
+
+            if max_pair_radius_ >= 0 && leaf_level_ < subleaf_level
+                reduced = mapreduce_subcells(f, op, reduced, finest_cell, leaf_cell,
+                                             leaf_level_, subleaf_level, neighbor_coords,
+                                             neighborhood_search, point, point_coords,
+                                             query_radius, max_pair_radius,
+                                             skip_neighbor)
+                # Skip this leaf below
+                max_pair_radius_ = -one(max_pair_radius_)
+            end
         else
             max_pair_radius_ = max_pair_radius
         end
@@ -633,6 +698,64 @@ end
             value = @inline f(point, neighbor, pos_diff, distance)
             reduced = @inline op(reduced, value)
         end
+    end
+
+    return reduced
+end
+
+# Reduce over all neighbors in the cell (usually a leaf) at level `leaf_level` with
+# the first finest cell `first_finest_cell` and the (with periodicity possibly shifted)
+# cell coordinates `leaf_cell` by traversing the cells inside down to level `subleaf_level`.
+# Cells that are out of reach are skipped together with all their children.
+# This requires the points to be sorted by finest cell, see `points_in_finest_cells`.
+@propagate_inbounds function mapreduce_subcells(f, op, reduced, first_finest_cell,
+                                                leaf_cell, leaf_level, subleaf_level,
+                                                neighbor_coords, neighborhood_search,
+                                                point, point_coords, query_radius,
+                                                max_pair_radius, skip_neighbor)
+    (; cell_list) = neighborhood_search
+    (; max_level, n_points) = cell_list
+    NDIMS = ndims(cell_list)
+
+    # Depth-first traversal of the cells inside the leaf without a stack.
+    # In Morton order, each cell is a contiguous range of finest cells, so we only have to
+    # keep track of the next finest cell to be visited.
+    end_cell = first_finest_cell + n_finest_cells(cell_list, leaf_level)
+    finest_cell = first_finest_cell
+    while finest_cell < end_cell
+        # Start at the coarsest level below the leaf with a cell starting at `finest_cell`
+        local_index = finest_cell - first_finest_cell
+        level = max(leaf_level + 1, max_level - div(trailing_zeros(local_index), NDIMS))
+
+        while true
+            shift = NDIMS * (max_level - level)
+            cell_index_ = finest_cell >> shift
+
+            # Coordinates of this cell, computed from its index inside the leaf
+            cell = (leaf_cell .<< (level - leaf_level)) .+
+                   morton_coords(local_index >> shift, Val(NDIMS))
+
+            # Skip empty cells and cells out of reach
+            n_points[pyramid_index(cell_list, cell_index_, level)] == 0 && break
+            max_pair_radius_ = cell_max_pair_radius(neighborhood_search, cell, cell_index_,
+                                                    level, point_coords, query_radius,
+                                                    max_pair_radius)
+            max_pair_radius_ < 0 && break
+
+            if level >= subleaf_level
+                neighbors = points_in_finest_cells(cell_list, finest_cell, 1 << shift)
+                reduced = mapreduce_points(f, op, reduced, neighbors, neighbor_coords,
+                                           neighborhood_search, point, point_coords,
+                                           max_pair_radius_, skip_neighbor)
+                break
+            end
+
+            # Continue with the first child
+            level += 1
+        end
+
+        # Continue after the last visited cell
+        finest_cell += n_finest_cells(cell_list, level)
     end
 
     return reduced

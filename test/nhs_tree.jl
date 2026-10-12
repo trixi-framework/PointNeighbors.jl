@@ -513,6 +513,46 @@
         @test isempty(cell_list.cells[1])
     end
 
+    @testset "Points Sorted by Finest Cell" begin
+        # Random points in 2D with radii growing in x-direction
+        coords = rand(2, 500)
+        radii = 0.01 .+ 0.1 .* coords[1, :]
+
+        cell_list_ = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                  root_cell_size = 1.0, max_level = 6,
+                                  backend = CompactVectorOfVectors{Int32})
+        nhs = TreeNeighborhoodSearch{2}(; cell_list = cell_list_,
+                                        n_points = size(coords, 2))
+        initialize_tree!(nhs, coords, radii)
+        (; cell_list) = nhs
+
+        # With the `CompactVectorOfVectors`, the points of each finest cell are stored
+        # contiguously, so that cells inside of leaves can be searched separately.
+        # The grid of 3 x 3 root cells starts one root cell before the domain.
+        n_finest_cells = 9 * 4^6
+        for cell in 0:(n_finest_cells - 1)
+            for point in PointNeighbors.points_in_finest_cells(cell_list, cell, 1)
+                finest_cell = floor.(Int, (coords[:, point] .+ 1) .* 2^6)
+                @test PointNeighbors.cell_index(cell_list, Tuple(finest_cell), 6) == cell
+            end
+        end
+
+        # The points of each leaf are the points of all its finest cells
+        cell = 0
+        while cell < n_finest_cells
+            level = PointNeighbors.leaf_level(cell_list, cell)
+            n_cells = PointNeighbors.n_finest_cells(cell_list, level)
+            @test PointNeighbors.points_in_leaf(cell_list, cell) ==
+                  PointNeighbors.points_in_finest_cells(cell_list, cell, n_cells)
+
+            cell += n_cells
+        end
+
+        # Each point is stored exactly once
+        @test sort(PointNeighbors.points_in_finest_cells(cell_list, 0, n_finest_cells)) ==
+              1:500
+    end
+
     @testset verbose=true "Compare Against Brute Force $(NDIMS)D" for NDIMS in 1:3
         n_points = (20, 200, 2_000)[NDIMS]
         coords = rand(NDIMS, n_points)
@@ -698,15 +738,20 @@
             # large radii on the right. All radii must be smaller than the root cells.
             radii = [coords[1, j] < 0.4 ? 0.01 : 0.1 for j in axes(coords, 2)]
 
-            cell_list = TreeCellList(; min_corner, max_corner, root_cell_size = 0.11,
-                                     max_level = 4, max_points_per_cell = 500)
+            # The same queries must yield the same neighbors with and without pruning.
+            # With the `CompactVectorOfVectors`, pruning also skips parts of large leaves.
+            @testset "$(nameof(backend)), $(nameof(typeof(neighbor_criterion))), Pruning = $pruning" for backend in
+                                                                                                         (DynamicVectorOfVectors{Int32},
+                                                                                                          CompactVectorOfVectors{Int32}),
+                                                                                                         neighbor_criterion in
+                                                                                                         neighbor_criteria,
+                                                                                                         pruning in
+                                                                                                         (false,
+                                                                                                          true)
 
-            # The same queries must yield the same neighbors with and without pruning
-            @testset "$(nameof(typeof(neighbor_criterion))), Pruning = $pruning" for neighbor_criterion in
-                                                                                     neighbor_criteria,
-                                                                                     pruning in
-                                                                                     (false,
-                                                                                      true)
+                cell_list = TreeCellList(; min_corner, max_corner, root_cell_size = 0.11,
+                                         max_level = 4, backend,
+                                         max_points_per_cell = 500)
 
                 nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, periodic_box, n_points,
                                                     neighbor_criterion, pruning)
@@ -745,7 +790,12 @@
             end
         end
 
-        @testset "Coarse Leaves at the Periodic Boundary" begin
+        @testset "Coarse Leaves at the Periodic Boundary, $(nameof(backend)), Pruning = $pruning" for backend in
+                                                                                                      (DynamicVectorOfVectors{Int32},
+                                                                                                       CompactVectorOfVectors{Int32}),
+                                                                                                      pruning in
+                                                                                                      (false,
+                                                                                                       true)
             # Many points on the left and only a few points in the strip x > 0.9
             # at the right side of the periodic box
             periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [1.0, 1.0])
@@ -755,9 +805,12 @@
 
             # With a capacity of 8, the root cells in the right strip with only a few points
             # are not split. The other root cells are split into cells of size 0.05.
+            # With pruning and the `CompactVectorOfVectors`, the coarse leaves are searched
+            # hierarchically from the periodic images on the other side.
             cell_list = TreeCellList(; periodic_box.min_corner, periodic_box.max_corner,
-                                     root_cell_size = 0.1, max_level = 3, capacity = 8)
-            nhs = TreeNeighborhoodSearch{2}(; cell_list, periodic_box,
+                                     root_cell_size = 0.1, max_level = 3, capacity = 8,
+                                     backend)
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, periodic_box, pruning,
                                             n_points = size(coords, 2))
             initialize_tree!(nhs, coords, radii)
 
