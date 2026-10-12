@@ -58,6 +58,9 @@ the size of the root cells is the search radius.
     points of each leaf. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
     - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits.
+    - `CompactVectorOfVectors{Int32}`: Contiguous memory without unused memory between
+      the leaves, only requiring memory for the points.
+      `max_points_per_cell` is not used with this backend.
 - `max_points_per_cell = 100`: Maximum number of points per leaf. This will be used to
                 allocate the `DynamicVectorOfVectors`. It is not used with
                 the `Vector{Vector{Int32}}` backend.
@@ -90,8 +93,13 @@ struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL, NL} <: AbstractCellList
     max_radius_all :: MR  # Maximum radius of all points (one-element vector)
     n_points       :: NP  # Number of points in this cell
     leaf_level     :: LL  # Level of the leaf containing this cell or -1 for split cells
-    n_lists        :: NL  # Number of used lists in `cells` (one-element vector)
-    chunk_sums     :: NL  # Buffer for the parallel prefix sum to assign the lists
+    # Number of used lists in `cells` and number of points in all lists
+    # (two-element vector)
+    n_lists::NL
+    # Buffers for the parallel prefix sum to assign the lists, with the number of lists
+    # and the number of points in each chunk
+    chunk_sums     :: NL
+    chunk_n_points :: NL
 end
 
 function TreeCellList(; min_corner, max_corner,
@@ -141,7 +149,7 @@ function TreeCellList(; min_corner, max_corner,
     return TreeCellList(min_corner_, max_corner_, root_cell_size_, grid_min_corner,
                         actual_root_cell_size, n_roots, something(max_level, -1), capacity,
                         cells, leaves, max_radius, zeros(ELTYPE, 1), n_points, leaf_level,
-                        ones(Int, 1), zeros(Int, 0))
+                        ones(Int, 2), zeros(Int, 0), zeros(Int, 0))
 end
 
 # The grid of root cells as `(grid_min_corner, actual_root_cell_size, n_roots)`, where
@@ -248,20 +256,31 @@ function build_tree(cell_list::TreeCellList, search_radius, n_points_, periodic_
     # There can't be more non-empty leaves than points or finest cells.
     # The first list is always empty and used for all empty leaves.
     n_lists = min(n_points_, n_finest_cells) + 1
-    cells_ = construct_backend(typeof(cells), n_lists, max_inner_length(cells, 100))
+    cells_ = construct_leaves(cells, n_lists, n_points_)
     leaves = zeros(Int64, n_finest_cells)
     max_radius = zeros(ELTYPE, n_cells)
     max_radius_all = zeros(ELTYPE, 1)
     n_points = zeros(Int32, n_cells)
     leaf_level = zeros(Int8, n_cells)
-    n_lists = ones(Int, 1)
+    n_lists = ones(Int, 2)
     # Use ~sqrt(n) chunks of ~sqrt(n) finest cells for the parallel prefix sum
     chunk_sums = zeros(Int, ceil(Int, sqrt(n_finest_cells)))
+    chunk_n_points = zeros(Int, length(chunk_sums))
 
     return TreeCellList(min_corner, max_corner, root_cell_size, grid_min_corner,
                         actual_root_cell_size, n_roots, max_level, capacity, cells_,
                         leaves, max_radius, max_radius_all, n_points, leaf_level, n_lists,
-                        chunk_sums)
+                        chunk_sums, chunk_n_points)
+end
+
+# Allocate `n_lists` lists of the same type as `cells` for a total of `n_points` points
+function construct_leaves(cells, n_lists, n_points)
+    return construct_backend(typeof(cells), n_lists, max_inner_length(cells, 100))
+end
+
+function construct_leaves(::CompactVectorOfVectors{T}, n_lists, n_points) where {T}
+    return CompactVectorOfVectors{T}(; max_outer_length = n_lists,
+                                     max_total_length = n_points)
 end
 
 @inline Base.ndims(::TreeCellList{NDIMS}) where {NDIMS} = NDIMS
@@ -269,6 +288,11 @@ end
 
 function supported_update_strategies(::TreeCellList{<:Any, <:Any,
                                                     <:DynamicVectorOfVectors})
+    return (ParallelUpdate, SerialUpdate)
+end
+
+function supported_update_strategies(::TreeCellList{<:Any, <:Any,
+                                                    <:CompactVectorOfVectors})
     return (ParallelUpdate, SerialUpdate)
 end
 
@@ -718,34 +742,49 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
     # neighboring leaves are close in memory. Leaves are identified by their first
     # finest cell. All other finest cells and empty leaves use the empty list 1.
     # This is a parallel prefix sum over the finest cells, which are split into chunks.
-    # First, count the leaves with lists in each chunk.
-    (; chunk_sums) = cell_list
+    # We also compute the number of points in the lists before each list, which is used
+    # as the offset of this list with the `CompactVectorOfVectors`.
+    # First, count the leaves with lists and their points in each chunk.
+    (; chunk_sums, chunk_n_points) = cell_list
     @threaded parallelization_backend for chunk in eachindex(chunk_sums)
         n_leaves = 0
+        n_leaf_points = 0
         for finest_cell in chunk_cells(cell_list, chunk)
-            n_leaves += has_list(cell_list, finest_cell)
+            n_points_ = leaf_n_points(cell_list, finest_cell)
+            n_leaves += n_points_ > 0
+            n_leaf_points += n_points_
         end
         chunk_sums[chunk] = n_leaves
+        chunk_n_points[chunk] = n_leaf_points
     end
 
-    # Compute the number of lists before each chunk with a serial loop over all chunks.
-    # This also works on GPUs.
+    # Compute the number of lists and points before each chunk with a serial loop
+    # over all chunks. This also works on GPUs.
     @threaded parallelization_backend for _ in 1:1
         n_lists_ = 1
+        n_list_points = 0
         for chunk in eachindex(chunk_sums)
             n_leaves = chunk_sums[chunk]
+            n_leaf_points = chunk_n_points[chunk]
             chunk_sums[chunk] = n_lists_
+            chunk_n_points[chunk] = n_list_points
             n_lists_ += n_leaves
+            n_list_points += n_leaf_points
         end
         n_lists[1] = n_lists_
+        n_lists[2] = n_list_points
     end
 
     # Assign the lists in each chunk
     @threaded parallelization_backend for chunk in eachindex(chunk_sums)
         slot = chunk_sums[chunk]
+        offset = chunk_n_points[chunk]
         for finest_cell in chunk_cells(cell_list, chunk)
-            if has_list(cell_list, finest_cell)
+            n_points_ = leaf_n_points(cell_list, finest_cell)
+            if n_points_ > 0
                 slot += 1
+                set_offset!(cells, slot, offset)
+                offset += n_points_
                 leaves[finest_cell + 1] = (slot << 8) |
                                           pyramid_leaf_level(cell_list, finest_cell)
             else
@@ -755,8 +794,10 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
         end
     end
 
-    # Note that `maximum` avoids scalar indexing on GPUs
-    if maximum(n_lists) > length(cells)
+    # Copy to the CPU to avoid scalar indexing on GPUs.
+    # Note that we can't reuse the variable names from the closure above.
+    used_lists, used_points = Array(n_lists)
+    if used_lists > length(cells) || used_points > max_total_length(cells)
         error("the number of points exceeds `n_points` of the neighborhood search")
     end
 
@@ -787,9 +828,10 @@ end
     return Int(leaf_level[pyramid_index(cell_list, finest_cell, max_level)])
 end
 
-# Check if `finest_cell` is the first finest cell of a non-empty leaf,
-# which is assigned a list of points
-@propagate_inbounds function has_list(cell_list, finest_cell)
+# If `finest_cell` is the first finest cell of a leaf, return the number of points
+# in this leaf. Otherwise, return zero.
+# Each leaf with a positive number of points is assigned a list.
+@propagate_inbounds function leaf_n_points(cell_list, finest_cell)
     (; n_points, max_level) = cell_list
 
     level = pyramid_leaf_level(cell_list, finest_cell)
@@ -797,7 +839,9 @@ end
     leaf_index = finest_cell >> shift
     is_first_cell = (leaf_index << shift) == finest_cell
 
-    return is_first_cell && n_points[pyramid_index(cell_list, leaf_index, level)] > 0
+    is_first_cell || return zero(eltype(n_points))
+
+    return n_points[pyramid_index(cell_list, leaf_index, level)]
 end
 
 # Unsigned integer type with the same size as the float type `T`

@@ -110,3 +110,34 @@
         end
     end
 end
+
+@testset verbose=true "`CompactVectorOfVectors`" begin
+    # Three vectors with space for 2, 0 and 3 values
+    vov = CompactVectorOfVectors{Int32}(max_outer_length = 3, max_total_length = 5)
+    PointNeighbors.set_offset!(vov, 1, 0)
+    PointNeighbors.set_offset!(vov, 2, 2)
+    PointNeighbors.set_offset!(vov, 3, 2)
+
+    @test length(vov) == 3
+    @test all(isempty, vov)
+
+    PointNeighbors.pushat!(vov, 3, 31)
+    PointNeighbors.pushat!(vov, 1, 11)
+    PointNeighbors.pushat_atomic!(vov, 3, 32)
+    PointNeighbors.pushat!(vov, 1, 12)
+    PointNeighbors.pushat_atomic!(vov, 3, 33)
+
+    @test vov[1] == [11, 12]
+    @test isempty(vov[2])
+    @test vov[3] == [31, 32, 33]
+
+    # All values are stored contiguously without gaps
+    @test vov.values == [11, 12, 31, 32, 33]
+
+    # Empty the third vector and fill it again
+    PointNeighbors.emptyat!(vov, 3)
+    @test isempty(vov[3])
+    PointNeighbors.pushat!(vov, 3, 34)
+    @test vov[3] == [34]
+    @test vov[1] == [11, 12]
+end

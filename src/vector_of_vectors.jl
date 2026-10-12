@@ -235,3 +235,85 @@ end
 @inline function transposed_backend(::Any)
     return false
 end
+
+# Data structure that behaves like a `Vector{Vector}` with a contiguous memory layout
+# without unused memory between the vectors (similar to the compressed sparse row format).
+# As opposed to `DynamicVectorOfVectors`, the vectors can't grow individually beyond the
+# space reserved for them. Instead, all vectors are filled at once by first setting
+# the offset of each vector with `set_offset!` and then pushing values with `pushat!`.
+struct CompactVectorOfVectors{T, V, O} <: AbstractVector{Array{T, 1}}
+    values  :: V # All values sorted by vectors
+    offsets :: O # Vector `i` starts after `values[offsets[i]]`
+    lengths :: O # Length of each vector
+
+    # This constructor is necessary for Adapt.jl to work with this struct.
+    # See the comments in gpu.jl for more details.
+    function CompactVectorOfVectors(values, offsets, lengths)
+        new{eltype(values), typeof(values), typeof(offsets)}(values, offsets, lengths)
+    end
+end
+
+function CompactVectorOfVectors{T}(; max_outer_length, max_total_length) where {T}
+    values = Vector{T}(undef, max_total_length)
+    offsets = zeros(Int32, max_outer_length)
+    lengths = zeros(Int32, max_outer_length)
+
+    return CompactVectorOfVectors(values, offsets, lengths)
+end
+
+@inline Base.size(vov::CompactVectorOfVectors) = size(vov.lengths)
+
+@inline default_backend(x::CompactVectorOfVectors) = default_backend(x.values)
+
+@inline function Base.getindex(vov::CompactVectorOfVectors, i)
+    (; values, offsets, lengths) = vov
+
+    @boundscheck checkbounds(vov, i)
+
+    return @inbounds view(values, (offsets[i] + 1):(offsets[i] + lengths[i]))
+end
+
+# Set the offset of vector `i`, which has to be done before pushing values to it
+@inline function set_offset!(vov::CompactVectorOfVectors, i, offset)
+    vov.offsets[i] = offset
+
+    return vov
+end
+
+# Other vectors of vectors reserve space for each vector independently
+@inline set_offset!(vov, i, offset) = vov
+
+# Maximum total number of values in all vectors
+@inline max_total_length(vov::CompactVectorOfVectors) = length(vov.values)
+@inline max_total_length(_) = typemax(Int)
+
+# `push!(vov[i], value)`. Note that this will overwrite the next vector when the
+# space reserved for vector `i` with `set_offset!` is exceeded.
+@inline function pushat!(vov::CompactVectorOfVectors, i, value)
+    (; values, offsets, lengths) = vov
+
+    @boundscheck checkbounds(vov, i)
+    @inbounds lengths[i] += 1
+    values[offsets[i] + lengths[i]] = value
+
+    return vov
+end
+
+@inline function pushat_atomic!(vov::CompactVectorOfVectors, i, value)
+    (; values, offsets, lengths) = vov
+
+    @boundscheck checkbounds(vov, i)
+
+    # The atomic add guarantees that `new_length` is different for each thread
+    new_length = @inbounds Atomix.@atomic lengths[i] += 1
+    values[offsets[i] + new_length] = value
+
+    return vov
+end
+
+# `empty!(vov[i])`
+@inline function emptyat!(vov::CompactVectorOfVectors, i)
+    vov.lengths[i] = zero(eltype(vov.lengths))
+
+    return vov
+end

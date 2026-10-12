@@ -9,6 +9,7 @@
 # `Adapt.@adapt_structure` automatically generates the `adapt` function for our custom types.
 Adapt.@adapt_structure FullGridCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
+Adapt.@adapt_structure CompactVectorOfVectors
 Adapt.@adapt_structure GridNeighborhoodSearch
 Adapt.@adapt_structure TreeCellList
 
