@@ -214,6 +214,8 @@ defined by `neighbor_criterion` (see [`TreeNeighborhoodSearch`](@ref)).
 The following neighborhood searches are compared:
 - `TreeNeighborhoodSearch` without and with pruning, querying each point with its own
   search radius,
+- `TreeNeighborhoodSearch` with pruning and `CompactVectorOfVectors`, which also skips
+  parts of large leaves,
 - `GridNeighborhoodSearch` with `FullGridCellList` with the maximum search radius,
   filtering the neighbors by the pair search radius inside the neighbor loop.
 
@@ -263,6 +265,7 @@ function run_benchmark_variable_radius(benchmark, n_points_per_dimension, iterat
     n_particles_vec = zeros(Int, iterations)
     names = ["TreeNeighborhoodSearch";;
              "TreeNeighborhoodSearch with pruning";;
+             "TreeNeighborhoodSearch with pruning and CompactVectorOfVectors";;
              "GridNeighborhoodSearch with FullGridCellList and maximum radius"]
     times = zeros(iterations, length(names))
 
@@ -298,11 +301,17 @@ function run_benchmark_variable_radius(benchmark, n_points_per_dimension, iterat
         fine_spacing = min_radius / search_radius_factor
         max_points_per_cell = ceil(Int, 2 * (max_radius / fine_spacing + 1)^NDIMS)
 
-        tree_cell_list = TreeCellList(; min_corner, max_corner, max_level, root_cell_size,
-                                      max_points_per_cell)
         tree_nhs = [TreeNeighborhoodSearch{NDIMS}(; n_points, pruning, neighbor_criterion,
-                                                  cell_list = tree_cell_list)
-                    for pruning in (false, true)]
+                                                  cell_list = TreeCellList(; min_corner,
+                                                                           max_corner,
+                                                                           max_level,
+                                                                           root_cell_size,
+                                                                           max_points_per_cell,
+                                                                           backend))
+                    for (pruning, backend) in
+                        ((false, DynamicVectorOfVectors{Int32}),
+                         (true, DynamicVectorOfVectors{Int32}),
+                         (true, CompactVectorOfVectors{Int32}))]
 
         grid_cell_list = FullGridCellList(; search_radius = max_radius, min_corner,
                                           max_corner,

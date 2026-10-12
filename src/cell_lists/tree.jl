@@ -61,13 +61,15 @@ the size of the root cells is the search radius.
     - `CompactVectorOfVectors{Int32}`: Contiguous memory without unused memory between
       the leaves, only requiring memory for the points.
       `max_points_per_cell` is not used with this backend.
+      The points of each leaf are sorted by the finest cells, which allows the
+      [`TreeNeighborhoodSearch`](@ref) with pruning to skip parts of large leaves.
 - `max_points_per_cell = 100`: Maximum number of points per leaf. This will be used to
                 allocate the `DynamicVectorOfVectors`. It is not used with
                 the `Vector{Vector{Int32}}` backend.
                 Note that leaves can be larger than the search radius and contain
                 more points than the cells of a [`FullGridCellList`](@ref).
 """
-struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL, NL} <: AbstractCellList
+struct TreeCellList{NDIMS, ELTYPE, C, LS, FO, MR, NP, LL, NL} <: AbstractCellList
     min_corner::SVector{NDIMS, ELTYPE}
     max_corner::SVector{NDIMS, ELTYPE}
     # Size of the root cells requested by the user
@@ -88,6 +90,11 @@ struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL, NL} <: AbstractCellList
     # cell of each leaf, the index in `cells` of the list of this leaf: `(slot << 8) | level`.
     # This way, both are obtained with a single load in the query.
     leaves::LS
+    # Only with the `CompactVectorOfVectors`, where all points are stored contiguously
+    # and sorted by finest cell: for each zero-based finest cell `i`, the points in all
+    # finest cells before `i` are stored before `finest_offsets[i + 1]`.
+    # The last entry is the total number of points. Otherwise, this is empty.
+    finest_offsets::FO
     # Pyramids with one entry for each cell at each level, see `pyramid_index`
     max_radius     :: MR  # Maximum radius of all points in this cell
     max_radius_all :: MR  # Maximum radius of all points (one-element vector)
@@ -142,14 +149,15 @@ function TreeCellList(; min_corner, max_corner,
     # in the constructor of the `TreeNeighborhoodSearch`.
     cells = construct_backend(backend, 0, max_points_per_cell)
     leaves = zeros(Int64, 0)
+    finest_offsets = zeros(Int32, 0)
     max_radius = zeros(ELTYPE, 0)
     n_points = zeros(Int32, 0)
     leaf_level = zeros(Int8, 0)
 
     return TreeCellList(min_corner_, max_corner_, root_cell_size_, grid_min_corner,
                         actual_root_cell_size, n_roots, something(max_level, -1), capacity,
-                        cells, leaves, max_radius, zeros(ELTYPE, 1), n_points, leaf_level,
-                        ones(Int, 2), zeros(Int, 0), zeros(Int, 0))
+                        cells, leaves, finest_offsets, max_radius, zeros(ELTYPE, 1),
+                        n_points, leaf_level, ones(Int, 2), zeros(Int, 0), zeros(Int, 0))
 end
 
 # The grid of root cells as `(grid_min_corner, actual_root_cell_size, n_roots)`, where
@@ -258,6 +266,7 @@ function build_tree(cell_list::TreeCellList, search_radius, n_points_, periodic_
     n_lists = min(n_points_, n_finest_cells) + 1
     cells_ = construct_leaves(cells, n_lists, n_points_)
     leaves = zeros(Int64, n_finest_cells)
+    finest_offsets = zeros(Int32, sorts_points(cells_) ? n_finest_cells + 1 : 0)
     max_radius = zeros(ELTYPE, n_cells)
     max_radius_all = zeros(ELTYPE, 1)
     n_points = zeros(Int32, n_cells)
@@ -269,7 +278,8 @@ function build_tree(cell_list::TreeCellList, search_radius, n_points_, periodic_
 
     return TreeCellList(min_corner, max_corner, root_cell_size, grid_min_corner,
                         actual_root_cell_size, n_roots, max_level, capacity, cells_,
-                        leaves, max_radius, max_radius_all, n_points, leaf_level, n_lists,
+                        leaves, finest_offsets, max_radius, max_radius_all, n_points,
+                        leaf_level, n_lists,
                         chunk_sums, chunk_n_points)
 end
 
@@ -282,6 +292,11 @@ function construct_leaves(::CompactVectorOfVectors{T}, n_lists, n_points) where 
     return CompactVectorOfVectors{T}(; max_outer_length = n_lists,
                                      max_total_length = n_points)
 end
+
+# With the `CompactVectorOfVectors`, the points of all leaves are sorted by finest cell
+@inline sorts_points(cells) = false
+@inline sorts_points(::CompactVectorOfVectors) = true
+@inline sorts_points(cell_list::TreeCellList) = sorts_points(cell_list.cells)
 
 @inline Base.ndims(::TreeCellList{NDIMS}) where {NDIMS} = NDIMS
 @inline Base.eltype(::TreeCellList{<:Any, ELTYPE}) where {ELTYPE} = ELTYPE
@@ -742,17 +757,18 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
     # neighboring leaves are close in memory. Leaves are identified by their first
     # finest cell. All other finest cells and empty leaves use the empty list 1.
     # This is a parallel prefix sum over the finest cells, which are split into chunks.
-    # We also compute the number of points in the lists before each list, which is used
-    # as the offset of this list with the `CompactVectorOfVectors`.
-    # First, count the leaves with lists and their points in each chunk.
+    # We also compute the number of points in all finest cells before each finest cell.
+    # Since the finest cells of each leaf are contiguous, this is also the number of
+    # points in the lists before each list, which is used as the offset of this list
+    # with the `CompactVectorOfVectors`.
+    # First, count the leaves with lists and the points in each chunk.
     (; chunk_sums, chunk_n_points) = cell_list
     @threaded parallelization_backend for chunk in eachindex(chunk_sums)
         n_leaves = 0
         n_leaf_points = 0
         for finest_cell in chunk_cells(cell_list, chunk)
-            n_points_ = leaf_n_points(cell_list, finest_cell)
-            n_leaves += n_points_ > 0
-            n_leaf_points += n_points_
+            n_leaves += leaf_n_points(cell_list, finest_cell) > 0
+            n_leaf_points += finest_n_points(cell_list, finest_cell)
         end
         chunk_sums[chunk] = n_leaves
         chunk_n_points[chunk] = n_leaf_points
@@ -784,13 +800,23 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
             if n_points_ > 0
                 slot += 1
                 set_offset!(cells, slot, offset)
-                offset += n_points_
+                if sorts_points(cell_list)
+                    # The points are not pushed to the lists but sorted directly
+                    cells.lengths[slot] = n_points_
+                end
                 leaves[finest_cell + 1] = (slot << 8) |
                                           pyramid_leaf_level(cell_list, finest_cell)
             else
                 leaves[finest_cell + 1] = (1 << 8) |
                                           pyramid_leaf_level(cell_list, finest_cell)
             end
+
+            if sorts_points(cell_list)
+                # Start with the offset of the previous finest cell, which is incremented
+                # for each point in this finest cell when adding the points below
+                cell_list.finest_offsets[finest_cell + 2] = offset
+            end
+            offset += finest_n_points(cell_list, finest_cell)
         end
     end
 
@@ -805,12 +831,29 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points,
     @threaded parallelization_backend for point in eachindex_points
         point_coords = extract_svector(coords, Val(ndims(cell_list)), point)
         finest_cell = finest_cell_index(point_coords, cell_list, periodic_box)
-        slot = leaf_slot(cell_list, leaf_first_cell(cell_list, finest_cell))
 
-        push_point!(cells, slot, point, parallelization_backend)
+        add_point!(cell_list, finest_cell, point, parallelization_backend)
     end
 
     return cell_list
+end
+
+# Add the point `point` in the finest cell `finest_cell` to the list of its leaf
+@inline function add_point!(cell_list, finest_cell, point, parallelization_backend)
+    slot = leaf_slot(cell_list, leaf_first_cell(cell_list, finest_cell))
+    push_point!(cell_list.cells, slot, point, parallelization_backend)
+end
+
+# With the `CompactVectorOfVectors`, sort the points by finest cell
+@inline function add_point!(cell_list::TreeCellList{<:Any, <:Any, <:CompactVectorOfVectors},
+                            finest_cell, point, parallelization_backend)
+    (; cells, finest_offsets) = cell_list
+
+    # Increment the number of points before the next finest cell, which is the position
+    # of this point. After adding all points, this is the correct offset again.
+    position = increment!(finest_offsets, finest_cell + 2, one(eltype(finest_offsets)),
+                          parallelization_backend)
+    cells.values[position] = point
 end
 
 # The finest cells (zero-based indices) in chunk `chunk` for the prefix sum in `rebuild!`
@@ -826,6 +869,13 @@ end
     (; leaf_level, max_level) = cell_list
 
     return Int(leaf_level[pyramid_index(cell_list, finest_cell, max_level)])
+end
+
+# Number of points in the finest cell `finest_cell`
+@propagate_inbounds function finest_n_points(cell_list, finest_cell)
+    (; n_points, max_level) = cell_list
+
+    return n_points[pyramid_index(cell_list, finest_cell, max_level)]
 end
 
 # If `finest_cell` is the first finest cell of a leaf, return the number of points
@@ -1010,4 +1060,14 @@ end
 # The points of the leaf with the first finest cell `first_finest_cell`
 @propagate_inbounds function points_in_leaf(cell_list::TreeCellList, first_finest_cell)
     return cell_list.cells[leaf_slot(cell_list, first_finest_cell)]
+end
+
+# With the `CompactVectorOfVectors`, the points in the `n` finest cells starting with
+# the finest cell `first_finest_cell`
+@propagate_inbounds function points_in_finest_cells(cell_list::TreeCellList,
+                                                    first_finest_cell, n)
+    (; cells, finest_offsets) = cell_list
+
+    return view(cells.values,
+                (finest_offsets[first_finest_cell + 1] + 1):finest_offsets[first_finest_cell + n + 1])
 end
