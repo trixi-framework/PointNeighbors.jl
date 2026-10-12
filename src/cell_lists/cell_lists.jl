@@ -53,3 +53,4 @@ end
 include("dictionary.jl")
 include("full_grid.jl")
 include("spatial_hashing.jl")
+include("tree.jl")

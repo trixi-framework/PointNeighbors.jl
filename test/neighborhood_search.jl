@@ -262,7 +262,16 @@
                 GridNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points,
-                                                                                        backend = Vector{Vector{Int32}}))
+                                                                                        backend = Vector{Vector{Int32}})),
+                TreeNeighborhoodSearch{NDIMS}(; search_radius,
+                                              cell_list = TreeCellList(; min_corner,
+                                                                       max_corner,
+                                                                       max_level = 10)),
+                TreeNeighborhoodSearch{NDIMS}(; search_radius,
+                                              cell_list = TreeCellList(; min_corner,
+                                                                       max_corner,
+                                                                       max_level = 10,
+                                                                       backend = Vector{Vector{Int32}}))
             ]
 
             names = [
@@ -276,7 +285,9 @@
                 "`PrecomputedNeighborhoodSearch`",
                 "`PrecomputedNeighborhoodSearch` with `Vector{Vector}`",
                 "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `DynamicVectorOfVectors`",
-                "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `Vector{Vector}`"
+                "`GridNeighborhoodSearch` with `SpatialHashingCellList` with `Vector{Vector}`",
+                "`TreeNeighborhoodSearch` with `DynamicVectorOfVectors`",
+                "`TreeNeighborhoodSearch` with `Vector{Vector}`"
             ]
 
             # Also test copied templates
@@ -301,7 +312,14 @@
                                                                                                     n_points)),
                 GridNeighborhoodSearch{NDIMS}(cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points,
-                                                                                        backend = Vector{Vector{Int32}}))
+                                                                                        backend = Vector{Vector{Int32}})),
+                TreeNeighborhoodSearch{NDIMS}(cell_list = TreeCellList(; min_corner,
+                                                                       max_corner,
+                                                                       max_level = 10)),
+                TreeNeighborhoodSearch{NDIMS}(cell_list = TreeCellList(; min_corner,
+                                                                       max_corner,
+                                                                       max_level = 10,
+                                                                       backend = Vector{Vector{Int32}}))
             ]
             copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
             append!(neighborhood_searches, copied_nhs)
