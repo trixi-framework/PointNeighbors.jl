@@ -35,7 +35,9 @@ the size of the root cells is the search radius.
     The tree data structures are stored densely for all levels. They therefore require
     memory proportional to the number of cells at level `max_level`, which is
     (number of root cells) ``\times 2^{d \cdot \text{max\_level}}``.
-    The default `backend` allocates `max_points_per_cell` entries for each of these cells.
+    Lists of points are only allocated for non-empty leaves. With the default `backend`,
+    `max_points_per_cell` entries are allocated for each of the `n_points` possible
+    non-empty leaves (see [`TreeNeighborhoodSearch`](@ref)).
 
 # Keywords
 - `min_corner`: Coordinates of the domain corner in negative coordinate directions.
@@ -62,7 +64,7 @@ the size of the root cells is the search radius.
                 Note that leaves can be larger than the search radius and contain
                 more points than the cells of a [`FullGridCellList`](@ref).
 """
-struct TreeCellList{NDIMS, ELTYPE, C, MR, NP, LL} <: AbstractCellList
+struct TreeCellList{NDIMS, ELTYPE, C, LS, MR, NP, LL} <: AbstractCellList
     min_corner::SVector{NDIMS, ELTYPE}
     max_corner::SVector{NDIMS, ELTYPE}
     # Size of the root cells requested by the user
@@ -77,8 +79,12 @@ struct TreeCellList{NDIMS, ELTYPE, C, MR, NP, LL} <: AbstractCellList
     # in `build_tree`
     max_level::Int
     capacity::Int
-    # The points of a leaf are stored in the list of the first finest cell inside the leaf
+    # Lists of points, one for each non-empty leaf, and an empty list at index 1
     cells::C
+    # For each finest cell, the level of the leaf containing it and, at the first finest
+    # cell of each leaf, the index in `cells` of the list of this leaf: `(slot << 8) | level`.
+    # This way, both are obtained with a single load in the query.
+    leaves::LS
     # Pyramids with one entry for each cell at each level, see `pyramid_index`
     max_radius     :: MR  # Maximum radius of all points in this cell
     max_radius_all :: MR  # Maximum radius of all points (one-element vector)
@@ -121,14 +127,14 @@ function TreeCellList(; min_corner, max_corner,
     # The tree data structures are allocated by `build_tree`, which is called
     # in the constructor of the `TreeNeighborhoodSearch`.
     cells = construct_backend(backend, 0, max_points_per_cell)
+    leaves = zeros(Int64, 0)
     max_radius = zeros(ELTYPE, 0)
     n_points = zeros(Int32, 0)
     leaf_level = zeros(Int8, 0)
 
     return TreeCellList(min_corner_, max_corner_, root_cell_size_, grid_min_corner,
                         actual_root_cell_size, n_roots, something(max_level, -1), capacity,
-                        cells,
-                        max_radius, zeros(ELTYPE, 1), n_points, leaf_level)
+                        cells, leaves, max_radius, zeros(ELTYPE, 1), n_points, leaf_level)
 end
 
 # The grid of root cells as `(grid_min_corner, actual_root_cell_size, n_roots)`, where
@@ -185,10 +191,11 @@ function root_grid(min_corner, max_corner, root_cell_size, periodic_box)
 end
 
 # Return a copy of `cell_list` with the grid of root cells for `periodic_box`
-# and the tree data structures allocated.
+# and the tree data structures allocated, including lists for up to `n_points` non-empty
+# leaves.
 # Without a given `max_level`, the finest level is the finest level with cells that are
 # at least as large as `search_radius`.
-function build_tree(cell_list::TreeCellList, search_radius, periodic_box)
+function build_tree(cell_list::TreeCellList, search_radius, n_points_, periodic_box)
     (; min_corner, max_corner, root_cell_size, capacity, cells) = cell_list
     NDIMS = ndims(cell_list)
     ELTYPE = eltype(cell_list)
@@ -232,7 +239,11 @@ function build_tree(cell_list::TreeCellList, search_radius, periodic_box)
     n_cells = level_offset(n_roots, max_level + 1, Val(NDIMS))
     n_finest_cells = prod(n_roots) << (NDIMS * max_level)
 
-    cells_ = construct_backend(typeof(cells), n_finest_cells, max_inner_length(cells, 100))
+    # There can't be more non-empty leaves than points or finest cells.
+    # The first list is always empty and used for all empty leaves.
+    n_lists = min(n_points_, n_finest_cells) + 1
+    cells_ = construct_backend(typeof(cells), n_lists, max_inner_length(cells, 100))
+    leaves = zeros(Int64, n_finest_cells)
     max_radius = zeros(ELTYPE, n_cells)
     max_radius_all = zeros(ELTYPE, 1)
     n_points = zeros(Int32, n_cells)
@@ -240,8 +251,7 @@ function build_tree(cell_list::TreeCellList, search_radius, periodic_box)
 
     return TreeCellList(min_corner, max_corner, root_cell_size, grid_min_corner,
                         actual_root_cell_size, n_roots, max_level, capacity, cells_,
-                        max_radius,
-                        max_radius_all, n_points, leaf_level)
+                        leaves, max_radius, max_radius_all, n_points, leaf_level)
 end
 
 @inline Base.ndims(::TreeCellList{NDIMS}) where {NDIMS} = NDIMS
@@ -636,7 +646,7 @@ end
 # coordinates `coords`
 # and radii `radii`.
 function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points, periodic_box)
-    (; cells, max_level, max_radius, n_points) = cell_list
+    (; cells, leaves, max_level, max_radius, n_points) = cell_list
     NDIMS = ndims(cell_list)
 
     # Only the finest level has to be reset. The coarser levels are computed from it below.
@@ -677,6 +687,27 @@ function rebuild!(cell_list::TreeCellList, coords, radii, eachindex_points, peri
             # Convert one-based `CartesianIndex` to zero-based tuple
             split_cell!(cell_list, Tuple(cell) .- 1, level, periodic_box)
         end
+    end
+
+    # Assign a list to each non-empty leaf. Leaves are identified by their first
+    # finest cell. All other finest cells and empty leaves use the empty list 1.
+    n_lists = 1
+    for finest_cell in 0:(length(leaves) - 1)
+        level = Int(cell_list.leaf_level[pyramid_index(cell_list, finest_cell, max_level)])
+        shift = NDIMS * (max_level - level)
+        leaf_index = finest_cell >> shift
+        is_first_cell = (leaf_index << shift) == finest_cell
+
+        slot = 1
+        if is_first_cell && n_points[pyramid_index(cell_list, leaf_index, level)] > 0
+            n_lists += 1
+            slot = n_lists
+        end
+        leaves[finest_cell + 1] = (slot << 8) | level
+    end
+
+    if n_lists > length(cells)
+        error("the number of points exceeds `n_points` of the neighborhood search")
     end
 
     # Add each point to its leaf
@@ -806,9 +837,7 @@ end
 
 # Level of the leaf containing the finest cell with zero-based index `finest_cell`
 @propagate_inbounds function leaf_level(cell_list::TreeCellList, finest_cell)
-    (; leaf_level, max_level) = cell_list
-
-    return Int(leaf_level[pyramid_index(cell_list, finest_cell, max_level)])
+    return Int(cell_list.leaves[finest_cell + 1] & 0xff)
 end
 
 # Zero-based index of the first finest cell of the leaf containing the finest cell
@@ -820,9 +849,10 @@ end
 end
 
 # Index in `cell_list.cells` of the list containing the points of the leaf with the
-# first finest cell `first_finest_cell` (zero-based index).
-# The points of each leaf are stored in the list of its first finest cell.
-@inline leaf_slot(::TreeCellList, first_finest_cell) = first_finest_cell + 1
+# first finest cell `first_finest_cell` (zero-based index)
+@propagate_inbounds function leaf_slot(cell_list::TreeCellList, first_finest_cell)
+    return cell_list.leaves[first_finest_cell + 1] >> 8
+end
 
 # The points of the leaf with the first finest cell `first_finest_cell`
 @propagate_inbounds function points_in_leaf(cell_list::TreeCellList, first_finest_cell)
