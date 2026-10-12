@@ -87,6 +87,10 @@ without any assumptions on the variation of the search radii.
 As with the [`GridNeighborhoodSearch`](@ref), a query only considers the ``3^d`` block of
 cells around the leaf containing the query point, at the level of this leaf.
 
+To use this neighborhood search on GPUs, move it to the GPU with Adapt.jl
+(see the GPU tutorial) and pass GPU arrays to [`initialize_tree!`](@ref)
+and [`update_tree!`](@ref).
+
 !!! warning "Experimental implementation"
     This is an experimental feature and may change in any future releases.
 
@@ -228,7 +232,10 @@ function initialize!(neighborhood_search::TreeNeighborhoodSearch,
     # `GridNeighborhoodSearch`. By default, `max_level` of the cell list is chosen for the
     # search radius of the neighborhood search, so that the leaves are at the same level
     # as with a search radius of `search_radius` for all points.
-    resize!(search_radii, size(y, 2))
+    # Only resize when necessary, since resizing GPU arrays always reallocates memory
+    if length(search_radii) != size(y, 2)
+        resize!(search_radii, size(y, 2))
+    end
     fill!(search_radii, 0)
 
     initialize_tree!(neighborhood_search, y, search_radii;
@@ -284,7 +291,10 @@ function initialize_tree!(neighborhood_search::TreeNeighborhoodSearch, y::Abstra
     # `search_radii` might already be the array of the neighborhood search.
     search_radii_ = neighborhood_search.search_radii
     if search_radii !== search_radii_
-        resize!(search_radii_, length(search_radii))
+        # Only resize when necessary, since resizing GPU arrays always reallocates memory
+        if length(search_radii_) != length(search_radii)
+            resize!(search_radii_, length(search_radii))
+        end
         @threaded backend for i in eachindex(search_radii_, search_radii)
             search_radii_[i] = search_radii[i]
         end
