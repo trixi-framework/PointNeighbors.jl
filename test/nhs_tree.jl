@@ -169,6 +169,11 @@
             # Each cell has a unique zero-based index.
             @test sort(vec(indices)) == 0:(prod(n_cells) - 1)
 
+            # The coordinates can be recovered from the index.
+            @test all(zip(cells, indices)) do (cell, index)
+                PointNeighbors.cell_coords_from_index(cell_list, index, level) == cell
+            end
+
             # The parent of a cell is obtained by removing the last `NDIMS` bits
             # of the index.
             if level > 0
@@ -328,6 +333,71 @@
         @test finest_leaf_levels(nhs) == [1, 1, 1, 1, 1, 1, 1, 1]
     end
 
+    @testset "Pruning of Cells Out of Reach" begin
+        # A single point in the cell [0.5, 1) x [0, 0.5) at level 1 with radius 0.2
+        cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                 root_cell_size = 1.0, max_level = 2)
+
+        # Check if the cell `cell` at level `level` is out of reach for a query point
+        # with coordinates `x` and search radius `h`.
+        # The cell coordinates are relative to the domain. The grid of root cells starts
+        # with a padding root cell, which has `2^level` cells at level `level`.
+        function is_out_of_reach(nhs, cell, level, x, h)
+            grid_cell = cell .+ (1 << level)
+            cell_index = PointNeighbors.cell_index(nhs.cell_list, grid_cell, level)
+            max_pair_radius = PointNeighbors.cell_max_pair_radius(nhs, grid_cell,
+                                                                  cell_index, level,
+                                                                  SVector(x...), h,
+                                                                  max(h, 0.2))
+            return max_pair_radius < 0
+        end
+
+        @testset "AverageRadius" begin
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, pruning = true,
+                                            neighbor_criterion = AverageRadius())
+            initialize_tree!(nhs, [0.9; 0.1;;], [0.2])
+
+            # The query point (0.2, 0.25) has a distance of 0.3 to this cell.
+            # With a query radius of 0.4, points in this cell with a radius of 0.2 can be
+            # at a distance of up to (0.4 + 0.2) / 2 = 0.3 to the query point.
+            @test !is_out_of_reach(nhs, (1, 0), 1, (0.2, 0.25), 0.4)
+
+            # With a query radius of 0.3, this is only (0.3 + 0.2) / 2 = 0.25
+            @test is_out_of_reach(nhs, (1, 0), 1, (0.2, 0.25), 0.3)
+
+            # The same holds for the leaf [0.75, 1) x [0, 0.25) containing the point
+            # at level 2
+            @test !is_out_of_reach(nhs, (3, 0), 2, (0.45, 0.1), 0.4)
+            @test is_out_of_reach(nhs, (3, 0), 2, (0.45, 0.1), 0.2)
+
+            # Empty cells are out of reach when their distance exceeds half the query
+            # radius
+            @test !is_out_of_reach(nhs, (0, 1), 1, (0.2, 0.25), 0.5)
+            @test is_out_of_reach(nhs, (0, 1), 1, (0.2, 0.25), 0.49)
+        end
+
+        @testset "MaximumRadius" begin
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, pruning = true)
+            initialize_tree!(nhs, [0.9; 0.1;;], [0.2])
+
+            # With a query radius of 0.3, points in this cell can be at a distance of
+            # up to max(0.3, 0.2) = 0.3 to the query point
+            @test !is_out_of_reach(nhs, (1, 0), 1, (0.2, 0.25), 0.3)
+
+            # With a query radius of 0.25, this is only max(0.25, 0.2) = 0.25
+            @test is_out_of_reach(nhs, (1, 0), 1, (0.2, 0.25), 0.25)
+
+            # Points in this cell with a radius of 0.2 reach a distance of 0.2,
+            # even for small query radii
+            @test !is_out_of_reach(nhs, (3, 0), 2, (0.55, 0.1), 0.01)
+            @test is_out_of_reach(nhs, (3, 0), 2, (0.54, 0.1), 0.01)
+
+            # Empty cells are out of reach when their distance exceeds the query radius
+            @test !is_out_of_reach(nhs, (0, 1), 1, (0.2, 0.25), 0.25)
+            @test is_out_of_reach(nhs, (0, 1), 1, (0.2, 0.25), 0.24)
+        end
+    end
+
     @testset "Points Stored in Leaves" begin
         # Random points in 2D with radii growing in x-direction
         coords = rand(2, 500)
@@ -438,11 +508,16 @@
 
             radii = [radius(coords[:, j]) for j in axes(coords, 2)]
 
-            # The same tree is used for all neighbor criteria
-            @testset "$(nameof(typeof(neighbor_criterion)))" for neighbor_criterion in
-                                                                 neighbor_criteria
+            # The same tree is used for all neighbor criteria, and the same queries must
+            # yield the same neighbors with and without pruning
+            @testset "$(nameof(typeof(neighbor_criterion))), Pruning = $pruning" for neighbor_criterion in
+                                                                                     neighbor_criteria,
+                                                                                     pruning in
+                                                                                     (false,
+                                                                                      true)
 
-                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, neighbor_criterion)
+                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, neighbor_criterion,
+                                                    pruning)
 
                 # Initialize with different coordinates first to also test the update
                 initialize_tree!(nhs, rand(NDIMS, n_points), radii)
@@ -552,11 +627,15 @@
             cell_list = TreeCellList(; min_corner, max_corner, root_cell_size = 0.11,
                                      max_level = 4, max_points_per_cell = 500)
 
-            @testset "$(nameof(typeof(neighbor_criterion)))" for neighbor_criterion in
-                                                                 neighbor_criteria
+            # The same queries must yield the same neighbors with and without pruning
+            @testset "$(nameof(typeof(neighbor_criterion))), Pruning = $pruning" for neighbor_criterion in
+                                                                                     neighbor_criteria,
+                                                                                     pruning in
+                                                                                     (false,
+                                                                                      true)
 
                 nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, periodic_box, n_points,
-                                                    neighbor_criterion)
+                                                    neighbor_criterion, pruning)
                 initialize_tree!(nhs, coords, radii)
 
                 # The root cells tile the periodic box exactly
@@ -729,6 +808,7 @@
         @test copy.cell_list.max_level == 4
         @test copy.cell_list.capacity == 3
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
+        @test PointNeighbors.uses_pruning(copy) == PointNeighbors.uses_pruning(nhs)
         @test copy.neighbor_criterion == QueryRadius()
         @test copy.update_strategy == SerialUpdate()
 
