@@ -290,18 +290,16 @@ function run_benchmark_variable_radius(benchmark, n_points_per_dimension, iterat
 
         # The cells of the grid have the size of the maximum radius,
         # so they can contain many fine points.
-        # The `DynamicVectorOfVectors` storage needs the same capacity for all lists.
-        fine_spacing = min_radius / search_radius_factor
-        max_points_per_cell = ceil(Int, 2 * (max_radius / fine_spacing + 1)^NDIMS)
-
         # Since a cell of the tree is only split if all radii in the surrounding cells
         # are small enough, the fine region next to the transition region is covered by
         # leaves of the size of the maximum radius as well.
-        # The `DynamicVectorOfVectors` storage of the tree would therefore need the same
-        # capacity as the grid for each cell at the finest level, so we use
-        # the `Vector{Vector}` storage instead.
+        # The `DynamicVectorOfVectors` storage needs the same capacity for all lists,
+        # so the tree needs the same capacity as the grid.
+        fine_spacing = min_radius / search_radius_factor
+        max_points_per_cell = ceil(Int, 2 * (max_radius / fine_spacing + 1)^NDIMS)
+
         tree_cell_list = TreeCellList(; min_corner, max_corner, max_level, root_cell_size,
-                                      backend = Vector{Vector{Int32}})
+                                      max_points_per_cell)
         tree_nhs = [TreeNeighborhoodSearch{NDIMS}(; n_points, pruning, neighbor_criterion,
                                                   cell_list = tree_cell_list)
                     for pruning in (false, true)]

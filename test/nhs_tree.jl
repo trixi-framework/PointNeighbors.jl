@@ -259,7 +259,7 @@
 
         # With a uniform search radius, all leaves containing points are at this level
         coords = rand(2, 500)
-        nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius = 0.1)
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius = 0.1, n_points = 500)
         initialize!(nhs, coords, coords)
 
         @test nhs.cell_list.max_level == 3
@@ -279,7 +279,8 @@
         cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (0.95, 0.75),
                                  root_cell_size = 0.25)
         search_radius = 0.14
-        nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius, periodic_box)
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius, periodic_box,
+                                        n_points = 200)
         @test nhs.cell_list.n_roots == (3, 3)
         @test nhs.cell_list.max_level == 0
 
@@ -296,7 +297,7 @@
         # padding root cell [-1, 0).
         cell_list = TreeCellList(min_corner = (0.0,), max_corner = (1.0,),
                                  root_cell_size = 1.0, max_level = 3)
-        nhs = TreeNeighborhoodSearch{1}(; cell_list)
+        nhs = TreeNeighborhoodSearch{1}(; cell_list, n_points = 2)
         finest_leaf_levels(nhs) = [PointNeighbors.leaf_level(nhs.cell_list, cell)
                                    for cell in 8:15]
 
@@ -328,7 +329,7 @@
         # With a capacity of 1 point per cell, only the root cell with 2 points is split
         cell_list = TreeCellList(min_corner = (0.0,), max_corner = (1.0,),
                                  root_cell_size = 1.0, max_level = 3, capacity = 1)
-        nhs = TreeNeighborhoodSearch{1}(; cell_list)
+        nhs = TreeNeighborhoodSearch{1}(; cell_list, n_points = 2)
         initialize_tree!(nhs, coords, [0.1, 0.2])
         @test finest_leaf_levels(nhs) == [1, 1, 1, 1, 1, 1, 1, 1]
     end
@@ -353,7 +354,7 @@
         end
 
         @testset "AverageRadius" begin
-            nhs = TreeNeighborhoodSearch{2}(; cell_list, pruning = true,
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, n_points = 1, pruning = true,
                                             neighbor_criterion = AverageRadius())
             initialize_tree!(nhs, [0.9; 0.1;;], [0.2])
 
@@ -377,7 +378,7 @@
         end
 
         @testset "MaximumRadius" begin
-            nhs = TreeNeighborhoodSearch{2}(; cell_list, pruning = true)
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, n_points = 1, pruning = true)
             initialize_tree!(nhs, [0.9; 0.1;;], [0.2])
 
             # With a query radius of 0.3, points in this cell can be at a distance of
@@ -405,7 +406,7 @@
 
         cell_list_ = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
                                   root_cell_size = 1.0, max_level = 6)
-        nhs = TreeNeighborhoodSearch{2}(; cell_list = cell_list_)
+        nhs = TreeNeighborhoodSearch{2}(; cell_list = cell_list_, n_points = 500)
         (; cell_list) = nhs
 
         # Leave out some points
@@ -421,7 +422,7 @@
             level = PointNeighbors.leaf_level(cell_list, cell)
             next_cell = cell + PointNeighbors.n_finest_cells(cell_list, level)
 
-            # The points of a leaf are stored in the list of its first finest cell
+            # The points of a leaf are stored in the list assigned to its first finest cell
             points = PointNeighbors.points_in_leaf(cell_list, cell)
             for point in points
                 # The point must be inside this leaf. The grid of root cells starts
@@ -433,14 +434,22 @@
             end
             append!(points_found, points)
 
-            # The lists of all other finest cells of this leaf are empty
-            @test all(i -> isempty(cell_list.cells[i]), (cell + 2):next_cell)
+            # Empty leaves and all other finest cells of this leaf use the empty list 1
+            if isempty(points)
+                @test PointNeighbors.leaf_slot(cell_list, cell) == 1
+            end
+            @test all(i -> PointNeighbors.leaf_slot(cell_list, i) == 1,
+                      (cell + 1):(next_cell - 1))
 
             cell = next_cell
         end
 
         # Each active point is stored in exactly one leaf
         @test sort(points_found) == eachindex_y
+
+        # Lists are only allocated for the possible non-empty leaves and the empty list
+        @test length(cell_list.cells) == 500 + 1
+        @test isempty(cell_list.cells[1])
     end
 
     @testset verbose=true "Compare Against Brute Force $(NDIMS)D" for NDIMS in 1:3
@@ -516,7 +525,8 @@
                                                                                      (false,
                                                                                       true)
 
-                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, neighbor_criterion,
+                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, n_points,
+                                                    neighbor_criterion,
                                                     pruning)
 
                 # Initialize with different coordinates first to also test the update
@@ -550,7 +560,7 @@
             cell_list = TreeCellList(; cell_list_.min_corner, cell_list_.max_corner,
                                      cell_list_.root_cell_size, cell_list_.capacity,
                                      backend = typeof(cell_list_.cells))
-            nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius)
+            nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius, n_points)
 
             # Initialize with different coordinates first to also test the update.
             initialize!(nhs, coords, rand(NDIMS, n_points))
@@ -662,6 +672,7 @@
                 cell_list = TreeCellList(; min_corner, max_corner, root_cell_size,
                                          max_points_per_cell = 500)
                 nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius = 0.1,
+                                                    n_points,
                                                     periodic_box)
                 initialize!(nhs, coords, coords)
 
@@ -724,7 +735,7 @@
 
         cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
                                  root_cell_size = 0.25, max_level = 5)
-        nhs = TreeNeighborhoodSearch{2}(; cell_list)
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, n_points = size(coords, 2))
         initialize_tree!(nhs, coords, radii)
 
         expected = [brute_force_neighbors(coords[:, i], radii[i], coords, radii)
@@ -785,7 +796,7 @@
         cell_list = TreeCellList(min_corner = (0.0, 0.0, 0.0),
                                  max_corner = (1.0, 1.0, 1.0), root_cell_size = 0.25,
                                  max_level = 3)
-        nhs = TreeNeighborhoodSearch{3}(; cell_list)
+        nhs = TreeNeighborhoodSearch{3}(; cell_list, n_points = size(coords, 2))
 
         # Only every third point is part of the tree.
         eachindex_y = 1:3:100
@@ -797,7 +808,8 @@
     @testset "`copy_neighborhood_search`" begin
         cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 2.0),
                                  root_cell_size = 0.5, max_level = 4, capacity = 3)
-        nhs = TreeNeighborhoodSearch{2}(; cell_list, neighbor_criterion = QueryRadius(),
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, n_points = 10,
+                                        neighbor_criterion = QueryRadius(),
                                         update_strategy = SerialUpdate())
 
         copy = copy_neighborhood_search(nhs, 0.1, 10)
@@ -838,11 +850,16 @@
     @testset "Errors" begin
         cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
                                  root_cell_size = 0.5, max_level = 3)
-        nhs = TreeNeighborhoodSearch{2}(; cell_list)
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, n_points = 2)
         coords = [0.1 0.5; 0.2 0.5]
 
         error_str = "the number of search radii must match the number of points"
         @test_throws error_str initialize_tree!(nhs, coords, [0.1])
+
+        # Lists are only allocated for `n_points` points
+        nhs_small = TreeNeighborhoodSearch{2}(; cell_list, n_points = 1)
+        error_str = "the number of points exceeds `n_points` of the neighborhood search"
+        @test_throws error_str initialize_tree!(nhs_small, coords, [0.1, 0.1])
 
         error_str = "search radii must be non-negative"
         @test_throws error_str initialize_tree!(nhs, coords, [0.1, -0.1])
