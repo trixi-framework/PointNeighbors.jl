@@ -38,7 +38,10 @@ end
 @testset verbose=true "TreeNeighborhoodSearch" begin
     ELTYPES = supports_double_precision ? (Float32, Float64) : (Float32,)
 
-    @testset "Tree Structure $ELTYPE" for ELTYPE in ELTYPES
+    @testset "Tree Structure $ELTYPE, $(nameof(storage_type))" for ELTYPE in ELTYPES,
+                                                                   storage_type in
+                                                                   (DynamicVectorOfVectors{Int32},
+                                                                    CompactVectorOfVectors{Int32})
         # Random points in 3D with search radii growing in x-direction
         coords = rand(ELTYPE, 3, 20_000)
         radii = ELTYPE(0.02) .+ ELTYPE(0.1) .* coords[1, :] .^ 2
@@ -54,7 +57,10 @@ end
         initialize_tree!(nhs, coords, radii)
 
         # Build the same tree on the GPU with the parallel update
-        nhs_parallel = TreeNeighborhoodSearch{3}(; cell_list = tree_cell_list(),
+        cell_list_parallel = TreeCellList(; min_corner, max_corner,
+                                          root_cell_size = ELTYPE(0.25), max_level = 3,
+                                          max_points_per_cell = 500, backend = storage_type)
+        nhs_parallel = TreeNeighborhoodSearch{3}(; cell_list = cell_list_parallel,
                                                  n_points = size(coords, 2),
                                                  update_strategy = ParallelUpdate())
         nhs_gpu = PointNeighbors.Adapt.adapt(parallelization_backend, nhs_parallel)

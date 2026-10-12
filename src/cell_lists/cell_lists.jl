@@ -41,6 +41,19 @@ function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}},
                              max_inner_length; transpose_backend)
 end
 
+# The space for the values is allocated when it is known how many values are needed,
+# see `allocate_leaves` for the `TreeCellList`.
+function construct_backend(::Type{CompactVectorOfVectors{T}}, max_outer_length,
+                           max_inner_length) where {T}
+    return CompactVectorOfVectors{T}(; max_outer_length, max_total_length = 0)
+end
+
+function construct_backend(::Type{CompactVectorOfVectors{T1, T2, T3}}, max_outer_length,
+                           max_inner_length) where {T1, T2, T3}
+    return construct_backend(CompactVectorOfVectors{T1}, max_outer_length,
+                             max_inner_length)
+end
+
 function max_points_per_cell(cells::DynamicVectorOfVectors)
     return size(cells.backend, 1)
 end

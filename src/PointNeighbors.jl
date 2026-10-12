@@ -28,7 +28,7 @@ export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoo
        TreeNeighborhoodSearch
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeCellList
 export MaximumRadius, AverageRadius, QueryRadius
-export DynamicVectorOfVectors
+export DynamicVectorOfVectors, CompactVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
 export requires_update

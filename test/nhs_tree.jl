@@ -424,9 +424,18 @@
         initialize_tree!(nhs, coords, radii)
         (; cell_list) = nhs
 
+        # Also test the `CompactVectorOfVectors` backend for the parallel update
         backends = [PolyesterBackend(), ThreadsDynamicBackend(), ThreadsStaticBackend()]
-        @testset "$(nameof(typeof(backend)))" for backend in backends
-            nhs_parallel = TreeNeighborhoodSearch{NDIMS}(; cell_list = tree_cell_list(),
+        storage_types = [DynamicVectorOfVectors{Int32}, CompactVectorOfVectors{Int32}]
+        @testset "$(nameof(typeof(backend))), $(nameof(storage_type))" for backend in
+                                                                           backends,
+                                                                           storage_type in
+                                                                           storage_types
+
+            cell_list_ = TreeCellList(; min_corner, max_corner, root_cell_size = 0.25,
+                                      max_level = 3, max_points_per_cell = 500,
+                                      backend = storage_type)
+            nhs_parallel = TreeNeighborhoodSearch{NDIMS}(; cell_list = cell_list_,
                                                          n_points = size(coords, 2),
                                                          update_strategy = ParallelUpdate())
             initialize_tree!(nhs_parallel, coords, radii, parallelization_backend = backend)
@@ -540,6 +549,9 @@
             "Vector{Vector} Backend" => TreeCellList(; min_corner, max_corner,
                                                      root_cell_size = 0.25, max_level,
                                                      backend = Vector{Vector{Int32}}),
+            "Compact Backend" => TreeCellList(; min_corner, max_corner,
+                                              root_cell_size = 0.25, max_level,
+                                              backend = CompactVectorOfVectors{Int32}),
             "Capacity 8" => TreeCellList(; min_corner, max_corner, root_cell_size = 0.25,
                                          max_level, capacity = 8),
             # Larger root cells, so that the 3^d block around a cell can be in multiple
@@ -912,6 +924,16 @@
         nhs_small = TreeNeighborhoodSearch{2}(; cell_list, n_points = 1)
         error_str = "the number of points exceeds `n_points` of the neighborhood search"
         @test_throws error_str initialize_tree!(nhs_small, coords, [0.1, 0.1])
+
+        # With the `CompactVectorOfVectors` backend, there is only space for `n_points`
+        # points. Here, both points are in the same leaf, so they would fit into one list.
+        cell_list_compact = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                         root_cell_size = 0.5, max_level = 3,
+                                         backend = CompactVectorOfVectors{Int32})
+        nhs_small = TreeNeighborhoodSearch{2}(; cell_list = cell_list_compact,
+                                              n_points = 1)
+        @test_throws error_str initialize_tree!(nhs_small, [0.1 0.11; 0.2 0.2],
+                                                [0.1, 0.1])
 
         error_str = "search radii must be non-negative"
         @test_throws error_str initialize_tree!(nhs, coords, [0.1, -0.1])
