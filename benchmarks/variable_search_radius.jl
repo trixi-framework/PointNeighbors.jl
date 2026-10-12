@@ -70,7 +70,8 @@ function benchmark_count_neighbors_variable_radius(neighborhood_search, coordina
                                                    search_radii;
                                                    parallelization_backend = default_backend(coordinates),
                                                    neighbor_criterion = MaximumRadius())
-    n_neighbors = zeros(Int, size(coordinates, 2))
+    # Allocate the neighbor counts on the same device as the coordinates
+    n_neighbors = similar(coordinates, Int, size(coordinates, 2))
 
     function count_neighbors!(n_neighbors, coordinates, search_radii, neighborhood_search,
                               parallelization_backend, neighbor_criterion)
@@ -80,7 +81,7 @@ function benchmark_count_neighbors_variable_radius(neighborhood_search, coordina
                                                neighborhood_search;
                                                parallelization_backend,
                                                neighbor_criterion) do i, _, _, _
-            n_neighbors[i] += 1
+            @inbounds n_neighbors[i] += 1
         end
     end
 
