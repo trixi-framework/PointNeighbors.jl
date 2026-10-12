@@ -22,5 +22,10 @@
         # Without `eachindex_y`, all points in `y` are considered
         update!(nhs, y, y)
         @test collect(PointNeighbors.eachneighbor([1.0, 2.0], nhs)) == 1:10
+
+        # Unsorted view, like the active particles in TrixiParticles.jl.
+        active_points = [7, 2, 9, 4, 1]
+        update!(nhs, y, y, eachindex_y = view(active_points, 1:3))
+        @test collect(PointNeighbors.eachneighbor([1.0, 2.0], nhs)) == [7, 2, 9]
     end
 end
