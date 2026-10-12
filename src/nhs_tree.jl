@@ -120,6 +120,9 @@ cells around the leaf containing the query point, at the level of this leaf.
 - `update_strategy = nothing`: Strategy to parallelize the update. The tree is always
                      rebuilt from scratch. Available options are:
     - `nothing`: Automatically choose the best available option.
+    - [`ParallelUpdate()`](@ref): Parallel update with the parallelization backend
+      passed to [`initialize_tree!`](@ref) and [`update_tree!`](@ref).
+      This is the default when available (not with the `Vector{Vector}` backend).
     - [`SerialUpdate()`](@ref)
 
 # Correctness
@@ -255,6 +258,10 @@ with search radii `search_radii`.
 with the search radius `search_radii[j]`.
 The search radii are copied, so `search_radii` can be modified afterwards.
 
+With [`ParallelUpdate`](@ref), the keyword argument `parallelization_backend`
+can be used to specify a parallelization backend.
+See [`@threaded`](@ref) for a list of available backends.
+
 Optionally, when points in `y` are to be ignored, the keyword argument `eachindex_y` can be
 passed to specify the indices of the points in `y` that are to be used.
 
@@ -272,16 +279,25 @@ function initialize_tree!(neighborhood_search::TreeNeighborhoodSearch, y::Abstra
     end
     @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
 
-    # `search_radii` might already be the array of the neighborhood search
-    if search_radii !== neighborhood_search.search_radii
-        resize!(neighborhood_search.search_radii, length(search_radii))
-        copyto!(neighborhood_search.search_radii, search_radii)
+    backend = update_backend(neighborhood_search.update_strategy, parallelization_backend)
+
+    # Copy the search radii in parallel.
+    # `search_radii` might already be the array of the neighborhood search.
+    search_radii_ = neighborhood_search.search_radii
+    if search_radii !== search_radii_
+        resize!(search_radii_, length(search_radii))
+        @threaded backend for i in eachindex(search_radii_, search_radii)
+            search_radii_[i] = search_radii[i]
+        end
     end
 
-    rebuild!(cell_list, y, neighborhood_search.search_radii, eachindex_y, periodic_box)
+    rebuild!(cell_list, y, search_radii_, eachindex_y, backend, periodic_box)
 
     return neighborhood_search
 end
+
+@inline update_backend(::ParallelUpdate, parallelization_backend) = parallelization_backend
+@inline update_backend(::SerialUpdate, _) = SerialBackend()
 
 """
     update_tree!(search::TreeNeighborhoodSearch, y, search_radii;

@@ -50,5 +50,21 @@
             @trixi_test_nowarn run_benchmark_default(benchmark_update_alternating, size, 2)
             @trixi_test_nowarn run_benchmark_gpu(benchmark_update_alternating, size, 2)
         end
+
+        @testset verbose=true "`benchmark_count_neighbors_variable_radius`" begin
+            @trixi_test_nowarn run_benchmark_variable_radius(benchmark_count_neighbors_variable_radius,
+                                                             size, 2)
+            @trixi_test_nowarn run_benchmark_variable_radius(benchmark_count_neighbors_variable_radius,
+                                                             size, 2,
+                                                             radius_variation = 1.0)
+            @trixi_test_nowarn run_benchmark_variable_radius(benchmark_count_neighbors_variable_radius,
+                                                             size, 2,
+                                                             neighbor_criterion = AverageRadius())
+        end
+
+        @testset verbose=true "`benchmark_initialize_variable_radius`" begin
+            @trixi_test_nowarn run_benchmark_variable_radius(benchmark_initialize_variable_radius,
+                                                             size, 2)
+        end
     end
 end;
