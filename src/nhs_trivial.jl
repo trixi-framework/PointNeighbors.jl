@@ -15,12 +15,15 @@ Trivial neighborhood search that simply loops over all points.
 - `eachpoint = 1:0`:        Iterator for all point indices. Usually just `1:n_points`.
                             The default of `1:0` is useful together with
                             [`copy_neighborhood_search`](@ref).
+                            The indices are stored in a `Vector`, which is overwritten
+                            by the keyword `eachindex_y` of [`initialize!`](@ref) and
+                            [`update!`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
 """
 struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodSearch
     search_radius :: ELTYPE
-    eachpoint     :: EP
+    eachpoint     :: EP # Vector of point indices
     periodic_box  :: PB
 
     function TrivialNeighborhoodSearch{NDIMS}(; search_radius = 0.0, eachpoint = 1:0,
@@ -30,6 +33,12 @@ struct TrivialNeighborhoodSearch{NDIMS, ELTYPE, EP, PB} <: AbstractNeighborhoodS
                                 "distances will be converted to this type"))
         end
 
+        return TrivialNeighborhoodSearch{NDIMS}(search_radius, collect(eachpoint),
+                                                periodic_box)
+    end
+
+    function TrivialNeighborhoodSearch{NDIMS}(search_radius, eachpoint::AbstractVector,
+                                              periodic_box) where {NDIMS}
         new{NDIMS, typeof(search_radius),
             typeof(eachpoint), typeof(periodic_box)}(search_radius, eachpoint, periodic_box)
     end
@@ -42,6 +51,9 @@ end
 @inline function initialize!(search::TrivialNeighborhoodSearch, x, y;
                              parallelization_backend = default_backend(x),
                              eachindex_y = axes(y, 2))
+    resize!(search.eachpoint, length(eachindex_y))
+    search.eachpoint .= eachindex_y
+
     return search
 end
 
@@ -49,6 +61,9 @@ end
                          points_moving = (true, true),
                          parallelization_backend = default_backend(x),
                          eachindex_y = axes(y, 2))
+    resize!(search.eachpoint, length(eachindex_y))
+    search.eachpoint .= eachindex_y
+
     return search
 end
 

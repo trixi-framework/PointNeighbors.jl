@@ -34,6 +34,13 @@ function Adapt.adapt_structure(to, nhs::PrecomputedNeighborhoodSearch)
                                                      nhs.sort_neighbor_lists)
 end
 
+# `Adapt.@adapt_structure` doesn't work here because the constructor requires `NDIMS`.
+function Adapt.adapt_structure(to, nhs::TrivialNeighborhoodSearch)
+    return TrivialNeighborhoodSearch{ndims(nhs)}(Adapt.adapt(to, nhs.search_radius),
+                                                 Adapt.adapt(to, nhs.eachpoint),
+                                                 Adapt.adapt(to, nhs.periodic_box))
+end
+
 function Adapt.adapt_structure(to, cell_list::SpatialHashingCellList{NDIMS}) where {NDIMS}
     (; list_size) = cell_list
     cells = Adapt.adapt_structure(to, cell_list.cells)
