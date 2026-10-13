@@ -120,8 +120,32 @@ end
         # the cell list has been initialized correctly.
         neighbors = points_in_leaf(cell_list, leaf_index)
 
-        reduced = mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
-                                 neighborhood_search, point, point_coords, search_radius)
+        for neighbor_ in eachindex(neighbors)
+            neighbor = @inbounds neighbors[neighbor_]
+
+            # Making the following `@inbounds` is not safe because we don't know
+            # if `neighbor` (extracted from the cell list) is in bounds.
+            neighbor_point_coords = extract_svector(neighbor_coords,
+                                                    Val(ndims(neighborhood_search)),
+                                                    neighbor)
+
+            pos_diff = convert.(eltype(neighborhood_search),
+                                point_coords - neighbor_point_coords)
+            distance2 = dot(pos_diff, pos_diff)
+
+            (pos_diff,
+             distance2) = compute_periodic_distance(pos_diff, distance2,
+                                                    search_radius, periodic_box)
+
+            if distance2 <= search_radius^2
+                distance = sqrt(distance2)
+
+                # Inline to avoid loss of performance compared to not using this function
+                # and unrolling everything.
+                value = @inline f(point, neighbor, pos_diff, distance)
+                reduced = @inline op(reduced, value)
+            end
+        end
     end
 
     return reduced
@@ -149,41 +173,6 @@ end
 # captured by the closure of the generator, making `Val(NDIMS)` type-unstable.
 @inline function neighbor_index(index_parts, offset)
     return sum(ntuple(dim -> index_parts[dim][offset[dim] + 2], Val(length(offset))))
-end
-
-# Reduce over all neighbors in the list `neighbors`
-@propagate_inbounds function mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
-                                            neighborhood_search, point, point_coords,
-                                            search_radius)
-    (; periodic_box) = neighborhood_search
-
-    for neighbor_ in eachindex(neighbors)
-        neighbor = @inbounds neighbors[neighbor_]
-
-        # Making the following `@inbounds` is not safe because we don't know
-        # if `neighbor` (extracted from the cell list) is in bounds.
-        neighbor_point_coords = extract_svector(neighbor_coords,
-                                                Val(ndims(neighborhood_search)), neighbor)
-
-        pos_diff = convert.(eltype(neighborhood_search),
-                            point_coords - neighbor_point_coords)
-        distance2 = dot(pos_diff, pos_diff)
-
-        pos_diff,
-        distance2 = compute_periodic_distance(pos_diff, distance2,
-                                              search_radius, periodic_box)
-
-        if distance2 <= search_radius^2
-            distance = sqrt(distance2)
-
-            # Inline to avoid loss of performance compared to not using this function
-            # and unrolling everything.
-            value = @inline f(point, neighbor, pos_diff, distance)
-            reduced = @inline op(reduced, value)
-        end
-    end
-
-    return reduced
 end
 
 function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_points;
