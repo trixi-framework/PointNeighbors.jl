@@ -1,15 +1,91 @@
+abstract type AbstractNeighborCriterion end
+
 @doc raw"""
-    TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list,
+    MaximumRadius()
+
+Neighbor criterion for the [`TreeNeighborhoodSearch`](@ref).
+A point ``j`` with search radius ``h_j`` is a neighbor of a query point ``x`` with search
+radius ``h`` if
+```math
+\| x - y_j \| \leq \max(h, h_j).
+```
+This is the safe default, which finds all pairs of points within the search radius of
+either point. The other criteria find a subset of these pairs.
+
+See also [`AverageRadius`](@ref) and [`QueryRadius`](@ref).
+"""
+struct MaximumRadius <: AbstractNeighborCriterion end
+
+@doc raw"""
+    AverageRadius()
+
+Neighbor criterion for the [`TreeNeighborhoodSearch`](@ref).
+A point ``j`` with search radius ``h_j`` is a neighbor of a query point ``x`` with search
+radius ``h`` if
+```math
+\| x - y_j \| \leq \frac{h + h_j}{2}.
+```
+
+See also [`MaximumRadius`](@ref) and [`QueryRadius`](@ref).
+"""
+struct AverageRadius <: AbstractNeighborCriterion end
+
+@doc raw"""
+    QueryRadius()
+
+Neighbor criterion for the [`TreeNeighborhoodSearch`](@ref).
+A point ``j`` is a neighbor of a query point ``x`` with search radius ``h`` if
+```math
+\| x - y_j \| \leq h,
+```
+independent of the search radius ``h_j`` of the point ``j``.
+Note that the search radii of the neighbor points are still used to build the tree.
+
+See also [`MaximumRadius`](@ref) and [`AverageRadius`](@ref).
+"""
+struct QueryRadius <: AbstractNeighborCriterion end
+
+# The search radius for a pair of a query point with search radius `h` and a point
+# with search radius `h_j`
+@inline pair_radius(::MaximumRadius, h, h_j) = max(h, h_j)
+@inline pair_radius(::AverageRadius, h, h_j) = (h + h_j) / 2
+@inline pair_radius(::QueryRadius, h, h_j) = h
+
+@doc raw"""
+    TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list, n_points = 0,
+                                  neighbor_criterion = MaximumRadius(),
                                   periodic_box = nothing, update_strategy = nothing)
 
-Tree-based neighborhood search with a uniform search radius.
+Tree-based neighborhood search with a variable search radius ``h_j`` for each point ``j``.
+For a query point ``x`` with search radius ``h``, all points ``j`` with
+```math
+\| x - y_j \| \leq r(h, h_j)
+```
+are considered neighbors, where the pair search radius ``r(h, h_j)`` is defined by the
+`neighbor_criterion`:
+- [`MaximumRadius()`](@ref): ``r(h, h_j) = \max(h, h_j)``,
+- [`AverageRadius()`](@ref): ``r(h, h_j) = (h + h_j) / 2``,
+- [`QueryRadius()`](@ref): ``r(h, h_j) = h``.
+
+The tree is constructed with [`initialize_tree!`](@ref) or [`update_tree!`](@ref)
+from the neighbor coordinates and their search radii.
+Neighbors can then be queried for arbitrary points with [`foreach_neighbor`](@ref)
+or [`mapreduce_neighbor`](@ref), where the keyword argument `search_radius`
+is the search radius ``h`` of the query point.
+
+Alternatively, the tree can be constructed with [`initialize!`](@ref) and
+[`update!`](@ref) like the [`GridNeighborhoodSearch`](@ref).
+Then, the neighbor points have no search radius (``h_j = 0``), so that all points ``j`` with
+``\| x - y_j \| \leq h`` are neighbors, and the tree has the same structure as with
+the uniform search radius `search_radius` for all points.
+This is also the default search radius ``h`` of query points.
+
 The points are stored in the leaves of binary trees (1D), quadtrees (2D) or octrees (3D),
 see [`TreeCellList`](@ref).
-
-Like [`GridNeighborhoodSearch`](@ref) with [`FullGridCellList`](@ref), but the cells
-are sorted in Morton order inside each root cell of the tree.
-Support for variable search radii is planned.
-Until then, prefer the [`GridNeighborhoodSearch`](@ref) for better performance.
+The leaf size is chosen locally based on the search radii of the points,
+without any assumptions on the variation of the search radii.
+As with the [`GridNeighborhoodSearch`](@ref), a query only considers the ``3^d`` block of
+cells around the leaf containing the query point, at the level of this leaf.
 
 !!! warning "Experimental implementation"
     This is an experimental feature and may change in any future releases.
@@ -18,28 +94,61 @@ Until then, prefer the [`GridNeighborhoodSearch`](@ref) for better performance.
 - `NDIMS`: Number of dimensions.
 
 # Keywords
-- `search_radius = 0.0`: The fixed search radius. The default of `0.0` is useful together
-                         with [`copy_neighborhood_search`](@ref).
-                         The search radius must not exceed the root cell size of the
-                         `cell_list`. It is converted to the element type of the
-                         `cell_list`, which is determined by its domain corners.
-- `cell_list`:           A [`TreeCellList`](@ref) defining the domain and the size of the
-                         root cells. With periodicity, the domain must be the periodic box.
+- `search_radius = 0.0`: The search radius used by [`initialize!`](@ref) and
+                     [`update!`](@ref) (see above), and the default search radius of
+                     query points.
+                     The default of `0.0` is useful together with
+                     [`copy_neighborhood_search`](@ref).
+                     It is converted to the element type of the `cell_list`, which is
+                     determined by its domain corners.
+- `cell_list`:       A [`TreeCellList`](@ref) defining the domain, the size of the root
+                     cells and the depth of the tree.
+                     With periodicity, the domain must be the periodic box.
+- `n_points = 0`:    Total number of points in the neighbor coordinates array.
+                     The default of `0` is useful together with
+                     [`copy_neighborhood_search`](@ref).
+- `neighbor_criterion = MaximumRadius()`: Criterion defining which points are neighbors.
+                     See [`MaximumRadius`](@ref), [`AverageRadius`](@ref)
+                     and [`QueryRadius`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
-                         [`PeriodicBox`](@ref).
+                     [`PeriodicBox`](@ref). The root cells are adjusted to tile the box
+                     exactly, with at least 3 root cells in each dimension.
 - `update_strategy = nothing`: Strategy for rebuilding the tree during an update.
-                         The tree is always rebuilt from scratch. Available options are:
+                     The tree is always rebuilt from scratch. Available options are:
     - `nothing`: Automatically choose the best available option.
     - [`SerialUpdate()`](@ref)
+
+# Correctness
+Denote by ``s_L`` the size of the cells at level ``L``
+(the smallest size in all dimensions if the cells are not cubic).
+A cell at level ``L`` is only split if ``s_{L+1} \geq h_j`` for all points ``j``
+in the ``3^d`` block of cells around this cell at level ``L``.
+Consider a query point ``x`` with search radius ``h`` in a leaf at level ``L_x``
+and let ``q \leq L_x`` be the finest level with ``s_q \geq h``.
+We search for neighbors in the ``3^d`` block around the cell at level ``q`` containing ``x``.
+Now, consider a point ``j`` outside of this block.
+Then, let ``m < q`` be the finest level such that the ``3^d`` block around the cell at level
+``m`` containing ``x`` contains ``j``. Since this cell has been split, we have
+``s_{m+1} \geq h_j``. Since ``j`` is not in the ``3^d`` block at level ``m + 1``,
+we have ``\| x - y_j \| > s_{m+1} \geq \max(h, h_j) \geq r(h, h_j)``.
+Therefore, ``j`` is not a neighbor of ``x``.
+
+For a point ``x = y_i`` of the tree with ``h = h_i``, the leaf containing ``x`` satisfies
+``s_{L_x} \geq h``, so we always search at the level of the leaf, like with the
+[`GridNeighborhoodSearch`](@ref).
 """
-struct TreeNeighborhoodSearch{NDIMS, ELTYPE, CL, PB, US} <: AbstractNeighborhoodSearch
-    cell_list       :: CL
-    search_radius   :: ELTYPE
-    periodic_box    :: PB
-    update_strategy :: US
+struct TreeNeighborhoodSearch{NDIMS, ELTYPE, NC, US, CL, R, PB} <:
+       AbstractNeighborhoodSearch
+    cell_list          :: CL
+    search_radius      :: ELTYPE
+    search_radii       :: R  # Copy of the search radii of the neighbor points
+    neighbor_criterion :: NC
+    periodic_box       :: PB
+    update_strategy    :: US
 end
 
-function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list,
+function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list, n_points = 0,
+                                       neighbor_criterion = MaximumRadius(),
                                        periodic_box = nothing,
                                        update_strategy = nothing) where {NDIMS}
     if !(cell_list isa TreeCellList)
@@ -49,6 +158,11 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list,
     if ndims(cell_list) != NDIMS
         throw(ArgumentError("a $(NDIMS)D cell list is required for " *
                             "a TreeNeighborhoodSearch{$(NDIMS)}"))
+    end
+
+    if !(neighbor_criterion isa AbstractNeighborCriterion)
+        throw(ArgumentError("`neighbor_criterion` must be `MaximumRadius()`, " *
+                            "`AverageRadius()` or `QueryRadius()`"))
     end
 
     if isnothing(update_strategy)
@@ -61,14 +175,18 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list,
     end
 
     search_radius_ = convert(eltype(cell_list), search_radius)
+    search_radii = zeros(eltype(cell_list), n_points)
 
-    # Choose the level of the leaves and allocate a list for each leaf.
+    # Adjust the root cells to the periodic box, choose the finest level
+    # and allocate the tree data structures
     cell_list_ = build_tree(cell_list, search_radius_, periodic_box)
 
-    return TreeNeighborhoodSearch{NDIMS, typeof(search_radius_), typeof(cell_list_),
-                                  typeof(periodic_box),
-                                  typeof(update_strategy)}(cell_list_, search_radius_,
-                                                           periodic_box, update_strategy)
+    return TreeNeighborhoodSearch{NDIMS, typeof(search_radius_),
+                                  typeof(neighbor_criterion), typeof(update_strategy),
+                                  typeof(cell_list_), typeof(search_radii),
+                                  typeof(periodic_box)}(cell_list_, search_radius_,
+                                                        search_radii, neighbor_criterion,
+                                                        periodic_box, update_strategy)
 end
 
 @inline Base.ndims(::TreeNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -76,17 +194,33 @@ end
 
 @inline requires_update(::TreeNeighborhoodSearch) = (false, true)
 
+@inline function check_search_radius(neighborhood_search::TreeNeighborhoodSearch,
+                                     query_radius)
+    # The 3^d block of cells around the query point only contains all neighbors
+    # if the query radius does not exceed the size of the root cells
+    if query_radius > max_root_radius(neighborhood_search.cell_list)
+        error("query `search_radius` must not exceed the root cell size of the tree")
+    end
+
+    return nothing
+end
+
 function initialize!(neighborhood_search::TreeNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
                      eachindex_y = axes(y, 2))
-    (; cell_list, periodic_box) = neighborhood_search
+    (; search_radii) = neighborhood_search
 
-    @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
+    # Without search radii of the neighbor points, all neighbor criteria reduce to
+    # `distance <= h` for a query point with search radius `h`, like with the
+    # `GridNeighborhoodSearch`. By default, `max_level` of the cell list is chosen for the
+    # search radius of the neighborhood search, so that the leaves are at the same level
+    # as with a search radius of `search_radius` for all points.
+    resize!(search_radii, size(y, 2))
+    fill!(search_radii, 0)
 
-    rebuild!(cell_list, y, eachindex_y, periodic_box)
-
-    return neighborhood_search
+    initialize_tree!(neighborhood_search, y, search_radii;
+                     parallelization_backend, eachindex_y)
 end
 
 function update!(neighborhood_search::TreeNeighborhoodSearch,
@@ -100,52 +234,255 @@ function update!(neighborhood_search::TreeNeighborhoodSearch,
     initialize!(neighborhood_search, x, y; parallelization_backend, eachindex_y)
 end
 
+"""
+    initialize_tree!(search::TreeNeighborhoodSearch, y, search_radii;
+                     parallelization_backend = default_backend(y),
+                     eachindex_y = axes(y, 2))
+
+Build the tree of a [`TreeNeighborhoodSearch`](@ref) for the neighbor coordinates `y`
+with search radii `search_radii`.
+`y` is expected to be a matrix, where the `j`-th column contains the coordinates of point `j`
+with the search radius `search_radii[j]`.
+The search radii are copied, so `search_radii` can be modified afterwards.
+
+Optionally, when points in `y` are to be ignored, the keyword argument `eachindex_y` can be
+passed to specify the indices of the points in `y` that are to be used.
+
+See also [`update_tree!`](@ref).
+"""
+function initialize_tree!(neighborhood_search::TreeNeighborhoodSearch, y::AbstractMatrix,
+                          search_radii::AbstractVector;
+                          parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
+    (; cell_list, periodic_box) = neighborhood_search
+
+    if length(search_radii) != size(y, 2)
+        throw(DimensionMismatch("the number of search radii must match the number " *
+                                "of points in `y`"))
+    end
+    @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
+
+    # `search_radii` might already be the array of the neighborhood search
+    if search_radii !== neighborhood_search.search_radii
+        resize!(neighborhood_search.search_radii, length(search_radii))
+        copyto!(neighborhood_search.search_radii, search_radii)
+    end
+
+    rebuild!(cell_list, y, neighborhood_search.search_radii, eachindex_y, periodic_box)
+
+    return neighborhood_search
+end
+
+"""
+    update_tree!(search::TreeNeighborhoodSearch, y, search_radii;
+                 parallelization_backend = default_backend(y),
+                 eachindex_y = axes(y, 2))
+
+Update the tree of a [`TreeNeighborhoodSearch`](@ref) for the neighbor coordinates `y`
+with search radii `search_radii`.
+The tree is always rebuilt from scratch, so this is equivalent to [`initialize_tree!`](@ref).
+"""
+function update_tree!(neighborhood_search::TreeNeighborhoodSearch, y::AbstractMatrix,
+                      search_radii::AbstractVector;
+                      parallelization_backend = default_backend(y),
+                      eachindex_y = axes(y, 2))
+    initialize_tree!(neighborhood_search, y, search_radii;
+                     parallelization_backend, eachindex_y)
+end
+
 # Note that calling this function with `@inbounds` is not safe.
 # See the comments in `foreach_neighbor_unsafe`.
 @propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
                                                       neighborhood_search::TreeNeighborhoodSearch,
                                                       point, point_coords,
                                                       search_radius, init)
-    (; cell_list, periodic_box) = neighborhood_search
+    (; cell_list, search_radii, neighbor_criterion, periodic_box) = neighborhood_search
+    (; max_radius_all) = cell_list
     NDIMS = ndims(neighborhood_search)
 
-    # Zero-based Cartesian coordinates of the leaf containing the point.
-    # With periodicity, move the point into the periodic box first.
-    leaf = leaf_coords(periodic_coords(point_coords, periodic_box), cell_list,
-                       periodic_box)
+    query_radius = convert(eltype(neighborhood_search), search_radius)
 
-    # The linear index of a leaf is a sum of independent parts for each dimension.
-    # `index_parts[dim]` contains the parts of the coordinates `leaf - 1`, `leaf`
-    # and `leaf + 1` in dimension `dim`, so that the indices of the 3^d block of leaves
-    # around the leaf are all sums of one part from each dimension.
-    index_parts = ntuple(dim -> neighbor_index_parts(cell_list, dim, leaf[dim],
+    # With periodicity, move the query point into the periodic box first
+    point_coords_ = periodic_coords(point_coords, periodic_box)
+    finest_cell = query_finest_cell(point_coords_, cell_list)
+    level = query_level(cell_list, finest_cell, query_radius)
+
+    # The cell at level `level` around which the 3^d block of cells is searched
+    cell = query_cell(finest_cell, cell_list, level, periodic_box)
+
+    # All neighbors are within this radius. Only for points within this radius,
+    # we load their search radius to check if they are within the pair search radius.
+    max_pair_radius = pair_radius(neighbor_criterion, query_radius, max_radius_all[1])
+    skip_neighbor = skip_neighbor_function(neighbor_criterion, query_radius, search_radii)
+
+    # The linear index of a cell is a sum of independent parts for each dimension.
+    # `index_parts[dim]` contains the parts of the coordinates `cell - 1`, `cell`
+    # and `cell + 1` in dimension `dim`, so that the indices of the 3^d block of cells
+    # around the cell are all sums of one part from each dimension.
+    index_parts = ntuple(dim -> neighbor_index_parts(cell_list, dim, cell[dim], level,
                                                      periodic_box), Val(NDIMS))
 
+    # The first cell of the 3^d block
+    block_min = cell .- 1
+
+    # Note that looping over the positions of the cells in the block (between 0 and 2)
+    # requires fewer registers on GPUs than looping over the offsets to `cell`
+    # (between -1 and 1).
     reduced = init
-    for offset in CartesianIndices(ntuple(_ -> -1:1, Val(NDIMS)))
-        leaf_index = neighbor_index(index_parts, Tuple(offset))
+    for offset_ in CartesianIndices(ntuple(_ -> 0:2, Val(NDIMS)))
+        offset = Tuple(offset_)
 
-        # Making the following `@inbounds` is not safe because we don't know if
-        # the cell list has been initialized correctly.
-        neighbors = points_in_leaf(cell_list, leaf_index)
-
-        reduced = mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
-                                 neighborhood_search, point, point_coords, search_radius)
+        reduced = mapreduce_block_cell(f, op, reduced, block_min .+ offset,
+                                       neighbor_index(index_parts, offset), level,
+                                       block_min, neighbor_coords, neighborhood_search,
+                                       point, point_coords_, max_pair_radius,
+                                       skip_neighbor)
     end
 
     return reduced
 end
 
-# The index of the leaf `leaf + offset`, where `offset` is between -1 and 1
-# in each dimension.
+# The index of the cell `block_min + offset` of the 3^d block, where `offset` is between
+# 0 and 2 in each dimension.
+# Note that we need the coordinates of the cell in addition to the index, since cells of
+# the block can be inside of the same coarser leaf, which must only be visited once
+# (see `mapreduce_non_leaf`).
+# With periodicity, the cells of the block can be outside of the grid.
+# Their index is the index of the corresponding cell inside the grid,
+# but their coordinates are outside of the grid, so that they can be used for the geometry.
 @inline function neighbor_index(index_parts, offset)
-    return sum(ntuple(dim -> index_parts[dim][offset[dim] + 2], Val(length(offset))))
+    return sum(ntuple(dim -> index_parts[dim][offset[dim] + 1], Val(length(offset))))
 end
 
-# Reduce over all neighbors in the list `neighbors`
-@propagate_inbounds function mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
-                                            neighborhood_search, point, point_coords,
-                                            search_radius)
+# The level of the search block for a point in the finest cell `finest_cell`.
+# This is the level of the leaf containing the point, or a coarser level
+# if the query radius is larger than the leaf.
+@propagate_inbounds function query_level(cell_list, finest_cell, query_radius)
+    (; max_level) = cell_list
+
+    # Making the following `@inbounds` is not safe because we don't know if
+    # the tree has been initialized correctly.
+    level = leaf_level(cell_list, cell_index(cell_list, finest_cell, max_level))
+
+    # Search at the finest level `<= level` with cells that are at least as large
+    # as `query_radius`
+    while level > 0 && minimum(cell_size(cell_list, level)) < query_radius
+        level -= 1
+    end
+
+    return level
+end
+
+# Return a function that is `true` for neighbors (passed to `mapreduce_points` as
+# `skip_neighbor`) that are not within the pair search radius of the query point
+@inline function skip_neighbor_function(neighbor_criterion, query_radius, search_radii)
+    return @inline function (neighbor, distance2)
+        pair_radius_ = pair_radius(neighbor_criterion, query_radius,
+                                   search_radii[neighbor])
+        return distance2 > pair_radius_^2
+    end
+end
+
+# With the `QueryRadius` criterion, all points within the query radius are neighbors,
+# so we don't need to load the search radii of the neighbors
+@inline function skip_neighbor_function(::QueryRadius, query_radius, search_radii)
+    return Returns(false)
+end
+
+# With the `MaximumRadius` criterion, all points within the query radius are neighbors,
+# so we only have to load the search radii of points outside of the query radius.
+# Without search radii of the neighbor points (see `initialize!`), this is never the case.
+@inline function skip_neighbor_function(neighbor_criterion::MaximumRadius, query_radius,
+                                        search_radii)
+    return @inline function (neighbor, distance2)
+        distance2 <= query_radius^2 && return false
+
+        return distance2 > search_radii[neighbor]^2
+    end
+end
+
+# Reduce over all neighbors in the cell `cell` at level `level` of the search block,
+# which starts at the cell `block_min`.
+@propagate_inbounds function mapreduce_block_cell(f, op, reduced, cell, cell_index, level,
+                                                  block_min, neighbor_coords,
+                                                  neighborhood_search, point, point_coords,
+                                                  max_pair_radius, skip_neighbor)
+    (; cell_list) = neighborhood_search
+
+    first_finest_cell = cell_index << (ndims(cell_list) * (cell_list.max_level - level))
+    leaf_level_ = leaf_level(cell_list, first_finest_cell)
+
+    if leaf_level_ == level
+        # This cell is a leaf, which is the most common case
+        return mapreduce_leaf(f, op, reduced, first_finest_cell, neighbor_coords,
+                              neighborhood_search, point, point_coords, max_pair_radius,
+                              skip_neighbor)
+    end
+
+    return mapreduce_non_leaf(f, op, reduced, cell, level, leaf_level_, first_finest_cell,
+                              block_min, neighbor_coords, neighborhood_search, point,
+                              point_coords, max_pair_radius, skip_neighbor)
+end
+
+# Reduce over all neighbors in a cell of the search block that is not a leaf.
+# This cell can be inside a coarser leaf or be split into finer leaves.
+@propagate_inbounds function mapreduce_non_leaf(f, op, reduced, cell, level, leaf_level_,
+                                                first_finest_cell, block_min,
+                                                neighbor_coords, neighborhood_search,
+                                                point, point_coords, max_pair_radius,
+                                                skip_neighbor)
+    (; cell_list, periodic_box) = neighborhood_search
+
+    if leaf_level_ < level
+        # This cell is inside a coarser leaf, which might contain multiple cells of the
+        # search block. Only visit this leaf once, from the first cell of the block
+        # inside this leaf (with the smallest coordinates in each dimension).
+        # With periodicity, `cell` can be outside of the grid and `cell_` is
+        # the corresponding cell inside the grid.
+        cell_ = periodic_cell(cell, n_cells_per_dimension(cell_list, level), periodic_box)
+        level_difference = level - leaf_level_
+        leaf_min = cell .- (cell_ .- ((cell_ .>> level_difference) .<< level_difference))
+        if cell != max.(leaf_min, block_min)
+            return reduced
+        end
+
+        return mapreduce_leaf(f, op, reduced,
+                              leaf_first_cell(cell_list, first_finest_cell),
+                              neighbor_coords, neighborhood_search, point, point_coords,
+                              max_pair_radius, skip_neighbor)
+    end
+
+    # This cell is split. Loop over all leaves inside this cell.
+    # The finest cells of each leaf are contiguous, so we can jump from leaf to leaf.
+    finest_cell = first_finest_cell
+    end_cell = first_finest_cell + n_finest_cells(cell_list, level)
+    while finest_cell < end_cell
+        reduced = mapreduce_leaf(f, op, reduced, finest_cell, neighbor_coords,
+                                 neighborhood_search, point, point_coords, max_pair_radius,
+                                 skip_neighbor)
+
+        finest_cell += n_finest_cells(cell_list, leaf_level(cell_list, finest_cell))
+    end
+
+    return reduced
+end
+
+# Reduce over all neighbors in the leaf with the first finest cell `first_finest_cell`
+@propagate_inbounds function mapreduce_leaf(f, op, reduced, first_finest_cell,
+                                            neighbor_coords, neighborhood_search, point,
+                                            point_coords, max_pair_radius, skip_neighbor)
+    neighbors = points_in_leaf(neighborhood_search.cell_list, first_finest_cell)
+
+    return mapreduce_points(f, op, reduced, neighbors, neighbor_coords,
+                            neighborhood_search, point, point_coords, max_pair_radius,
+                            skip_neighbor)
+end
+
+# Reduce over all neighbors in the list `neighbors` within the radius `max_pair_radius`
+# that are not skipped by `skip_neighbor(neighbor, distance2)`
+@propagate_inbounds function mapreduce_points(f, op, reduced, neighbors, neighbor_coords,
+                                              neighborhood_search, point, point_coords,
+                                              max_pair_radius, skip_neighbor)
     (; periodic_box) = neighborhood_search
 
     for neighbor_ in eachindex(neighbors)
@@ -162,9 +499,11 @@ end
 
         (pos_diff,
          distance2) = compute_periodic_distance(pos_diff, distance2,
-                                                search_radius, periodic_box)
+                                                max_pair_radius, periodic_box)
 
-        if distance2 <= search_radius^2
+        if distance2 <= max_pair_radius^2
+            @inline(skip_neighbor(neighbor, distance2)) && continue
+
             distance = sqrt(distance2)
 
             # Inline to avoid loss of performance compared to not using this function
@@ -182,7 +521,8 @@ function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_
     # Use root cells of the size of the search radius.
     cell_list = copy_cell_list(nhs.cell_list, search_radius)
 
-    return TreeNeighborhoodSearch{ndims(nhs)}(; search_radius, cell_list,
+    return TreeNeighborhoodSearch{ndims(nhs)}(; search_radius, cell_list, n_points,
+                                              nhs.neighbor_criterion,
                                               periodic_box = nhs.periodic_box,
                                               update_strategy = nhs.update_strategy)
 end
