@@ -214,9 +214,45 @@ end
     return cell_list.n_roots .<< level
 end
 
+# ==========================================================================================
+# Linear cell index
+# ==========================================================================================
+#
+# The cells of each level are sorted by root cell first and then in Morton order (Z-order)
+# inside each root cell. For example, in 2D with 2 x 1 root cells at level 2, so that each
+# root cell contains 4 x 4 cells, the zero-based linear indices of the cells are
+#
+#              root cell 0         root cell 1
+#     y = 3 | 10  11  14  15 | 26  27  30  31 |
+#     y = 2 |  8   9  12  13 | 24  25  28  29 |
+#     y = 1 |  2   3   6   7 | 18  19  22  23 |
+#     y = 0 |  0   1   4   5 | 16  17  20  21 |
+#            ---------------------------------
+#       x =    0   1   2   3    4   5   6   7
+#
+# The Morton index of a cell inside its root cell interleaves the bits of the local
+# coordinates of the cell inside the root cell: bit `i` of the local coordinate in dimension
+# `dim` is bit `NDIMS * i + dim - 1` of the Morton index.
+# For example, the local coordinates (1, 2) = (0b01, 0b10) yield the Morton index
+# 0b1001 = 9.
+# This is handled by the function `local_index_part` below.
+#
+# Since the bits of different dimensions don't overlap, the linear index is a sum of
+# independent parts for each dimension (see `cell_index_part`):
+#
+#     part = root coordinate * root_stride + local_index_part(...)
+#
+# For example, the cell (5, 2) has the local coordinates (1, 2) in the root cell (1, 0).
+# The root strides are 16 in x and 2 * 16 = 32 in y, so the parts are
+#
+#     x: 1 * 16 + 0b01   = 17,
+#     y: 0 * 32 + 0b1000 = 8,
+#
+# and the linear index is 17 + 8 = 25.
+# This is handled by the function `cell_index_part` below.
+
 # Zero-based linear index of the cell with zero-based Cartesian coordinates `cell`
-# at level `level`.
-# Cells are sorted by root cell first and then in Morton order inside each root cell.
+# at level `level` (see above).
 # This way, all descendants of a cell are stored contiguously at each level.
 # In particular, the parent of cell `i` is `i >> NDIMS` and its children are
 # `(i << NDIMS) + 0:(2^NDIMS - 1)`.
@@ -227,21 +263,21 @@ end
                       Val(NDIMS)))
 end
 
-# The linear cell index is the sum of independent parts for each dimension.
-# This is the part of dimension `dim` for the zero-based coordinate `coord`
-# in this dimension. See `neighbor_index_parts` for how this is used in the query.
+# The part of the linear cell index (see above) of dimension `dim` for the zero-based
+# coordinate `coord` in this dimension at level `level`.
 @inline function cell_index_part(cell_list::TreeCellList, dim, coord, level)
-    # Coordinate of the root cell and coordinate within the root cell
+    # Coordinate of the root cell and coordinate within the root cell.
     root = coord >> level
     local_coord = coord - (root << level)
 
-    return root_index_part(cell_list, dim, root, level) |
-           (spread_bits(local_coord, Val(ndims(cell_list))) << (dim - 1))
+    return root * root_stride(cell_list, dim, level) +
+           local_index_part(local_coord, dim, Val(ndims(cell_list)))
 end
 
-# The part of the linear cell index at level `level` of the root cell with coordinate
-# `root` in dimension `dim`. The root cells are sorted in column-major order.
-@inline function root_index_part(cell_list, dim, root, level)
+# Difference between the linear indices of neighboring root cells in dimension `dim`
+# at level `level`. The root cells are sorted in column-major order, and each root cell
+# contains `2^(NDIMS * level)` cells.
+@inline function root_stride(cell_list, dim, level)
     (; n_roots) = cell_list
 
     stride = 1
@@ -249,15 +285,34 @@ end
         stride *= n_roots[i]
     end
 
-    return (root * stride) << (ndims(cell_list) * level)
+    return stride << (ndims(cell_list) * level)
 end
 
-# Insert `NDIMS - 1` zero bits between all bits of `x`
+# The part of the Morton index (see above) of the local coordinate `local_coord`
+# in dimension `dim`.
+@inline function local_index_part(local_coord, dim, ndims::Val)
+    return spread_bits(local_coord, ndims) << (dim - 1)
+end
+
+# Insert `NDIMS - 1` zero bits between all bits of `x`, so that bit `i` of `x` becomes
+# bit `NDIMS * i`. For example, `0b111` becomes `0b10101` in 2D and `0b1001001` in 3D.
+# This is equivalent to the following loop, but requires much fewer operations:
+#
+#     result = 0
+#     for i in 0:(n_bits - 1)
+#         result |= ((x >> i) & 1) << (NDIMS * i)
+#     end
+#
+# Instead of moving one bit at a time, the bits are moved in groups. First, the upper half
+# of the bits is moved to its final region. Then, the upper half of each half is moved, and
+# so on, until each bit is at its final position. In each step, `x | (x << shift)` copies
+# all bits, and the mask keeps only the copies at their new positions.
+# See https://graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN.
 @inline spread_bits(x, ::Val{1}) = x
 @inline spread_bits(x, ::Val{2}) = spread_bits_2d(x)
 @inline spread_bits(x, ::Val{3}) = spread_bits_3d(x)
 
-# Insert one zero bit between all bits of the lower 32 bits of `x`
+# Insert one zero bit between all bits of the lower 32 bits of `x`.
 @inline function spread_bits_2d(x)
     x = UInt64(x) & 0x00000000ffffffff
     x = (x | (x << 16)) & 0x0000ffff0000ffff
@@ -266,10 +321,11 @@ end
     x = (x | (x << 2)) & 0x3333333333333333
     x = (x | (x << 1)) & 0x5555555555555555
 
-    return Int(x)
+    # This is just one LLVM operation as opposed to `Int(x)`.
+    return x % Int
 end
 
-# Insert two zero bits between all bits of the lower 21 bits of `x`
+# Insert two zero bits between all bits of the lower 21 bits of `x`.
 @inline function spread_bits_3d(x)
     x = UInt64(x) & 0x00000000001fffff
     x = (x | (x << 32)) & 0x001f00000000ffff
@@ -278,76 +334,79 @@ end
     x = (x | (x << 4)) & 0x10c30c30c30c30c3
     x = (x | (x << 2)) & 0x1249249249249249
 
-    return Int(x)
+    # This is just one LLVM operation as opposed to `Int(x)`.
+    return x % Int
 end
 
-# All bits of the Morton index of a cell inside a root cell that belong to the first
-# dimension. The bits of dimension `dim` are obtained by shifting by `dim - 1`.
-@inline morton_mask(::Val{1}) = -1
-@inline morton_mask(::Val{2}) = reinterpret(Int, 0x5555555555555555)
-@inline morton_mask(::Val{3}) = reinterpret(Int, 0x1249249249249249)
+# Increment the coordinate that is stored in the bits `mask` of the Morton index `x`,
+# where `x` must not have any non-zero bits outside of `mask`.
+# For example, in 2D, the x-coordinate is stored in `mask = 0b0101` (lower 4 bits shown).
+# Incrementing the x-coordinate 1 to 2 works as follows:
+#
+#     x                = 0b0001  (x-coordinate 1)
+#     Setting all bits outside of `mask` to one makes the carry of `+ 1` skip these bits:
+#     x | ~mask        = 0b1011
+#     (x | ~mask) + 1  = 0b1100
+#     Now remove the bits outside of `mask` to get the new Morton index:
+#     ... & mask       = 0b0100  (x-coordinate 2)
+#
+# When all bits in `mask` are set (last cell in the root cell), the result wraps around
+# to zero (first cell in the root cell).
+@inline morton_increment(x, mask) = ((x | ~mask) + 1) & mask
+
+# Decrement the coordinate that is stored in the bits `mask` of the Morton index `x`,
+# where `x` must not have any bits outside of `mask` set.
+# Since all bits outside of `mask` are zero, the borrow of `- 1` skips these bits.
+# The first cell in the root cell wraps around to the last cell (all bits in `mask` set).
+@inline morton_decrement(x, mask) = (x - 1) & mask
 
 # The parts of the linear index (see `cell_index_part`) of the leaves with the coordinates
 # `leaf - 1`, `leaf` and `leaf + 1` in dimension `dim`.
 #
-# Instead of computing each part with `cell_index_part`, we compute the parts of the
-# neighboring leaves by incrementing and decrementing the Morton index directly.
-# For example, in 2D, the bits of the x-coordinate are at the even bit positions of the
-# Morton index. Setting all odd bits to one and adding one increments the x-coordinate,
-# since the carry is propagated through the odd bits.
-#
-# When the leaf `leaf - 1` or `leaf + 1` is in the neighboring root cell, this Morton
-# increment or decrement wraps around to the correct coordinate inside the neighboring root
-# cell, and we only have to move the root part to the neighboring root cell.
+# This is equivalent to calling `cell_index_part` for these three coordinates (with
+# periodic wrap-around), but computes the Morton index only once and then increments and
+# decrements it directly (see `morton_increment`).
+# This significantly reduces the number of registers on GPUs.
 @inline function neighbor_index_parts(cell_list, dim, leaf, periodic_box)
     (; n_roots, leaf_level) = cell_list
     NDIMS = ndims(cell_list)
 
-    # Coordinate of the root cell and part of the Morton index inside the root cell
+    # Coordinate of the root cell and coordinate within the root cell.
     root = leaf >> leaf_level
-    local_part = spread_bits(leaf - (root << leaf_level), Val(NDIMS)) << (dim - 1)
+    local_coord = leaf - (root << leaf_level)
+    last_local_coord = (1 << leaf_level) - 1
 
-    # The part of the root cell and the difference to the part of the next root cell
-    root_part = root_index_part(cell_list, dim, root, leaf_level)
-    root_step = root_index_part(cell_list, dim, 1, leaf_level)
+    # When the leaf is the first or last leaf in its root cell, the neighbor is in the
+    # previous or next root cell.
+    root_previous = ifelse(local_coord == 0,
+                           previous_root(root, n_roots[dim], periodic_box), root)
+    root_next = ifelse(local_coord == last_local_coord,
+                       next_root(root, n_roots[dim], periodic_box), root)
 
-    # The bits of the Morton index inside the root cell that belong to dimension `dim`
-    mask = (morton_mask(Val(NDIMS)) << (dim - 1)) & ((1 << (NDIMS * leaf_level)) - 1)
-    step = 1 << (dim - 1)
+    # When the neighbor is in the previous or next root cell, the Morton increment or
+    # decrement wraps around to the correct local coordinate in that root cell.
+    local_part = local_index_part(local_coord, dim, Val(NDIMS))
+    mask = local_index_part(last_local_coord, dim, Val(NDIMS))
+    local_previous = morton_decrement(local_part, mask)
+    local_next = morton_increment(local_part, mask)
 
-    # Morton increment and decrement, which are zero or `mask` (all bits of this dimension
-    # set) when leaving the root cell
-    local_next = ((local_part | ~mask) + step) & mask
-    local_previous = (local_part - step) & mask
+    stride = root_stride(cell_list, dim, leaf_level)
 
-    # Move the root part to the neighboring root cell when leaving the root cell.
-    # Note that this is cheaper than computing the root parts of the neighboring root cells
-    # with `root_index_part`, which significantly reduces the number of registers on GPUs.
-    root_next = ifelse(local_next == 0,
-                       root_part + next_root_step(root, root_step, n_roots[dim],
-                                      periodic_box),
-                       root_part)
-    root_previous = ifelse(local_part == 0,
-                           root_part - previous_root_step(root, root_step, n_roots[dim],
-                                              periodic_box),
-                           root_part)
-
-    return root_previous + local_previous, root_part + local_part, root_next + local_next
+    return (root_previous * stride + local_previous,
+            root * stride + local_part,
+            root_next * stride + local_next)
 end
 
-# The difference between the root parts of the next root cell and the root cell `root`
-# in one dimension, where `root_step` is the difference between neighboring root cells.
-# With periodicity, the next root cell of the last root cell is the first root cell.
-@inline next_root_step(root, root_step, n_roots, periodic_box::Nothing) = root_step
-@inline function next_root_step(root, root_step, n_roots, periodic_box)
-    return ifelse(root == n_roots - 1, -(n_roots - 1) * root_step, root_step)
+# Without periodicity, the padding layer of root cells ensures that the neighboring root
+# cells are inside the grid (see `clamp_leaf`).
+# With periodicity, the first and last root cell are neighbors.
+@inline previous_root(root, n_roots, periodic_box::Nothing) = root - 1
+@inline next_root(root, n_roots, periodic_box::Nothing) = root + 1
+@inline function previous_root(root, n_roots, periodic_box)
+    return ifelse(root == 0, n_roots - 1, root - 1)
 end
-
-# The difference between the root parts of the root cell `root` and the previous root cell.
-# With periodicity, the previous root cell of the first root cell is the last root cell.
-@inline previous_root_step(root, root_step, n_roots, periodic_box::Nothing) = root_step
-@inline function previous_root_step(root, root_step, n_roots, periodic_box)
-    return ifelse(root == 0, -(n_roots - 1) * root_step, root_step)
+@inline function next_root(root, n_roots, periodic_box)
+    return ifelse(root == n_roots - 1, 0, root + 1)
 end
 
 # Zero-based Cartesian coordinates of the leaf containing the point with coordinates
@@ -362,12 +421,9 @@ end
                       periodic_box)
 end
 
-# Without periodicity, clamp to the grid without the outermost layer of leaves, so that the
-# 3^d block of leaves around the leaf is inside the grid.
-# Since the outermost layer is in the padding layer of root cells, this only affects points
-# outside of the domain and points moved there by rounding errors. The block around the
-# clamped leaf still contains all neighbors of these points, since points that are more than
-# one leaf away from the domain don't have any neighbors.
+# Without periodicity, clamp to the grid without the outermost padding layer.
+# Since the domain is padded by a layer of root cells, this only affects points
+# outside the domain.
 @inline clamp_leaf(leaf, n_leaves, periodic_box::Nothing) = clamp.(leaf, 1, n_leaves .- 2)
 
 # With periodicity, clamp to the grid to avoid out of bounds leaves due to rounding errors
@@ -400,8 +456,8 @@ end
     end
 end
 
-# Rebuild the cell list from scratch for the points `eachindex_points`
-# with coordinates `coords`
+# Rebuild the cell list from scratch for the points with IDs in `eachindex_points`
+# with coordinates `coords`.
 function rebuild!(cell_list::TreeCellList, coords, eachindex_points, periodic_box)
     (; cells) = cell_list
     NDIMS = ndims(cell_list)
@@ -410,7 +466,7 @@ function rebuild!(cell_list::TreeCellList, coords, eachindex_points, periodic_bo
         emptyat!(cells, i)
     end
 
-    # Add each point to its leaf
+    # Add each point to its leaf.
     for point in eachindex_points
         point_coords = extract_svector(coords, Val(NDIMS), point)
         pushat!(cells, leaf_index(point_coords, cell_list, periodic_box) + 1, point)
@@ -419,7 +475,7 @@ function rebuild!(cell_list::TreeCellList, coords, eachindex_points, periodic_bo
     return cell_list
 end
 
-# The points of the leaf with zero-based index `leaf_index`
+# The points of the leaf with zero-based index `leaf_index`.
 @propagate_inbounds function points_in_leaf(cell_list::TreeCellList, leaf_index)
     return cell_list.cells[leaf_index + 1]
 end
