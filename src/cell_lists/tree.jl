@@ -193,7 +193,7 @@ function supported_update_strategies(::TreeCellList)
 end
 
 # Return an empty cell list with the same domain as `cell_list` and root cells of the size
-# of the search radius `search_radius`
+# of the search radius `search_radius`.
 function copy_cell_list(cell_list::TreeCellList, search_radius)
     (; min_corner, max_corner, cells) = cell_list
 
