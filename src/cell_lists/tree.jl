@@ -42,16 +42,16 @@ neighborhood search. When copying the template neighborhood search with
                 the `Vector{Vector{Int32}}` backend.
 """
 struct TreeCellList{NDIMS, ELTYPE, C} <: AbstractCellList
-    min_corner     :: SVector{NDIMS, ELTYPE}
-    max_corner     :: SVector{NDIMS, ELTYPE}
+    min_corner::SVector{NDIMS, ELTYPE}
+    max_corner::SVector{NDIMS, ELTYPE}
     # Size of the root cells requested by the user
-    root_cell_size :: ELTYPE
+    root_cell_size::ELTYPE
     # The grid of root cells, see `root_grid`
-    grid_min_corner :: SVector{NDIMS, ELTYPE}
+    grid_min_corner::SVector{NDIMS, ELTYPE}
     # Actual size of the root cells in each dimension. Without periodicity, this is
     # `root_cell_size` in every dimension. With periodicity, it can be larger.
-    actual_root_cell_size :: SVector{NDIMS, ELTYPE}
-    n_roots               :: NTuple{NDIMS, Int}
+    actual_root_cell_size::SVector{NDIMS, ELTYPE}
+    n_roots::NTuple{NDIMS, Int}
     # Level of all leaves, chosen by the neighborhood search in `build_tree`
     leaf_level::Int
     # One list of points for each leaf, sorted by `cell_index`

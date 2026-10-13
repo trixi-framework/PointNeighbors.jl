@@ -6,7 +6,8 @@
     # With periodicity, use the distance to the closest periodic image.
     function brute_force_neighbors(x, h, y; eachindex_y = axes(y, 2),
                                    periodic_box = nothing)
-        return [j for j in eachindex_y
+        return [j
+                for j in eachindex_y
                 if sqrt(sum(abs2, periodic_difference(x - y[:, j], periodic_box))) <= h]
     end
 
@@ -50,9 +51,11 @@
         @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list, search_radius = NaN)
 
         error_str = "`root_cell_size` must not be negative or NaN"
-        @test_throws error_str TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+        @test_throws error_str TreeCellList(min_corner = (0.0, 0.0),
+                                            max_corner = (1.0, 1.0),
                                             root_cell_size = -0.1)
-        @test_throws error_str TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+        @test_throws error_str TreeCellList(min_corner = (0.0, 0.0),
+                                            max_corner = (1.0, 1.0),
                                             root_cell_size = NaN)
 
         # The root cell size is required unless creating a template.
@@ -226,7 +229,8 @@
         for dim in 1:NDIMS, leaf in 0:(n_leaves[dim] - 1)
             parts = PointNeighbors.neighbor_index_parts(cell_list, dim, leaf, periodic_box)
             expected = Tuple(PointNeighbors.cell_index_part(cell_list, dim,
-                                                            mod(leaf + i, n_leaves[dim]), 2)
+                                                            mod(leaf + i, n_leaves[dim]),
+                                                            2)
                              for i in -1:1)
             @test parts == expected
         end
