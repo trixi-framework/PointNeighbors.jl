@@ -1,7 +1,7 @@
 name = "PointNeighbors"
 uuid = "1c4d5385-0a27-49de-8e2c-43b175c8985c"
-authors = ["Erik Faulhaber <erik.faulhaber@uni-koeln.de>"]
 version = "0.6.7"
+authors = ["Erik Faulhaber <erik.faulhaber@uni-koeln.de>"]
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
@@ -17,7 +17,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Adapt = "4"
 Atomix = "1"
 GPUArraysCore = "0.2"
-KernelAbstractions = "0.9"
+KernelAbstractions = "0.9, 0.10"
 LinearAlgebra = "1"
 Polyester = "0.7.5"
 Reexport = "1"
