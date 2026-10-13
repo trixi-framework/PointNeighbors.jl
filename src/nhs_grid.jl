@@ -120,7 +120,8 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         if any(i -> i < 3, n_cells)
             throw(ArgumentError("the `GridNeighborhoodSearch` needs at least 3 cells " *
                                 "in each dimension when used with periodicity. " *
-                                "Please use no NHS for very small problems."))
+                                "For very small problems, use the " *
+                                "`TrivialNeighborhoodSearch` instead."))
         end
     end
 

@@ -5,6 +5,7 @@
     include("nhs_trivial.jl")
     include("nhs_grid.jl")
     include("nhs_precomputed.jl")
+    include("nhs_tree.jl")
     include("neighborhood_search.jl")
     include("cell_lists/full_grid.jl")
     include("cell_lists/spatial_hashing.jl")
