@@ -21,7 +21,8 @@ Until then, prefer the [`GridNeighborhoodSearch`](@ref) for better performance.
 - `search_radius = 0.0`: The fixed search radius. The default of `0.0` is useful together
                          with [`copy_neighborhood_search`](@ref).
                          The search radius must not exceed the root cell size of the
-                         `cell_list`.
+                         `cell_list`. It is converted to the element type of the
+                         `cell_list`, which is determined by its domain corners.
 - `cell_list`:           A [`TreeCellList`](@ref) defining the domain and the size of the
                          root cells. With periodicity, the domain must be the periodic box.
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
@@ -62,7 +63,7 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list,
     search_radius_ = convert(eltype(cell_list), search_radius)
 
     # Choose the level of the leaves and allocate a list for each leaf
-    cell_list_ = allocate_leaves(cell_list, search_radius_, periodic_box)
+    cell_list_ = build_tree(cell_list, search_radius_, periodic_box)
 
     return TreeNeighborhoodSearch{NDIMS, typeof(search_radius_), typeof(cell_list_),
                                   typeof(periodic_box),

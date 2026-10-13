@@ -6,8 +6,10 @@ Cell list for the [`TreeNeighborhoodSearch`](@ref), storing points in the cells 
 a quadtree (2D) or octree (3D).
 
 The domain is covered by a grid of cubic root cells of size `root_cell_size`.
+With periodicity, the root cells tile the periodic box exactly, so they can be slightly
+larger than `root_cell_size` and differ in size between the dimensions.
 Each root cell is the root of a tree, in which a cell at level ``L``
-has the size `root_cell_size` ``/ 2^L``.
+has the size of the root cell ``/ 2^L``.
 The cells on each level are sorted by root cell first and then in Morton order inside
 each root cell, so that all descendants of a cell are stored contiguously.
 
@@ -42,12 +44,15 @@ neighborhood search. When copying the template neighborhood search with
 struct TreeCellList{NDIMS, ELTYPE, C} <: AbstractCellList
     min_corner     :: SVector{NDIMS, ELTYPE}
     max_corner     :: SVector{NDIMS, ELTYPE}
+    # Size of the root cells requested by the user
     root_cell_size :: ELTYPE
     # The grid of root cells, see `root_grid`
     grid_min_corner :: SVector{NDIMS, ELTYPE}
-    root_size       :: SVector{NDIMS, ELTYPE}
-    n_roots         :: NTuple{NDIMS, Int}
-    # Level of all leaves, chosen by the neighborhood search in `allocate_leaves`
+    # Actual size of the root cells in each dimension. Without periodicity, this is
+    # `root_cell_size` in every dimension. With periodicity, it can be larger.
+    actual_root_cell_size :: SVector{NDIMS, ELTYPE}
+    n_roots               :: NTuple{NDIMS, Int}
+    # Level of all leaves, chosen by the neighborhood search in `build_tree`
     leaf_level::Int
     # One list of points for each leaf, sorted by `cell_index`
     cells::C
@@ -65,8 +70,9 @@ function TreeCellList(; min_corner, max_corner,
         throw(ArgumentError("`TreeCellList` only supports 1, 2 or 3 dimensions"))
     end
 
-    if root_cell_size < 0
-        throw(ArgumentError("`root_cell_size` must not be negative"))
+    # This also catches NaNs, as opposed to `root_cell_size > 0`.
+    if !(root_cell_size >= 0)
+        throw(ArgumentError("`root_cell_size` must not be negative or NaN"))
     end
 
     ELTYPE = promote_type(eltype(min_corner), eltype(max_corner), typeof(root_cell_size))
@@ -74,21 +80,20 @@ function TreeCellList(; min_corner, max_corner,
     max_corner_ = SVector{NDIMS, ELTYPE}(Tuple(max_corner))
     root_cell_size_ = convert(ELTYPE, root_cell_size)
 
-    grid_min_corner, root_size,
-    n_roots = root_grid(min_corner_, max_corner_,
-                        root_cell_size_, nothing)
+    (grid_min_corner, actual_root_cell_size,
+     n_roots) = root_grid(min_corner_, max_corner_, root_cell_size_, nothing)
 
-    # The lists for the leaves are allocated by `allocate_leaves`, which is called
+    # The lists for the leaves are allocated by `build_tree`, which is called
     # in the constructor of the `TreeNeighborhoodSearch`.
     cells = construct_backend(backend, 0, max_points_per_cell)
 
     return TreeCellList(min_corner_, max_corner_, root_cell_size_, grid_min_corner,
-                        root_size, n_roots, 0, cells)
+                        actual_root_cell_size, n_roots, 0, cells)
 end
 
-# The grid of root cells as `(grid_min_corner, root_size, n_roots)`, where
+# The grid of root cells as `(grid_min_corner, actual_root_cell_size, n_roots)`, where
 # `grid_min_corner` is the corner of the grid in negative coordinate directions
-# and `root_size` is the size of the root cells in each dimension.
+# and `actual_root_cell_size` is the actual size of the root cells in each dimension.
 #
 # Without periodicity, the grid has one padding layer of root cells around the domain.
 # Then, the 3^d block of leaves around each leaf inside the domain is inside the grid,
@@ -104,9 +109,9 @@ function root_grid(min_corner, max_corner, root_cell_size, periodic_box::Nothing
     n_roots_domain = max.(ceil.(Int, (max_corner .- min_corner) ./ root_cell_size), 1)
     n_roots = Tuple(n_roots_domain .+ 2)
     grid_min_corner = min_corner .- root_cell_size
-    root_size = root_cell_size .+ zero(min_corner)
+    actual_root_cell_size = root_cell_size .+ zero(min_corner)
 
-    return grid_min_corner, root_size, n_roots
+    return grid_min_corner, actual_root_cell_size, n_roots
 end
 
 # With periodicity, the root cells tile the periodic box exactly. They are therefore
@@ -127,17 +132,26 @@ function root_grid(min_corner, max_corner, root_cell_size, periodic_box)
                             "periodic box"))
     end
 
-    root_size = periodic_box.size ./ n_roots
+    # Convert to the element type of the cell list, which can differ from the element type
+    # of the periodic box.
+    ELTYPE = eltype(min_corner)
+    grid_min_corner = convert.(ELTYPE, periodic_box.min_corner)
+    actual_root_cell_size = convert.(ELTYPE, periodic_box.size ./ n_roots)
 
-    return periodic_box.min_corner, root_size, n_roots
+    return grid_min_corner, actual_root_cell_size, n_roots
 end
 
 # Return a copy of `cell_list` with the grid of root cells for `periodic_box`,
 # the leaves at the finest level with cells that are at least as large as `search_radius`,
 # and one list for each leaf
-function allocate_leaves(cell_list::TreeCellList, search_radius, periodic_box)
+function build_tree(cell_list::TreeCellList, search_radius, periodic_box)
     (; min_corner, max_corner, root_cell_size, cells) = cell_list
     NDIMS = ndims(cell_list)
+
+    # This also catches NaNs, as opposed to `search_radius > 0`.
+    if !(search_radius >= 0)
+        throw(ArgumentError("the search radius must not be negative or NaN"))
+    end
 
     if iszero(search_radius)
         # This is an empty "template" neighborhood search to be used with
@@ -157,16 +171,15 @@ function allocate_leaves(cell_list::TreeCellList, search_radius, periodic_box)
                             "the `TreeCellList`"))
     end
 
-    grid_min_corner, root_size,
-    n_roots = root_grid(min_corner, max_corner,
-                        root_cell_size, periodic_box)
+    (grid_min_corner, actual_root_cell_size,
+     n_roots) = root_grid(min_corner, max_corner, root_cell_size, periodic_box)
 
     # The Morton index of a leaf inside a root cell must fit into an `Int64`.
     # Larger leaves are less efficient, but still contain all neighbors.
     max_leaf_level = div(60, NDIMS)
     leaf_level = 0
     while leaf_level < max_leaf_level &&
-        minimum(root_size) / (1 << (leaf_level + 1)) >= search_radius
+        minimum(actual_root_cell_size) / (1 << (leaf_level + 1)) >= search_radius
         leaf_level += 1
     end
 
@@ -175,14 +188,15 @@ function allocate_leaves(cell_list::TreeCellList, search_radius, periodic_box)
     if !isnothing(periodic_box) && any(n -> (n << leaf_level) < 3, n_roots)
         throw(ArgumentError("the `TreeNeighborhoodSearch` needs at least 3 leaves " *
                             "in each dimension when used with periodicity. " *
-                            "Please use no NHS for very small problems."))
+                            "For very small problems, use the " *
+                            "`TrivialNeighborhoodSearch` instead."))
     end
 
     n_leaves = prod(n_roots) << (NDIMS * leaf_level)
     cells_ = construct_backend(typeof(cells), n_leaves, max_inner_length(cells, 100))
 
     return TreeCellList(min_corner, max_corner, root_cell_size, grid_min_corner,
-                        root_size, n_roots, leaf_level, cells_)
+                        actual_root_cell_size, n_roots, leaf_level, cells_)
 end
 
 @inline Base.ndims(::TreeCellList{NDIMS}) where {NDIMS} = NDIMS
@@ -204,9 +218,9 @@ end
 
 # Size of the leaves in each dimension
 @inline function leaf_size(cell_list::TreeCellList)
-    (; root_size, leaf_level) = cell_list
+    (; actual_root_cell_size, leaf_level) = cell_list
 
-    return root_size ./ (1 << leaf_level)
+    return actual_root_cell_size ./ (1 << leaf_level)
 end
 
 # Number of cells at level `level` in each dimension
@@ -255,7 +269,7 @@ end
 # at level `level` (see above).
 # This way, all descendants of a cell are stored contiguously at each level.
 # In particular, the parent of cell `i` is `i >> NDIMS` and its children are
-# `(i << NDIMS) + 0:(2^NDIMS - 1)`.
+# `(i << NDIMS) .+ (0:(2^NDIMS - 1))`.
 @inline function cell_index(cell_list::TreeCellList, cell, level)
     NDIMS = ndims(cell_list)
 
@@ -338,27 +352,28 @@ end
     return x % Int
 end
 
-# Increment the coordinate that is stored in the bits `mask` of the Morton index `x`,
-# where `x` must not have any non-zero bits outside of `mask`.
+# Increment the coordinate that is stored in the bits `mask` of the Morton index `m`,
+# where `m` must not have any non-zero bits outside of `mask`.
 # For example, in 2D, the x-coordinate is stored in `mask = 0b0101` (lower 4 bits shown).
-# Incrementing the x-coordinate 1 to 2 works as follows:
+# Setting all bits outside of `mask` to one makes the carry of `+ 1` skip these bits.
+# Then, removing the bits outside of `mask` yields the new Morton index.
+# Incrementing the x-coordinate from 1 to 2 works as follows:
 #
-#     x                = 0b0001  (x-coordinate 1)
-#     Setting all bits outside of `mask` to one makes the carry of `+ 1` skip these bits:
-#     x | ~mask        = 0b1011
-#     (x | ~mask) + 1  = 0b1100
-#     Now remove the bits outside of `mask` to get the new Morton index:
+#     m                = 0b0001  (x-coordinate 1)
+#     m | ~mask        = 0b1011
+#     (m | ~mask) + 1  = 0b1100
 #     ... & mask       = 0b0100  (x-coordinate 2)
 #
 # When all bits in `mask` are set (last cell in the root cell), the result wraps around
 # to zero (first cell in the root cell).
-@inline morton_increment(x, mask) = ((x | ~mask) + 1) & mask
+@inline morton_increment(m, mask) = ((m | ~mask) + 1) & mask
 
-# Decrement the coordinate that is stored in the bits `mask` of the Morton index `x`,
-# where `x` must not have any bits outside of `mask` set.
-# Since all bits outside of `mask` are zero, the borrow of `- 1` skips these bits.
+# Decrement the coordinate that is stored in the bits `mask` of the Morton index `m`,
+# where `m` must not have any bits outside of `mask` set.
+# Since all bits outside of `mask` are zero, the borrow of `- 1` sets these bits on its way
+# to the next bit in `mask`, and `& mask` clears them again.
 # The first cell in the root cell wraps around to the last cell (all bits in `mask` set).
-@inline morton_decrement(x, mask) = (x - 1) & mask
+@inline morton_decrement(m, mask) = (m - 1) & mask
 
 # The parts of the linear index (see `cell_index_part`) of the leaves with the coordinates
 # `leaf - 1`, `leaf` and `leaf + 1` in dimension `dim`.
@@ -398,7 +413,7 @@ end
 end
 
 # Without periodicity, the padding layer of root cells ensures that the neighboring root
-# cells are inside the grid (see `clamp_leaf`).
+# cells are inside the grid (see `root_grid`).
 # With periodicity, the first and last root cell are neighbors.
 @inline previous_root(root, n_roots, periodic_box::Nothing) = root - 1
 @inline next_root(root, n_roots, periodic_box::Nothing) = root + 1
@@ -421,7 +436,7 @@ end
                       periodic_box)
 end
 
-# Without periodicity, clamp to the grid without the outermost padding layer.
+# Without periodicity, clamp to the grid without its outermost layer of leaves.
 # Since the domain is padded by a layer of root cells, this only affects points
 # outside the domain.
 @inline clamp_leaf(leaf, n_leaves, periodic_box::Nothing) = clamp.(leaf, 1, n_leaves .- 2)

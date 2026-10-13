@@ -45,6 +45,16 @@
         error_str = "the search radius must not exceed the `root_cell_size`"
         @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list, search_radius = 1.1)
 
+        error_str = "the search radius must not be negative or NaN"
+        @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list, search_radius = -0.1)
+        @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list, search_radius = NaN)
+
+        error_str = "`root_cell_size` must not be negative or NaN"
+        @test_throws error_str TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                            root_cell_size = -0.1)
+        @test_throws error_str TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0),
+                                            root_cell_size = NaN)
+
         # The root cell size is required unless creating a template.
         template_cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 1.0))
         error_str = "the `root_cell_size` of the `TreeCellList` must be set"
@@ -62,6 +72,23 @@
         # with one layer of root cells around it
         @test nhs.cell_list.n_roots == (6, 10)
         @test nhs.cell_list.grid_min_corner == [-0.25f0, -0.25f0]
+
+        # With periodicity, the element type is also determined by the cell list
+        # when the periodic box has a different element type.
+        periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [1.0, 2.0])
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius = 0.1, periodic_box)
+        @test eltype(nhs) == Float32
+        @test nhs.cell_list.grid_min_corner isa SVector{2, Float32}
+        @test nhs.cell_list.actual_root_cell_size isa SVector{2, Float32}
+
+        # A periodic box with integer corners.
+        cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 2.0),
+                                 root_cell_size = 0.25)
+        periodic_box = PeriodicBox(min_corner = [0, 0], max_corner = [1, 2])
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius = 0.1, periodic_box)
+        @test eltype(nhs) == Float64
+        @test nhs.cell_list.grid_min_corner == [0.0, 0.0]
+        @test nhs.cell_list.actual_root_cell_size == [0.25, 0.25]
     end
 
     @testset "Leaf Level" begin
@@ -83,11 +110,58 @@
         # One list is allocated for each leaf of the 3 x 3 root cells.
         nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius = 0.3)
         @test length(nhs.cell_list.cells) == 9 * 4
+
+        # With periodicity, the root cells are stretched differently in each dimension.
+        # The periodic box of size 0.95 x 0.75 is tiled by 3 x 3 root cells of size
+        # 0.95 / 3 ≈ 0.317 x 0.75 / 3 = 0.25. The leaf level must be chosen from the
+        # smallest root cell size. Level 1 would yield leaves of size 0.25 / 2 = 0.125
+        # in y-direction, which is smaller than the search radius 0.14.
+        # In x-direction, leaves of size 0.317 / 2 ≈ 0.158 would be large enough.
+        periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [0.95, 0.75])
+        cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (0.95, 0.75),
+                                 root_cell_size = 0.25)
+        search_radius = 0.14
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, search_radius, periodic_box)
+        @test nhs.cell_list.n_roots == (3, 3)
+        @test nhs.cell_list.leaf_level == 0
+
+        coords = periodic_box.size .* rand(2, 200)
+        initialize!(nhs, coords, coords)
+        @test all(axes(coords, 2)) do i
+            tree_neighbors(nhs, coords[:, i], search_radius, coords) ==
+            brute_force_neighbors(coords[:, i], search_radius, coords; periodic_box)
+        end
     end
 
-    @testset "Morton Order" begin
-        # A 2D grid of 3 x 2 root cells.
-        cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (3.0, 2.0),
+    @testset "Spread Bits $(NDIMS)D" for NDIMS in 2:3
+        # Reference implementation of `spread_bits` moving one bit at a time.
+        # Only the lower 32 bits in 2D and 21 bits in 3D are used, so that the result
+        # fits into the lower 64 bits.
+        n_bits = (32, 21)[NDIMS - 1]
+        function spread_bits_reference(x)
+            result = 0
+            for i in 0:(n_bits - 1)
+                result |= ((x >> i) & 1) << (NDIMS * i)
+            end
+            return result
+        end
+
+        max_value = (1 << n_bits) - 1
+        single_bits = [1 << i for i in 0:(n_bits - 1)]
+        # Alternating bit patterns 0b...0101 and 0b...1010
+        alternating = [0x5555555555555555 % Int & max_value,
+            0xaaaaaaaaaaaaaaaa % Int & max_value]
+        inputs = [0; 1; max_value; single_bits; alternating; rand(0:max_value, 1000)]
+
+        @test all(inputs) do x
+            PointNeighbors.spread_bits(x, Val(NDIMS)) == spread_bits_reference(x)
+        end
+    end
+
+    @testset "Morton Order $(NDIMS)D" for NDIMS in 2:3
+        # A grid of 3 x 2 (x 2) root cells.
+        cell_list = TreeCellList(min_corner = zeros(NDIMS),
+                                 max_corner = [3.0, 2.0, 2.0][1:NDIMS],
                                  root_cell_size = 1.0)
 
         for level in 0:4
@@ -98,14 +172,21 @@
             # Each cell has a unique zero-based index.
             @test sort(vec(indices)) == 0:(prod(n_cells) - 1)
 
-            # The parent of a cell is obtained by removing the last 2 bits of the index.
+            # The parent of a cell is obtained by removing the last `NDIMS` bits
+            # of the index.
             if level > 0
-                for (cell, index) in zip(cells, indices)
+                @test all(zip(cells, indices)) do (cell, index)
                     parent = PointNeighbors.cell_index(cell_list, cell .>> 1, level - 1)
-                    @test index >> 2 == parent
+                    return index >> NDIMS == parent
                 end
             end
         end
+    end
+
+    @testset "Z-Order" begin
+        # A 2D grid of 3 x 2 root cells.
+        cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (3.0, 2.0),
+                                 root_cell_size = 1.0)
 
         # Within a root cell, the cells are sorted in Z-order.
         z_order = [(0, 0), (1, 0), (0, 1), (1, 1), (2, 0), (3, 0), (2, 1), (3, 1)]
@@ -155,8 +236,9 @@
         n_points = (20, 200, 2_000)[NDIMS]
         coords = rand(NDIMS, n_points)
 
-        # Move the first point to the center of the unit cube, which is on a cell boundary
-        # on every level, and the second point to the corner of the domain.
+        # Move the first point to the center of the unit cube, which is on a leaf boundary
+        # for most layouts below (but not, e.g., with root cells of size 0.3),
+        # and the second point to the corner of the domain.
         coords[:, 1] .= 0.5
         coords[:, 2] .= 1.0
 
@@ -165,31 +247,31 @@
         max_corner = ones(NDIMS)
         cell_lists = [
             "Root Cells of Size 0.125" => TreeCellList(; min_corner, max_corner,
-                                                       root_cell_size = 0.125,
-                                                       max_points_per_cell = n_points),
+                                                       root_cell_size = 0.125),
             "Vector{Vector} Backend" => TreeCellList(; min_corner, max_corner,
                                                      root_cell_size = 0.125,
                                                      backend = Vector{Vector{Int32}}),
             "Root Cells of Size 1" => TreeCellList(; min_corner, max_corner,
-                                                   root_cell_size = 1.0,
-                                                   max_points_per_cell = n_points),
+                                                   root_cell_size = 1.0),
             "Root Cells Not Aligned With Domain" => TreeCellList(; min_corner,
                                                                  max_corner,
-                                                                 root_cell_size = 0.3,
-                                                                 max_points_per_cell = n_points),
-            # Leaves that are larger than the search radius
+                                                                 root_cell_size = 0.3),
+            # With search radius 0.125, the leaves are the root cells of size 0.2,
+            # which are larger than the search radius.
             "Large Leaves" => TreeCellList(; min_corner, max_corner,
-                                           root_cell_size = 0.2,
-                                           max_points_per_cell = n_points),
+                                           root_cell_size = 0.2),
             # A domain that is larger than the point cloud
             "Large Domain" => TreeCellList(; min_corner = fill(-1.0, NDIMS),
                                            max_corner = fill(2.0, NDIMS),
-                                           root_cell_size = 0.5,
-                                           max_points_per_cell = n_points)
+                                           root_cell_size = 0.5),
+            # A domain with a different number of root cells in each dimension.
+            "Non-Cubic Domain" => TreeCellList(; min_corner = [-0.2, 0.0, -0.4][1:NDIMS],
+                                               max_corner = [1.0, 1.6, 1.35][1:NDIMS],
+                                               root_cell_size = 0.25)
         ]
 
-        # A search radius that is a power of two times the size of the root cells,
-        # such that leaves are exactly as large as the search radius, and one that is not.
+        # Search radii for which the leaves are exactly as large as the search radius
+        # with some of the layouts above and larger than the search radius with the others.
         @testset "$cell_list_name, Search Radius $search_radius" for (cell_list_name,
                                                                       cell_list) in
                                                                      cell_lists,
@@ -235,11 +317,9 @@
 
         cell_lists = [
             "Root Cells of Size 0.1" => TreeCellList(; min_corner, max_corner,
-                                                     root_cell_size = 0.1,
-                                                     max_points_per_cell = n_points),
+                                                     root_cell_size = 0.1),
             "Root Cells of Size 0.3" => TreeCellList(; min_corner, max_corner,
-                                                     root_cell_size = 0.3,
-                                                     max_points_per_cell = n_points)
+                                                     root_cell_size = 0.3)
         ]
 
         @testset "$cell_list_name" for (cell_list_name, cell_list) in cell_lists
