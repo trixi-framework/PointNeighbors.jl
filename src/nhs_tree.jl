@@ -161,9 +161,9 @@ end
                             point_coords - neighbor_point_coords)
         distance2 = dot(pos_diff, pos_diff)
 
-        pos_diff,
-        distance2 = compute_periodic_distance(pos_diff, distance2,
-                                              search_radius, periodic_box)
+        (pos_diff,
+         distance2) = compute_periodic_distance(pos_diff, distance2,
+                                                search_radius, periodic_box)
 
         if distance2 <= search_radius^2
             distance = sqrt(distance2)
@@ -180,7 +180,7 @@ end
 
 function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
-    # Use root cells of the size of the search radius
+    # Use root cells of the size of the search radius.
     cell_list = copy_cell_list(nhs.cell_list, search_radius)
 
     return TreeNeighborhoodSearch{ndims(nhs)}(; search_radius, cell_list,
