@@ -6,13 +6,11 @@ Tree-based neighborhood search with a uniform search radius.
 The points are stored in the leaves of a quadtree (2D) or octree (3D),
 see [`TreeCellList`](@ref).
 
-With a uniform search radius, all leaves are at the same level, which is the finest level
-with cells that are at least as large as the search radius.
-As with the [`GridNeighborhoodSearch`](@ref), a query only considers the ``3^d`` block of
-leaves around the leaf containing the query point.
 The only difference to the [`GridNeighborhoodSearch`](@ref) with
 [`FullGridCellList`](@ref) is the order of the cells, which are sorted in Morton order
 inside each root cell of the tree.
+This neighborhood search will later support variable search radius.
+Until then, prefer the [`GridNeighborhoodSearch`](@ref) for better performance.
 
 !!! warning "Experimental implementation"
     This is an experimental feature and may change in any future releases.
