@@ -108,71 +108,74 @@ end
                                                       point, point_coords,
                                                       search_radius, init)
     (; cell_list, periodic_box) = neighborhood_search
+    NDIMS = ndims(neighborhood_search)
 
     # Zero-based Cartesian coordinates of the leaf containing the point.
     # With periodicity, move the point into the periodic box first.
     leaf = leaf_coords(periodic_coords(point_coords, periodic_box), cell_list,
                        periodic_box)
 
+    # The linear index of a leaf is a sum of independent parts for each dimension.
+    # `index_parts[dim]` contains the parts of the coordinates `leaf - 1`, `leaf`
+    # and `leaf + 1` in dimension `dim`, so that the indices of the 3^d block of leaves
+    # around the leaf are all sums of one part from each dimension.
+    index_parts = ntuple(dim -> neighbor_index_parts(cell_list, dim, leaf[dim],
+                                                     periodic_box), Val(NDIMS))
+
     reduced = init
-    for leaf_index in neighboring_cells(leaf, neighborhood_search)
+    for offset in CartesianIndices(ntuple(_ -> -1:1, Val(NDIMS)))
+        leaf_index = neighbor_index(index_parts, Tuple(offset))
+
         # Making the following `@inbounds` is not safe because we don't know if
         # the cell list has been initialized correctly.
         neighbors = points_in_leaf(cell_list, leaf_index)
 
-        for neighbor_ in eachindex(neighbors)
-            neighbor = @inbounds neighbors[neighbor_]
-
-            # Making the following `@inbounds` is not safe because we don't know
-            # if `neighbor` (extracted from the cell list) is in bounds.
-            neighbor_point_coords = extract_svector(neighbor_coords,
-                                                    Val(ndims(neighborhood_search)),
-                                                    neighbor)
-
-            pos_diff = convert.(eltype(neighborhood_search),
-                                point_coords - neighbor_point_coords)
-            distance2 = dot(pos_diff, pos_diff)
-
-            (pos_diff,
-             distance2) = compute_periodic_distance(pos_diff, distance2,
-                                                    search_radius, periodic_box)
-
-            if distance2 <= search_radius^2
-                distance = sqrt(distance2)
-
-                # Inline to avoid loss of performance compared to not using this function
-                # and unrolling everything.
-                value = @inline f(point, neighbor, pos_diff, distance)
-                reduced = @inline op(reduced, value)
-            end
-        end
+        reduced = mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
+                                 neighborhood_search, point, point_coords, search_radius)
     end
 
     return reduced
 end
 
-# Iterate over the zero-based indices of the 3^d block of leaves around the leaf with
-# zero-based Cartesian coordinates `leaf`
-@inline function neighboring_cells(leaf, neighborhood_search::TreeNeighborhoodSearch)
-    (; cell_list, periodic_box) = neighborhood_search
-    NDIMS = ndims(neighborhood_search)
-
-    # The linear index of a leaf is a sum of independent parts for each dimension.
-    # `index_parts[dim]` contains the parts of the coordinates `leaf - 1`, `leaf`
-    # and `leaf + 1` in dimension `dim`, so that the indices of the 3^d block of leaves
-    # are sums of these parts.
-    index_parts = ntuple(dim -> neighbor_index_parts(cell_list, dim, leaf[dim],
-                                                     periodic_box), Val(NDIMS))
-
-    return (neighbor_index(index_parts, Tuple(offset))
-            for offset in CartesianIndices(ntuple(_ -> -1:1, Val(NDIMS))))
-end
-
 # The index of the leaf `leaf + offset`, where `offset` is between -1 and 1
-# in each dimension. Note that we can't use `NDIMS` from `neighboring_cells`, as it would be
-# captured by the closure of the generator, making `Val(NDIMS)` type-unstable.
+# in each dimension.
 @inline function neighbor_index(index_parts, offset)
     return sum(ntuple(dim -> index_parts[dim][offset[dim] + 2], Val(length(offset))))
+end
+
+# Reduce over all neighbors in the list `neighbors`
+@propagate_inbounds function mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
+                                            neighborhood_search, point, point_coords,
+                                            search_radius)
+    (; periodic_box) = neighborhood_search
+
+    for neighbor_ in eachindex(neighbors)
+        neighbor = @inbounds neighbors[neighbor_]
+
+        # Making the following `@inbounds` is not safe because we don't know
+        # if `neighbor` (extracted from the cell list) is in bounds.
+        neighbor_point_coords = extract_svector(neighbor_coords,
+                                                Val(ndims(neighborhood_search)), neighbor)
+
+        pos_diff = convert.(eltype(neighborhood_search),
+                            point_coords - neighbor_point_coords)
+        distance2 = dot(pos_diff, pos_diff)
+
+        pos_diff,
+        distance2 = compute_periodic_distance(pos_diff, distance2,
+                                              search_radius, periodic_box)
+
+        if distance2 <= search_radius^2
+            distance = sqrt(distance2)
+
+            # Inline to avoid loss of performance compared to not using this function
+            # and unrolling everything.
+            value = @inline f(point, neighbor, pos_diff, distance)
+            reduced = @inline op(reduced, value)
+        end
+    end
+
+    return reduced
 end
 
 function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_points;
