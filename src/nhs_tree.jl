@@ -6,9 +6,8 @@ Tree-based neighborhood search with a uniform search radius.
 The points are stored in the leaves of a quadtree (2D) or octree (3D),
 see [`TreeCellList`](@ref).
 
-The only difference to the [`GridNeighborhoodSearch`](@ref) with
-[`FullGridCellList`](@ref) is the order of the cells, which are sorted in Morton order
-inside each root cell of the tree.
+Like the [`GridNeighborhoodSearch`](@ref) with [`FullGridCellList`](@ref), but the cells
+are sorted in Morton order inside each root cell of the tree.
 This neighborhood search will later support variable search radius.
 Until then, prefer the [`GridNeighborhoodSearch`](@ref) for better performance.
 
