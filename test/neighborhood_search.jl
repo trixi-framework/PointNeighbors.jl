@@ -609,15 +609,17 @@
                 # Querying with a larger radius than the search radius of the neighborhood
                 # search might miss neighbors in cells that are not considered.
                 # The safe versions must throw an error in this case.
+                # Note that the `TreeNeighborhoodSearch` supports query radii up to the size
+                # of its root cells, which is up to 4 times the search radius here.
                 @testset "Larger Query `search_radius`" begin
                     @test_throws ErrorException foreach_neighbor((_...) -> nothing,
                                                                  coords, coords, nhs, 1,
-                                                                 search_radius = 2 *
+                                                                 search_radius = 5 *
                                                                                  search_radius)
                     @test_throws ErrorException mapreduce_neighbor((_...) -> 0, +,
                                                                    coords, coords, nhs, 1;
                                                                    init = 0,
-                                                                   search_radius = 2 *
+                                                                   search_radius = 5 *
                                                                                    search_radius)
                 end
             end
