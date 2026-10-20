@@ -30,8 +30,8 @@ neighborhood search. When copying the template neighborhood search with
 - `max_corner`: Coordinates of the domain corner in positive coordinate directions.
                 All points must be inside the domain.
 - `root_cell_size`: Size of the root cells, which must be at least as large as the
-                search radius. Root cells of the size of the search radius are the most
-                efficient choice. Then, the root cells are the leaves of the tree.
+                search radius. Setting this equal to the search radius is the most
+                efficient choice:  the root cells are then also leaves of the tree.
                 Use the default of zero to create a template (see above).
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the
     points of each leaf. Can be
@@ -75,6 +75,10 @@ function TreeCellList(; min_corner, max_corner,
         throw(ArgumentError("`root_cell_size` must not be negative or NaN"))
     end
 
+    if eltype(min_corner) <: Integer
+        throw(ArgumentError("`min_corner` and `max_corner` cannot be of integer type"))
+    end
+
     ELTYPE = promote_type(eltype(min_corner), eltype(max_corner), typeof(root_cell_size))
     min_corner_ = SVector{NDIMS, ELTYPE}(Tuple(min_corner))
     max_corner_ = SVector{NDIMS, ELTYPE}(Tuple(max_corner))
@@ -114,16 +118,15 @@ function root_grid(min_corner, max_corner, root_cell_size, periodic_box::Nothing
     return grid_min_corner, actual_root_cell_size, n_roots
 end
 
-# With periodicity, the root cells tile the periodic box exactly. They are therefore
-# slightly larger than `root_cell_size` when the periodic box is not a multiple of
-# `root_cell_size`. In the query, the neighboring leaves of the leaves at the boundary
-# are the leaves at the opposite boundary.
+# With periodicity, enlarge root cells as needed to tile the periodic box exactly.
+# Leaves on opposite boundaries are neighbors.
 function root_grid(min_corner, max_corner, root_cell_size, periodic_box)
-    if !(min_corner ≈ periodic_box.min_corner && max_corner ≈ periodic_box.max_corner)
+    if !isapprox(min_corner, periodic_box.min_corner) ||
+       !isapprox(max_corner, periodic_box.max_corner)
         throw(ArgumentError("the domain of the `TreeCellList` must be the periodic box"))
     end
 
-    # Allow small tolerance to avoid inefficient larger cells due to machine
+    # Allow a small tolerance to avoid inefficient larger cells due to machine
     # rounding errors, as in the `GridNeighborhoodSearch`
     n_roots = Tuple(floor.(Int, (periodic_box.size .+ 10eps()) ./ root_cell_size))
 
@@ -270,11 +273,11 @@ end
 # This way, all descendants of a cell are stored contiguously at each level.
 # In particular, the parent of cell `i` is `i >> NDIMS` and its children are
 # `(i << NDIMS) .+ (0:(2^NDIMS - 1))`.
-@inline function cell_index(cell_list::TreeCellList, cell, level)
-    NDIMS = ndims(cell_list)
-
-    return sum(ntuple(dim -> cell_index_part(cell_list, dim, cell[dim], level),
-                      Val(NDIMS)))
+@inline function cell_index(cell_list::TreeCellList{NDIMS}, cell::NTuple{NDIMS},
+                            level) where {NDIMS}
+    # Since `cell` is guaranteed to be of size `NDIMS`, we can use `@inbounds` here.
+    return sum(ntuple(@inline(dim -> @inbounds cell_index_part(cell_list, dim, cell[dim],
+                                                               level)), Val(NDIMS)))
 end
 
 # The part of the linear cell index (see above) of dimension `dim` for the zero-based

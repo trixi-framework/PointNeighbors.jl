@@ -285,8 +285,7 @@ function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
                  points_moving = (true, true), parallelization_backend = default_backend(x),
                  eachindex_y = axes(y, 2))
-    # The coordinates of the first set of points are irrelevant for this NHS.
-    # Only update when the second set is moving.
+    # The NHS stores only the points in `y`, so only rebuild it when `y` moves.
     points_moving[2] || return neighborhood_search
 
     update_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)

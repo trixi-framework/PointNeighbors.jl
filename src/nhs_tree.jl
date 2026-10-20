@@ -3,12 +3,12 @@
                                   periodic_box = nothing, update_strategy = nothing)
 
 Tree-based neighborhood search with a uniform search radius.
-The points are stored in the leaves of a quadtree (2D) or octree (3D),
+The points are stored in the leaves of binary trees (1D), quadtrees (2D) or octrees (3D),
 see [`TreeCellList`](@ref).
 
-Like the [`GridNeighborhoodSearch`](@ref) with [`FullGridCellList`](@ref), but the cells
+Like [`GridNeighborhoodSearch`](@ref) with [`FullGridCellList`](@ref), but the cells
 are sorted in Morton order inside each root cell of the tree.
-This neighborhood search will later support variable search radius.
+Support for variable search radii is planned.
 Until then, prefer the [`GridNeighborhoodSearch`](@ref) for better performance.
 
 !!! warning "Experimental implementation"
@@ -27,8 +27,8 @@ Until then, prefer the [`GridNeighborhoodSearch`](@ref) for better performance.
                          root cells. With periodicity, the domain must be the periodic box.
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                          [`PeriodicBox`](@ref).
-- `update_strategy = nothing`: Strategy to parallelize the update. The tree is always
-                         rebuilt from scratch. Available options are:
+- `update_strategy = nothing`: Strategy for rebuilding the tree during an update.
+                         The tree is always rebuilt from scratch. Available options are:
     - `nothing`: Automatically choose the best available option.
     - [`SerialUpdate()`](@ref)
 """
@@ -52,7 +52,7 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list,
     end
 
     if isnothing(update_strategy)
-        # Automatically choose best available update option for this cell list
+        # Automatically choose the best available update strategy for this cell list.
         update_strategy = first(supported_update_strategies(cell_list))()
     elseif !(typeof(update_strategy) in supported_update_strategies(cell_list))
         throw(ArgumentError("$update_strategy is not a valid update strategy for " *
@@ -62,7 +62,7 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list,
 
     search_radius_ = convert(eltype(cell_list), search_radius)
 
-    # Choose the level of the leaves and allocate a list for each leaf
+    # Choose the level of the leaves and allocate a list for each leaf.
     cell_list_ = build_tree(cell_list, search_radius_, periodic_box)
 
     return TreeNeighborhoodSearch{NDIMS, typeof(search_radius_), typeof(cell_list_),
@@ -93,8 +93,7 @@ function update!(neighborhood_search::TreeNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
                  points_moving = (true, true), parallelization_backend = default_backend(x),
                  eachindex_y = axes(y, 2))
-    # The coordinates of the first set of points are irrelevant for this NHS.
-    # Only update when the second set is moving.
+    # The NHS stores only the points in `y`, so only rebuild it when `y` moves.
     points_moving[2] || return neighborhood_search
 
     # The tree is always rebuilt from scratch
