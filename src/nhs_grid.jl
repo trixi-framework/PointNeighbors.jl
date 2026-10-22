@@ -120,7 +120,8 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         if any(i -> i < 3, n_cells)
             throw(ArgumentError("the `GridNeighborhoodSearch` needs at least 3 cells " *
                                 "in each dimension when used with periodicity. " *
-                                "Please use no NHS for very small problems."))
+                                "For very small problems, use the " *
+                                "`TrivialNeighborhoodSearch` instead."))
         end
     end
 
@@ -284,8 +285,7 @@ function update!(neighborhood_search::GridNeighborhoodSearch,
                  x::AbstractMatrix, y::AbstractMatrix;
                  points_moving = (true, true), parallelization_backend = default_backend(x),
                  eachindex_y = axes(y, 2))
-    # The coordinates of the first set of points are irrelevant for this NHS.
-    # Only update when the second set is moving.
+    # The NHS stores only the points in `y`, so only rebuild it when `y` moves.
     points_moving[2] || return neighborhood_search
 
     update_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
