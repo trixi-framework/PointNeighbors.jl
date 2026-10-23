@@ -277,10 +277,12 @@ end
                                      query_radius)
     # Neighbors outside of the search radius of the neighborhood search
     # (and therefore outside of the neighboring cells) might be missed.
-    # Note that we cannot interpolate values into the error message or concatenate
-    # strings because this might be called from within a GPU kernel.
-    if query_radius > search_radius(neighborhood_search)
-        error("query `search_radius` must not exceed the NHS search radius")
+    # This check also fails for negative query radii and NaN.
+    query_radius_ = convert(eltype(neighborhood_search), query_radius)
+    if !(zero(query_radius_) <= query_radius_ <= search_radius(neighborhood_search))
+        # Note that we cannot interpolate values into the error message or concatenate
+        # strings because this might be called from within a GPU kernel.
+        error("query `search_radius` must not exceed the search radius of the neighborhood search")
     end
 
     return nothing

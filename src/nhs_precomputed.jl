@@ -212,9 +212,10 @@ end
 @inline function check_search_radius(neighborhood_search::PrecomputedNeighborhoodSearch,
                                      query_radius)
     # The neighbor loop below skips the distance check for performance reasons,
-    # so a smaller query radius would silently be ignored.
-    if query_radius != search_radius(neighborhood_search)
-        error("`PrecomputedNeighborhoodSearch` does not support a different query `search_radius`")
+    # so a different query radius would silently be ignored.
+    search_radius_ = search_radius(neighborhood_search)
+    if !isapprox(query_radius, search_radius_, atol = eps(search_radius_))
+        error("this neighborhood search requires the query `search_radius` to equal its search radius")
     end
 
     return nothing

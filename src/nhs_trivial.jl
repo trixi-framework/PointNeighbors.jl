@@ -54,6 +54,12 @@ end
 
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachpoint
 
+# Every query radius is supported by this neighborhood search.
+@inline function check_search_radius(neighborhood_search::TrivialNeighborhoodSearch,
+                                     query_radius)
+    return nothing
+end
+
 # Create a copy of a neighborhood search but with a different search radius and different
 # number of points.
 function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch,

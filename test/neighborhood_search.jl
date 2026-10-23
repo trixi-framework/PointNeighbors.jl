@@ -192,13 +192,8 @@
                 # Query with a smaller search radius of 0.07.
                 # Points 1 and 3 have a periodic distance of 0.05 and are still neighbors.
                 # Points 1 and 5 have a periodic distance of 0.09 and are no longer neighbors.
-                if nhs isa PrecomputedNeighborhoodSearch
-                    # The precomputed neighbor lists can't be filtered by a smaller radius
-                    @test_throws "does not support" foreach_neighbor((_...) -> nothing,
-                                                                     coords, coords, nhs,
-                                                                     1,
-                                                                     search_radius = 0.07)
-                else
+                # The `PrecomputedNeighborhoodSearch` does not support a different query radius.
+                if !(nhs isa PrecomputedNeighborhoodSearch)
                     neighbors_small = [Int[] for _ in axes(coords, 2)]
 
                     for point in axes(coords, 2)
@@ -224,7 +219,7 @@
             (10, 11),
             (100, 90),
             (9, 10, 7),
-            (39, 40, 41)
+            (39, 10, 41)
         ]
 
         seeds = [1, 2]
@@ -259,7 +254,7 @@
 
             # Expected neighbor lists when querying with a smaller search radius.
             # This radius is chosen to not be a "nice" fraction of the cell size.
-            small_radius = 0.37 * search_radius
+            small_radius = 0.73 * search_radius
             trivial_nhs_small = TrivialNeighborhoodSearch{NDIMS}(;
                                                                  search_radius = small_radius,
                                                                  eachpoint = axes(coords,
@@ -541,19 +536,22 @@
 
                 # Query neighbors within a smaller radius than the search radius
                 # that the neighborhood search was constructed with.
-                @testset "Smaller query `search_radius`" begin
+                @testset "Different query `search_radius`" begin
+                    large_radius = search_radius + 1e-3
                     if nhs isa PrecomputedNeighborhoodSearch
-                        # The precomputed neighbor lists don't store distances,
-                        # so they can't be filtered by a smaller radius.
-                        @test_throws "does not support" foreach_neighbor((_...) -> nothing,
-                                                                         coords, coords,
-                                                                         nhs, 1,
-                                                                         search_radius = small_radius)
-                        @test_throws "does not support" mapreduce_neighbor((_...) -> 0, +,
-                                                                           coords, coords,
-                                                                           nhs, 1;
-                                                                           init = 0,
-                                                                           search_radius = small_radius)
+                        # The precomputed NHS skips the distance check.
+                        error_str = "requires the query `search_radius` to equal its search radius"
+                        @test_throws error_str foreach_neighbor((_...) -> nothing, coords,
+                                                                coords, nhs, 1,
+                                                                search_radius = small_radius)
+                        @test_throws error_str mapreduce_neighbor((_...) -> 0, +, coords,
+                                                                  coords, nhs, 1; init = 0,
+                                                                  search_radius = small_radius)
+
+                        # Larger radius
+                        @test_throws error_str foreach_neighbor((_...) -> nothing, coords,
+                                                                coords, nhs, 1,
+                                                                search_radius = large_radius)
                     else
                         # Collect the neighbors with both the safe and the unsafe version.
                         neighbors = [Int[] for _ in axes(coords, 2)]
@@ -603,22 +601,20 @@
 
                         @test neighbor_sums == sum.(neighbors_expected_small)
                         @test neighbor_sums_unsafe == sum.(neighbors_expected_small)
-                    end
-                end
 
-                # Querying with a larger radius than the search radius of the neighborhood
-                # search might miss neighbors in cells that are not considered.
-                # The safe versions must throw an error in this case.
-                @testset "Larger Query `search_radius`" begin
-                    @test_throws ErrorException foreach_neighbor((_...) -> nothing,
-                                                                 coords, coords, nhs, 1,
-                                                                 search_radius = 2 *
-                                                                                 search_radius)
-                    @test_throws ErrorException mapreduce_neighbor((_...) -> 0, +,
-                                                                   coords, coords, nhs, 1;
-                                                                   init = 0,
-                                                                   search_radius = 2 *
-                                                                                   search_radius)
+                        # Querying with a larger radius than the search radius of the neighborhood
+                        # search might miss neighbors in cells that are not considered.
+                        # The safe versions must throw an error in this case.
+                        @test_throws "must not exceed" foreach_neighbor((_...) -> nothing,
+                                                                        coords, coords, nhs,
+                                                                        1,
+                                                                        search_radius = large_radius)
+                        @test_throws "must not exceed" mapreduce_neighbor((_...) -> 0, +,
+                                                                          coords, coords,
+                                                                          nhs, 1;
+                                                                          init = 0,
+                                                                          search_radius = large_radius)
+                    end
                 end
             end
         end
