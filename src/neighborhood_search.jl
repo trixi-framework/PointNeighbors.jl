@@ -246,13 +246,13 @@ The keyword argument `search_radius` can be used to query neighbors within a sma
 than the search radius that the neighborhood search was constructed with.
 It must not exceed the search radius of the neighborhood search,
 since neighbors outside of this radius might be missed.
-This is checked unless this function is called with `@inbounds`.
 Note that [`PrecomputedNeighborhoodSearch`](@ref) does not support a different
 `search_radius`, since it skips the distance check for performance reasons.
 
 This method performs bounds checks, even when called with `@inbounds`.
 `@inbounds` only skips the bounds check for loading the coordinates of `point`
-from `system_coords` and the check of `search_radius` explained above.
+from `system_coords` and the check that `search_radius` does not exceed the search radius
+of the neighborhood search.
 See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks.
 """
 @propagate_inbounds function foreach_neighbor(f, system_coords, neighbor_coords,
@@ -310,11 +310,12 @@ Like [`foreach_neighbor`](@ref), but skips **all** bounds checks.
 
 `foreach_neighbor` performs the following bounds checks that are skipped here:
 - Check that `search_radius` does not exceed the search radius of the neighborhood search
-  (or that it is identical with [`PrecomputedNeighborhoodSearch`](@ref)).
+  (or, for [`PrecomputedNeighborhoodSearch`](@ref), that it equals the search radius).
   Passing an unsupported `search_radius` here silently produces incorrect neighbors.
-- Check if `point` is in bounds of `system_coords`. This is the only bounds check
-  that is skipped when calling `foreach_neighbor` with `@inbounds`, and the only one that
-  is safe to skip when `point` is guaranteed to be in bounds of `system_coords`.
+- Check if `point` is in bounds of `system_coords`. This check and the `search_radius`
+  check above are the only bounds checks that are skipped when calling `foreach_neighbor`
+  with `@inbounds`. This check is safe to skip when `point` is guaranteed to be in bounds
+  of `system_coords`.
 - Check if the neighbors of `point` are in bounds of `neighbor_coords`.
   This is not safe to skip when the neighborhood search was not initialized correctly;
   for example when initialized with coordinate arrays of different sizes than the ones
@@ -330,11 +331,15 @@ Like [`foreach_neighbor`](@ref), but skips **all** bounds checks.
 
 Note that all these bounds checks are safe to skip if
 - `point` is guaranteed to be in bounds of `system_coords`,
+- the query `search_radius` does not exceed the search radius of the neighborhood search
+  (and equals it for `PrecomputedNeighborhoodSearch`),
 - the neighborhood search was initialized correctly with `system_coords`
   and `neighbor_coords` and has not been tampered with since then.
 
 !!! warning
-    Use this only when `point` is known to be in bounds of `system_coords`
+    Use this only when `point` is known to be in bounds of `system_coords`,
+    when the query `search_radius` does not exceed the search radius of the neighborhood
+    search (and equals it for [`PrecomputedNeighborhoodSearch`](@ref)),
     and when `neighborhood_search` is known to be initialized correctly for
     `system_coords` and `neighbor_coords`.
 """
@@ -363,7 +368,8 @@ The keyword argument `init` is required. It provides the starting value for
 the reduction. Choose `init` so that combining it with the first mapped neighbor value
 using `op` gives the desired result, typically the identity element of `op`.
 
-The keyword argument `search_radius` can be used to query neighbors within a smaller radius.
+The keyword argument `search_radius` can be used to query neighbors within a smaller radius
+than the search radius that the neighborhood search was constructed with.
 See [`foreach_neighbor`](@ref) for restrictions on the `search_radius`.
 
 This method performs the same bounds checks as [`foreach_neighbor`](@ref).
@@ -400,7 +406,9 @@ See [`foreach_neighbor_unsafe`](@ref) for details on which bounds checks are ski
 and when it is safe to skip them.
 
 !!! warning
-    Use this only when `point` is known to be in bounds of `system_coords`
+    Use this only when `point` is known to be in bounds of `system_coords`,
+    when the query `search_radius` does not exceed the search radius of the neighborhood
+    search (and equals it for [`PrecomputedNeighborhoodSearch`](@ref)),
     and when `neighborhood_search` is known to be initialized correctly for
     `system_coords` and `neighbor_coords`.
 """
