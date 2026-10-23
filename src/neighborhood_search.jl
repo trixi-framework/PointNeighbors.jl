@@ -309,7 +309,7 @@ Like [`foreach_neighbor`](@ref), but skips **all** bounds checks.
 `foreach_neighbor` performs the following bounds checks that are skipped here:
 - Check that `search_radius` does not exceed the search radius of the neighborhood search
   (or that it is identical with [`PrecomputedNeighborhoodSearch`](@ref)).
-  Passing an unsupported `search_radius` here silently yields wrong neighbors.
+  Passing an unsupported `search_radius` here silently produces incorrect neighbors.
 - Check if `point` is in bounds of `system_coords`. This is the only bounds check
   that is skipped when calling `foreach_neighbor` with `@inbounds`, and the only one that
   is safe to skip when `point` is guaranteed to be in bounds of `system_coords`.

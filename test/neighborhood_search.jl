@@ -540,8 +540,8 @@
                 end
 
                 # Query neighbors within a smaller radius than the search radius
-                # that the neighborhood search was constructed with
-                @testset "Smaller Query `search_radius`" begin
+                # that the neighborhood search was constructed with.
+                @testset "Smaller query `search_radius`" begin
                     if nhs isa PrecomputedNeighborhoodSearch
                         # The precomputed neighbor lists don't store distances,
                         # so they can't be filtered by a smaller radius.
@@ -555,7 +555,7 @@
                                                                            init = 0,
                                                                            search_radius = small_radius)
                     else
-                        # Collect the neighbors with both the safe and the unsafe version
+                        # Collect the neighbors with both the safe and the unsafe version.
                         neighbors = [Int[] for _ in axes(coords, 2)]
                         neighbors_unsafe = [Int[] for _ in axes(coords, 2)]
 
@@ -580,7 +580,7 @@
                         @test sort.(neighbors) == neighbors_expected_small
                         @test sort.(neighbors_unsafe) == neighbors_expected_small
 
-                        # Sum up the neighbor indices with both versions of `mapreduce_neighbor`
+                        # Sum up the neighbor indices with both versions of `mapreduce_neighbor`.
                         neighbor_sums = map(axes(coords, 2)) do point
                             mapreduce_neighbor(+, coords, coords, nhs, point; init = 0,
                                                search_radius = small_radius) do point,
