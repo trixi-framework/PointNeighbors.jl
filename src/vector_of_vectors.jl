@@ -101,8 +101,9 @@ end
     # thread.
     new_length = @inbounds Atomix.@atomic lengths[i] += 1
 
-    # Inner bounds check
-    @boundscheck check_list_bounds(vov, i)
+    # Inner bounds check. Use the returned length instead of loading `lengths[i]` again,
+    # which is an expensive memory access when multiple threads are pushing to this list.
+    @boundscheck check_list_bounds(vov, i, new_length)
 
     # We can write here without race conditions, since the atomic add guarantees
     # that `new_length` is different for each thread.
@@ -111,10 +112,11 @@ end
     return vov
 end
 
-@inline function check_list_bounds(vov::DynamicVectorOfVectors, i)
+@inline function check_list_bounds(vov::DynamicVectorOfVectors, i,
+                                   new_length = vov.lengths[i])
     (; backend, lengths) = vov
 
-    if lengths[i] > size(backend, 1)
+    if new_length > size(backend, 1)
         Atomix.@atomic lengths[i] -= 1
         error("cell list is full. Use a larger `max_points_per_cell`.")
     end

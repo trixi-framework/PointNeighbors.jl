@@ -92,7 +92,6 @@ end
 
 Benchmark the initialization of a neighborhood search with a variable search radius
 for each point.
-Note that the tree of the [`TreeNeighborhoodSearch`](@ref) is currently built serially.
 """
 function benchmark_initialize_variable_radius(neighborhood_search, coordinates,
                                               search_radii;
