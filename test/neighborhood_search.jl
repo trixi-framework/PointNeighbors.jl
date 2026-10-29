@@ -56,6 +56,45 @@
         end
     end
 
+    @testset "Mixed precision query `search_radius`" begin
+        # This test checks that mixed precision queries don't raise false errors.
+        # `0.7f0` is rounded down, so `0.7f0 < 0.7`.
+        search_radius = 0.7f0
+        query_radius = 0.7
+
+        # This would raise an error if `query_radius` is not converted by the NHS.
+        @assert search_radius < query_radius
+
+        coords = zeros(Float32, 2, 1)
+        n_points = size(coords, 2)
+
+        neighborhood_searches = [
+            GridNeighborhoodSearch{2}(; search_radius, n_points),
+            PrecomputedNeighborhoodSearch{2}(; search_radius, n_points)
+        ]
+        names = ["`GridNeighborhoodSearch`", "`PrecomputedNeighborhoodSearch`"]
+
+        @testset "$(names[i])" for i in eachindex(names)
+            nhs = neighborhood_searches[i]
+            initialize!(nhs, coords, coords)
+
+            n_neighbors = mapreduce_neighbor((_...) -> 1, +, coords, coords, nhs, 1;
+                                             init = 0, search_radius = query_radius)
+            n_neighbors_unsafe = mapreduce_neighbor_unsafe((_...) -> 1, +, coords, coords,
+                                                           nhs, 1; init = 0,
+                                                           search_radius = query_radius)
+            @test n_neighbors == 1
+            @test n_neighbors_unsafe == 1
+
+            neighbors = Int[]
+            foreach_neighbor(coords, coords, nhs, 1,
+                             search_radius = query_radius) do point, neighbor, _, _
+                push!(neighbors, neighbor)
+            end
+            @test sort(neighbors) == [1]
+        end
+    end
+
     @testset verbose=true "Periodicity" begin
         # These examples are constructed by hand and are therefore a good test for the
         # trivial neighborhood search as well.
