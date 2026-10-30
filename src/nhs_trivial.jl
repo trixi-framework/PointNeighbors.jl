@@ -54,7 +54,7 @@ end
 
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachpoint
 
-# Every query radius is supported by this neighborhood search.
+# All points are considered, so the query radius may exceed the stored radius.
 @inline function check_search_radius(neighborhood_search::TrivialNeighborhoodSearch,
                                      query_radius)
     return nothing
