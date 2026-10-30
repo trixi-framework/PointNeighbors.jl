@@ -592,7 +592,10 @@
                 # Query neighbors within a smaller radius than the search radius
                 # that the neighborhood search was constructed with.
                 @testset "Different query `search_radius`" begin
-                    large_radius = search_radius + 1e-3
+                    # The `TreeNeighborhoodSearch` supports query radii up to the size of its
+                    # root cells, which is up to 4 times the search radius here.
+                    large_radius = (nhs isa TreeNeighborhoodSearch ? 4 * search_radius :
+                                    search_radius) + 1e-3
                     if nhs isa PrecomputedNeighborhoodSearch
                         # The precomputed NHS skips the distance check.
                         error_str = "requires the query `search_radius` to equal its search radius"
