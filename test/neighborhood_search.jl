@@ -160,7 +160,7 @@
                                               periodic_box = periodic_boxes[i],
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points)),
-                TreeNeighborhoodSearch{NDIMS}(; search_radius,
+                TreeNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               periodic_box = periodic_boxes[i],
                                               cell_list = TreeCellList(; min_corner,
                                                                        max_corner,
@@ -369,12 +369,12 @@
                                               cell_list = SpatialHashingCellList{NDIMS}(list_size = 2 *
                                                                                                     n_points,
                                                                                         backend = Vector{Vector{Int32}})),
-                TreeNeighborhoodSearch{NDIMS}(; search_radius,
+                TreeNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = TreeCellList(; min_corner,
                                                                        max_corner,
                                                                        root_cell_size = search_radius)),
                 # Larger root cells with multiple leaves in each root cell
-                TreeNeighborhoodSearch{NDIMS}(; search_radius,
+                TreeNeighborhoodSearch{NDIMS}(; search_radius, n_points,
                                               cell_list = TreeCellList(; min_corner,
                                                                        max_corner,
                                                                        root_cell_size = 4 *
