@@ -311,6 +311,22 @@
                 push!(neighbors_expected_small[point], neighbor)
             end
 
+            # Expected neighbor lists when querying each point with its own search radius
+            # between `small_radius` and `search_radius`
+            query_radii = [small_radius + (search_radius - small_radius) * (i % 7) / 6
+                           for i in axes(coords, 2)]
+            neighbors_expected_variable = [Int[] for _ in axes(coords, 2)]
+
+            foreach_point_neighbor(coords, coords, trivial_nhs,
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbor,
+                                                                                 pos_diff,
+                                                                                 distance
+                if distance <= query_radii[point]
+                    push!(neighbors_expected_variable[point], neighbor)
+                end
+            end
+
             # Expand the domain by `search_radius`, as we need the neighboring cells of
             # the minimum and maximum coordinates as well.
             min_corner = minimum(coords, dims = 2) .- search_radius
@@ -591,6 +607,10 @@
                         @test_throws error_str foreach_neighbor((_...) -> nothing, coords,
                                                                 coords, nhs, 1,
                                                                 search_radius = large_radius)
+                        @test_throws error_str foreach_point_neighbor((_...) -> nothing,
+                                                                      coords, coords, nhs,
+                                                                      parallelization_backend = SerialBackend(),
+                                                                      search_radius = _ -> large_radius)
                     else
                         # Collect the neighbors with both the safe and the unsafe version.
                         neighbors = [Int[] for _ in axes(coords, 2)]
@@ -653,6 +673,48 @@
                                                                           nhs, 1;
                                                                           init = 0,
                                                                           search_radius = large_radius)
+                        @test_throws "must not exceed" foreach_point_neighbor((_...) -> nothing,
+                                                                              coords,
+                                                                              coords,
+                                                                              nhs,
+                                                                              parallelization_backend = SerialBackend(),
+                                                                              search_radius = _ -> large_radius)
+                    end
+                end
+
+                # Query each point with its own search radius in `foreach_point_neighbor`
+                @testset "Variable Query `search_radius`" begin
+                    if nhs isa PrecomputedNeighborhoodSearch
+                        error_str = "requires the query `search_radius` to equal its search radius"
+                        @test_throws error_str foreach_point_neighbor((_...) -> nothing,
+                                                                      coords,
+                                                                      coords, nhs,
+                                                                      parallelization_backend = SerialBackend(),
+                                                                      search_radius = i -> query_radii[i])
+                    else
+                        neighbors = [Int[] for _ in axes(coords, 2)]
+                        neighbors_unsafe = [Int[] for _ in axes(coords, 2)]
+
+                        foreach_point_neighbor(coords, coords, nhs,
+                                               parallelization_backend = SerialBackend(),
+                                               search_radius = i -> query_radii[i]) do point,
+                                                                                       neighbor,
+                                                                                       pos_diff,
+                                                                                       distance
+                            push!(neighbors[point], neighbor)
+                        end
+
+                        foreach_point_neighbor_unsafe(coords, coords, nhs,
+                                                      parallelization_backend = SerialBackend(),
+                                                      search_radius = i -> query_radii[i]) do point,
+                                                                                              neighbor,
+                                                                                              pos_diff,
+                                                                                              distance
+                            push!(neighbors_unsafe[point], neighbor)
+                        end
+
+                        @test sort.(neighbors) == neighbors_expected_variable
+                        @test sort.(neighbors_unsafe) == neighbors_expected_variable
                     end
                 end
             end
