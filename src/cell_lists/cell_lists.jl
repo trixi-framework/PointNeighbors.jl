@@ -41,6 +41,18 @@ function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}},
                              max_inner_length; transpose_backend)
 end
 
+# Note that `Type{CompactVectorOfVectors{T}} <: Type{<:CompactVectorOfVectors{T}}`
+# and `Type{CompactVectorOfVectors{T1, T2, T3, T4}} <: Type{<:CompactVectorOfVectors{T1}}`.
+function construct_backend(::Type{<:CompactVectorOfVectors{T}},
+                           max_outer_length, max_inner_length;
+                           transpose_backend = false) where {T}
+    if transpose_backend
+        error("transpose backend is only supported for DynamicVectorOfVectors backend")
+    end
+
+    return CompactVectorOfVectors{T}(n_bins = max_outer_length)
+end
+
 function max_points_per_cell(cells::DynamicVectorOfVectors)
     return size(cells.backend, 1)
 end

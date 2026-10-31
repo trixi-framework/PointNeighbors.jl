@@ -110,3 +110,57 @@
         end
     end
 end
+
+@testset verbose=true "`CompactVectorOfVectors`" begin
+    n_bins = 10
+    n_values = 200
+    bins = rand(Random.Xoshiro(1), 1:n_bins, n_values)
+    value_to_bin(value) = bins[value]
+
+    # Reference: the values of each bin, sorted in increasing order
+    function vov_reference(active_values)
+        vov_ref = [Int32[] for _ in 1:n_bins]
+        for value in sort(collect(active_values))
+            push!(vov_ref[bins[value]], value)
+        end
+
+        return vov_ref
+    end
+
+    backends = [SerialBackend(), PolyesterBackend(), ThreadsDynamicBackend()]
+    active_values_ = [
+        Base.OneTo(n_values),
+        11:150,
+        Random.randperm(Random.Xoshiro(2), n_values)[1:120]
+    ]
+    names = ["all values", "range of values", "random subset of values"]
+
+    @testset verbose=true "$(names[i]) with $(nameof(typeof(backend)))" for i in
+                                                                            eachindex(names),
+                                                                            backend in
+                                                                            backends
+
+        active_values = active_values_[i]
+        vov = PointNeighbors.CompactVectorOfVectors{Int32}(; n_bins)
+
+        @test length(vov) == n_bins
+        @test all(isempty, vov)
+
+        # Update twice to make sure that the update doesn't depend on the previous state
+        PointNeighbors.update!(vov, value -> 1, n_values, backend)
+        PointNeighbors.update!(vov, value_to_bin, n_values, backend; active_values)
+
+        vov_ref = vov_reference(active_values)
+        @test length(vov) == n_bins
+        @test_throws BoundsError vov[0]
+        @test_throws BoundsError vov[n_bins + 1]
+        for bin in 1:n_bins
+            @test vov[bin] == vov_ref[bin]
+        end
+
+        # `values` is a permutation of all values, sorted by bin,
+        # followed by the inactive values in increasing order
+        inactive_values = setdiff(1:n_values, active_values)
+        @test vov.values == vcat(vov_ref..., inactive_values)
+    end
+end

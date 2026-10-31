@@ -233,3 +233,153 @@ end
 @inline function transposed_backend(::Any)
     return false
 end
+
+# Data structure that behaves like a `Vector{Vector}`, but stores all values contiguously,
+# sorted by the inner vector (the "bin") they belong to.
+# As opposed to `DynamicVectorOfVectors`, this data structure does not support
+# modifying operations like `push!`.
+# Instead, it is updated with `update!` by assigning a bin to each value in `1:n_values`.
+# After the update, `values` is a permutation of `1:n_values`, sorting the values by bin.
+# Values that are not assigned to any bin (see `update!`) are stored after all bins.
+#
+# When the values are indices of points, reordering the points with this permutation
+# makes the points of each bin contiguous in memory.
+# The values of the reordered points are then simply `1:n_values`,
+# so that `values` can be replaced by `Base.OneTo(n_values)`.
+struct CompactVectorOfVectors{T, V, I, B} <: AbstractVector{Vector{T}}
+    values          :: V # Values `1:n_values`, sorted by bin
+    first_bin_index :: I # Index in `values` of the first value of each bin, plus one entry
+    bin_counts      :: I # Buffer for `update!`: number of values in each bin
+    value_bins      :: B # Buffer for `update!`: bin of each value and index in this bin
+    tail_index      :: I # Buffer for `update!`: index of the unassigned values after all bins
+
+    # This constructor is necessary for Adapt.jl to work with this struct.
+    # See the comments in gpu.jl for more details.
+    function CompactVectorOfVectors(values, first_bin_index, bin_counts, value_bins,
+                                    tail_index)
+        new{eltype(values), typeof(values), typeof(first_bin_index),
+            typeof(value_bins)}(values, first_bin_index, bin_counts, value_bins,
+                                tail_index)
+    end
+end
+
+function CompactVectorOfVectors{T}(; n_bins) where {T}
+    values = T[]
+    first_bin_index = ones(Int32, n_bins + 1)
+    bin_counts = zeros(Int32, n_bins)
+    value_bins = NTuple{2, Int32}[]
+    tail_index = Int32[]
+
+    return CompactVectorOfVectors(values, first_bin_index, bin_counts, value_bins,
+                                  tail_index)
+end
+
+@inline Base.size(vov::CompactVectorOfVectors) = (length(vov.bin_counts),)
+
+@inline default_backend(vov::CompactVectorOfVectors) = default_backend(vov.first_bin_index)
+
+@inline function Base.getindex(vov::CompactVectorOfVectors, i)
+    (; values, first_bin_index) = vov
+
+    @boundscheck checkbounds(vov, i)
+
+    first_index = @inbounds first_bin_index[i]
+    last_index = @inbounds first_bin_index[i + 1] - 1
+
+    return bin_view(values, first_index:last_index)
+end
+
+# When the values are the trivial permutation `1:n_values`, each bin is simply a range
+@inline bin_view(values::AbstractUnitRange, range) = range
+@inline bin_view(values, range) = view(values, range)
+
+# Assign each value in `active_values` to the bin `value_to_bin(value)`
+# and sort all values in `1:n_values` by bin.
+# The remaining values that are not in `active_values` are not assigned to any bin.
+# They are stored in increasing order after all bins.
+# The values in each bin are sorted in increasing order as well,
+# so that the result is deterministic.
+#
+# This is a parallel counting sort, which also works on GPUs.
+function update!(vov::CompactVectorOfVectors, value_to_bin::F, n_values,
+                 parallelization_backend; active_values = Base.OneTo(n_values)) where {F}
+    (; values, first_bin_index, bin_counts, value_bins, tail_index) = vov
+
+    if length(values) != n_values
+        resize!(values, n_values)
+        resize!(value_bins, n_values)
+    end
+
+    all_values_active = active_values isa AbstractUnitRange &&
+                        active_values == Base.OneTo(n_values)
+
+    if !all_values_active
+        # Mark all values as unassigned (bin zero)
+        @threaded parallelization_backend for value in Base.OneTo(n_values)
+            @inbounds value_bins[value] = (zero(Int32), zero(Int32))
+        end
+    end
+
+    # Count the values in each bin. The atomic increment also yields the index of
+    # this value in its bin, so that only one atomic operation per value is needed.
+    fill!(bin_counts, 0)
+    @threaded parallelization_backend for value in active_values
+        bin = value_to_bin(value)
+        index_in_bin = @inbounds Atomix.@atomic bin_counts[bin] += one(Int32)
+        @inbounds value_bins[value] = (Int32(bin), index_in_bin)
+    end
+
+    # `first_bin_index[bin] = 1 + sum(bin_counts[1:(bin - 1)])`
+    first_bin_index_tail = view(first_bin_index, 2:length(first_bin_index))
+    cumsum!(first_bin_index_tail, bin_counts)
+    first_bin_index_tail .+= 1
+    fill!(view(first_bin_index, 1:1), 1)
+
+    if !all_values_active
+        # The `i`-th unassigned value is stored at index `i` after all bins.
+        # Count the unassigned values with a cumulative sum, for which we can use `values`
+        # as a temporary buffer, since it is overwritten below.
+        if length(tail_index) != n_values
+            resize!(tail_index, n_values)
+        end
+
+        @threaded parallelization_backend for value in Base.OneTo(n_values)
+            bin, _ = @inbounds value_bins[value]
+            @inbounds values[value] = iszero(bin)
+        end
+        cumsum!(tail_index, values)
+    end
+
+    # Write each value to its index in its bin
+    n_bins = length(bin_counts)
+    @threaded parallelization_backend for value in Base.OneTo(n_values)
+        bin, index_in_bin = @inbounds value_bins[value]
+
+        if iszero(bin)
+            index = @inbounds first_bin_index[n_bins + 1] + tail_index[value] - 1
+        else
+            index = @inbounds first_bin_index[bin] + index_in_bin - 1
+        end
+        @inbounds values[index] = value
+    end
+
+    # The order inside each bin depends on the order of the atomic operations above.
+    # Sort the values inside each bin to make the result deterministic.
+    # Bins are usually small, so we use a simple insertion sort.
+    @threaded parallelization_backend for bin in Base.OneTo(n_bins)
+        first_index = @inbounds first_bin_index[bin]
+        last_index = @inbounds first_bin_index[bin + 1] - 1
+
+        for i in (first_index + 1):last_index
+            value = @inbounds values[i]
+            j = i - 1
+            while j >= first_index && @inbounds(values[j]) > value
+                @inbounds values[j + 1] = values[j]
+                j -= 1
+            end
+            @inbounds values[j + 1] = value
+        end
+    end
+
+    return vov
+end

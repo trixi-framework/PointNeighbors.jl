@@ -637,6 +637,66 @@ end
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
 
+# A `GridNeighborhoodSearch` with a `FullGridCellList` with the `CompactVectorOfVectors`
+# backend, which sorts the points by cell in every update.
+# Only `ParallelUpdate` is supported for the `CompactVectorOfVectors` backend.
+const SortingGridNHS = GridNeighborhoodSearch{<:Any, ParallelUpdate,
+                                              <:FullGridCellList{<:CompactVectorOfVectors}}
+
+function initialize_grid!(neighborhood_search::SortingGridNHS, y::AbstractMatrix;
+                          parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
+    (; cell_list) = neighborhood_search
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
+
+    @inline function point_to_cell(point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+
+        # Make sure that points are not added to the outer padding layer
+        check_cell_bounds(cell_list, cell)
+
+        return cell_index(cell_list, cell)
+    end
+
+    # Sort the points by cell. The inactive points are sorted to the end.
+    update!(cell_list.cells, point_to_cell, size(y, 2), parallelization_backend;
+            active_values = eachindex_y)
+
+    return neighborhood_search
+end
+
+@inline sorts_points(::SortingGridNHS) = true
+
+@inline point_permutation(neighborhood_search::SortingGridNHS) = neighborhood_search.cell_list.cells.values
+
+function sorted_neighborhood_search(neighborhood_search::SortingGridNHS)
+    (; cell_list) = neighborhood_search
+    (; cells) = cell_list
+
+    # After reordering the points, the points in each cell are simply a range of points.
+    # We use `Int` here to avoid conversions in the neighbor loops.
+    values = Base.OneTo(length(cells.values))
+    sorted_cells = CompactVectorOfVectors(values, cells.first_bin_index, cells.bin_counts,
+                                          cells.value_bins, cells.tail_index)
+    sorted_cell_list = FullGridCellList(sorted_cells, cell_list.linear_indices,
+                                        cell_list.min_corner, cell_list.max_corner)
+
+    return GridNeighborhoodSearch(sorted_cell_list, neighborhood_search.search_radius,
+                                  neighborhood_search.periodic_box,
+                                  neighborhood_search.n_cells,
+                                  neighborhood_search.cell_size,
+                                  neighborhood_search.update_buffer,
+                                  neighborhood_search.update_strategy)
+end
+
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
     (; periodic_box) = nhs

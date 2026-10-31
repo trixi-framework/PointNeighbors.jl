@@ -160,6 +160,42 @@
                                                                      Val(true))
     end
 
+    @testset "Sorting Points" begin
+        cell_list_sorting = FullGridCellList(; min_corner = cell_list.min_corner,
+                                             max_corner = cell_list.max_corner,
+                                             search_radius,
+                                             backend = CompactVectorOfVectors{Int32})
+        template_sorting = GridNeighborhoodSearch{3}(; cell_list = cell_list_sorting)
+        nhs_sorting = CombinedGridNeighborhoodSearch(template_sorting, search_radius,
+                                                     size.(coords, 2))
+        initialize!(nhs_sorting, 1, coords1)
+        initialize!(nhs_sorting, 2, coords2)
+
+        pair = point_set_pair(nhs_sorting, 1, 2)
+        @test sorts_points(pair)
+        @test !sorts_points(point_set_pair(nhs, 1, 2))
+
+        # Reorder both point sets with the permutations of their own cell lists.
+        perm1 = point_permutation(point_set_pair(nhs_sorting, 1, 1))
+        perm2 = point_permutation(pair)
+        @test perm2 == point_permutation(point_set_pair(nhs_sorting, 2, 2))
+        @test sort(perm1) == axes(coords1, 2)
+        @test sort(perm2) == axes(coords2, 2)
+
+        results_expected = neighbor_sums_expected(coords1, coords2, cell_list,
+                                                  search_radius)
+        results,
+        _ = neighbor_sums(foreach_point, coords1[:, perm1], coords2[:, perm2],
+                          sorted_neighborhood_search(pair), PolyesterBackend(),
+                          Val(false))
+
+        # Point `i` of the sorted points is point `perm1[i]` of the original points.
+        @test [result[1] for result in results] ≈
+              [result[1] for result in results_expected[perm1]]
+        @test [result[2][2] for result in results] ==
+              [result[2][2] for result in results_expected[perm1]]
+    end
+
     @testset "Copy" begin
         pair = point_set_pair(nhs, 1, 2)
         @test copy_neighborhood_search(pair, 1.0, 10) isa GridNeighborhoodSearch

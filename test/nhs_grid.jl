@@ -342,4 +342,73 @@
         end
         @test all(is_regular)
     end
+
+    @testset verbose=true "Sorting points with `CompactVectorOfVectors`" begin
+        cloud_sizes = [(30, 31), (10, 11, 12)]
+        search_radius = 2.5
+
+        @testset verbose=true "$(length(cloud_size))D, $active" for cloud_size in
+                                                                    cloud_sizes,
+                                                                    active in
+                                                                    ("all points",
+                                                                     "subset of points")
+
+            NDIMS = length(cloud_size)
+            coords = point_cloud(cloud_size, search_radius, shuffle = true)
+            n_points = size(coords, 2)
+            eachindex_y = active == "all points" ? axes(coords, 2) :
+                          sort!(Random.randperm(Random.Xoshiro(1), n_points)[1:(n_points ÷ 2)])
+
+            min_corner = minimum(coords, dims = 2)
+            max_corner = maximum(coords, dims = 2)
+            cell_list = FullGridCellList(; min_corner, max_corner, search_radius,
+                                         backend = CompactVectorOfVectors{Int32})
+            nhs = GridNeighborhoodSearch{NDIMS}(; search_radius, n_points, cell_list)
+
+            @test sorts_points(nhs)
+            @test !sorts_points(GridNeighborhoodSearch{NDIMS}(; search_radius, n_points))
+            @test_throws "not supported" point_permutation(TrivialNeighborhoodSearch{NDIMS}())
+
+            # Initialize with other coordinates first to test the update
+            initialize!(nhs, coords, coords[:, end:-1:1])
+            update!(nhs, coords, coords; eachindex_y)
+
+            perm = point_permutation(nhs)
+            @test sort(perm) == axes(coords, 2)
+
+            # The active points are sorted by cell
+            n_active = length(eachindex_y)
+            @test sort(perm[1:n_active]) == eachindex_y
+            cells = [PointNeighbors.cell_index(nhs.cell_list,
+                                               PointNeighbors.cell_coords(coords[:, point],
+                                                                          nhs))
+                     for point in perm[1:n_active]]
+            @test issorted(cells)
+
+            # The inactive points are sorted to the end in increasing order
+            @test perm[(n_active + 1):end] == setdiff(axes(coords, 2), eachindex_y)
+
+            # Use the sorted neighborhood search with the sorted coordinates
+            sorted_coords = coords[:, perm]
+            sorted_nhs = sorted_neighborhood_search(nhs)
+
+            neighbors_expected = [[j
+                                   for j in eachindex_y
+                                   if sum(abs2, coords[:, i] - coords[:, j]) <=
+                                      search_radius^2]
+                                  for i in axes(coords, 2)]
+
+            neighbors = [Int[] for _ in axes(coords, 2)]
+            foreach_point_neighbor(coords, sorted_coords, sorted_nhs,
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbor,
+                                                                                 pos_diff,
+                                                                                 distance
+                # Convert the index of the sorted neighbor to its original index
+                push!(neighbors[point], perm[neighbor])
+            end
+
+            @test sort.(neighbors) == neighbors_expected
+        end
+    end
 end;

@@ -91,6 +91,13 @@ the cell list of the point set `system_index` must have been initialized or upda
 `system_coords`, and the cell list of the point set `neighbor_index` with `neighbor_coords`.
 The `eachindex` of the cell list of the point set `system_index` must contain all `points`
 passed to [`foreach_point`](@ref).
+
+When the cell lists sort the points (see [`sorts_points`](@ref)),
+[`point_permutation`](@ref) of the returned neighborhood search is the permutation of the
+point set `neighbor_index`.
+[`sorted_neighborhood_search`](@ref) of the returned neighborhood search can only be used
+when the points of both point sets are reordered with the permutations of their own
+cell lists, that is, with `point_permutation(point_set_pair(nhs, i, i))` for point set `i`.
 """
 @inline function point_set_pair(nhs::CombinedGridNeighborhoodSearch, system_index,
                                 neighbor_index)
@@ -145,6 +152,19 @@ end
 function update!(nhs::PointSetPairSearch, x::AbstractMatrix, y::AbstractMatrix; kwargs...)
     throw(ArgumentError("a `PointSetPairSearch` cannot be updated. " *
                         "Update the `CombinedGridNeighborhoodSearch` instead."))
+end
+
+# The permutation sorts the points of the neighbor point set.
+@inline sorts_points(nhs::PointSetPairSearch) = sorts_points(nhs.neighbor_search)
+
+@inline point_permutation(nhs::PointSetPairSearch) = point_permutation(nhs.neighbor_search)
+
+# The returned neighborhood search requires the points of both point sets to be reordered
+# with the permutations of their own cell lists.
+function sorted_neighborhood_search(nhs::PointSetPairSearch)
+    return PointSetPairSearch(sorted_neighborhood_search(nhs.system_search),
+                              sorted_neighborhood_search(nhs.neighbor_search),
+                              nhs.system_index, nhs.neighbor_index)
 end
 
 function copy_neighborhood_search(nhs::PointSetPairSearch, search_radius, n_points;

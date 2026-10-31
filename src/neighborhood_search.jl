@@ -14,6 +14,53 @@ function requires_update(::AbstractNeighborhoodSearch)
 end
 
 """
+    sorts_points(search::AbstractNeighborhoodSearch)
+
+Returns `true` if this neighborhood search sorts the points in `y` in every
+[`initialize!`](@ref) and [`update!`](@ref), so that [`point_permutation`](@ref)
+and [`sorted_neighborhood_search`](@ref) can be used.
+Currently, this is only the case for a [`GridNeighborhoodSearch`](@ref) with a
+[`FullGridCellList`](@ref) with the `CompactVectorOfVectors` backend.
+"""
+sorts_points(::AbstractNeighborhoodSearch) = false
+
+"""
+    point_permutation(search::AbstractNeighborhoodSearch)
+
+Return a permutation `perm` of the points in `y` (the second coordinate array passed to
+[`initialize!`](@ref) and [`update!`](@ref)) that sorts the points for better memory
+locality, where `perm[i]` is the index of the point that is the `i`-th point in the
+sorted order.
+The inactive points, which are not in `eachindex_y`, are sorted to the end
+in increasing order.
+
+This is only supported when [`sorts_points`](@ref) returns `true`.
+The permutation is overwritten in the next `update!`.
+
+Use [`sorted_neighborhood_search`](@ref) to obtain a neighborhood search that can be used
+with the reordered points `y[:, perm]`.
+"""
+function point_permutation(search::AbstractNeighborhoodSearch)
+    error("`point_permutation` is not supported for this neighborhood search")
+end
+
+"""
+    sorted_neighborhood_search(search::AbstractNeighborhoodSearch)
+
+Return a neighborhood search that can be used with the points in `y` reordered by
+[`point_permutation`](@ref), that is, with `y[:, point_permutation(search)]` as second
+coordinate array (and an arbitrary first coordinate array).
+
+The returned neighborhood search shares its data with `search`.
+It must not be initialized or updated, and it is only valid until `search` is updated.
+
+This is only supported when [`sorts_points`](@ref) returns `true`.
+"""
+function sorted_neighborhood_search(search::AbstractNeighborhoodSearch)
+    error("`sorted_neighborhood_search` is not supported for this neighborhood search")
+end
+
+"""
     initialize!(search::AbstractNeighborhoodSearch, x, y;
                 parallelization_backend = default_backend(x),
                 eachindex_y = axes(y, 2))
