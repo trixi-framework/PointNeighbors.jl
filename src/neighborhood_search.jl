@@ -326,8 +326,11 @@ end
                        This is currently only used on CPUs for a pair of point sets of
                        a [`CombinedGridNeighborhoodSearch`](@ref) (see
                        [`point_set_pair`](@ref)) of [`GridNeighborhoodSearch`](@ref)es
-                       with a [`FullGridCellList`](@ref) with the default backend
-                       in up to three dimensions without periodicity.
+                       with a [`FullGridCellList`](@ref) with the default backend or the
+                       `CompactVectorOfVectors` backend in up to three dimensions without
+                       periodicity.
+                       This is fastest with points sorted by cell
+                       (see [`sorted_neighborhood_search`](@ref)).
                        Otherwise, the regular neighbor loop is used.
                        When the SIMD-vectorized loop is used, all points in `points`
                        must be stored in the cell list of the system points, i.e.,

@@ -182,18 +182,39 @@
         @test sort(perm1) == axes(coords1, 2)
         @test sort(perm2) == axes(coords2, 2)
 
-        results_expected = neighbor_sums_expected(coords1, coords2, cell_list,
-                                                  search_radius)
-        results,
-        _ = neighbor_sums(foreach_point, coords1[:, perm1], coords2[:, perm2],
-                          sorted_neighborhood_search(pair), PolyesterBackend(),
-                          Val(false))
+        results_expected = [neighbor_sums_expected(coords1, coords_, cell_list,
+                                                   search_radius)
+                            for coords_ in (coords1, coords2)]
 
-        # Point `i` of the sorted points is point `perm1[i]` of the original points.
-        @test [result[1] for result in results] ≈
-              [result[1] for result in results_expected[perm1]]
-        @test [result[2][2] for result in results] ==
-              [result[2][2] for result in results_expected[perm1]]
+        # The sorted coordinates, also in a structure-of-arrays layout,
+        # which allows SIMD loads.
+        soa(x) = PermutedDimsArray(copy(x'), (2, 1))
+        sorted_coords = Dict("AoS" => (coords1[:, perm1], coords2[:, perm2]),
+                             "SoA" => (soa(coords1[:, perm1]), soa(coords2[:, perm2])))
+
+        @testset "Pair (1, $neighbor_index), $layout, simd = $simd" for neighbor_index in
+                                                                         (1, 2),
+                                                                         layout in
+                                                                         ("AoS", "SoA"),
+                                                                         simd in
+                                                                         (Val(false),
+                                                                          Val(true))
+
+            system_coords = sorted_coords[layout][1]
+            neighbor_coords = sorted_coords[layout][neighbor_index]
+            pair_ = point_set_pair(nhs_sorting, 1, neighbor_index)
+            results,
+            is_blocked = neighbor_sums(foreach_point, system_coords, neighbor_coords,
+                                       sorted_neighborhood_search(pair_),
+                                       PolyesterBackend(), simd)
+            @test all(is_blocked) == (simd isa Val{true})
+
+            # Point `i` of the sorted points is point `perm1[i]` of the original points.
+            expected = results_expected[neighbor_index][perm1]
+            @test [result[1] for result in results] ≈ [result[1] for result in expected]
+            @test [result[2][2] for result in results] ==
+                  [result[2][2] for result in expected]
+        end
     end
 
     @testset "Copy" begin

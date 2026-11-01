@@ -17,6 +17,9 @@
 #
 # The points of a block are generally not contiguous in memory, so the values of the
 # neighbors are loaded through the cell list (gather instructions).
+# For points sorted by cell (see `sorted_neighborhood_search`), the points of a block are
+# contiguous in memory, which the compiler can see from the cell list, so the values of
+# the neighbors are loaded with SIMD loads.
 #
 # The points of the outer loop are taken from a cell list of the system points on the same
 # grid as the cell list of the neighbor points. Therefore, this is only implemented for the
@@ -37,23 +40,36 @@ macro ivdep(ex)
 end
 
 # A `GridNeighborhoodSearch` with a `FullGridCellList` with `DynamicVectorOfVectors`
-# backend on CPUs without periodicity.
+# or `CompactVectorOfVectors` backend on CPUs without periodicity.
 const BlockedGridNHS = GridNeighborhoodSearch{<:Any, <:Any,
-                                              <:FullGridCellList{<:DynamicVectorOfVectors{<:Any,
-                                                                                          <:Array}},
+                                              <:FullGridCellList{<:Union{DynamicVectorOfVectors{<:Any,
+                                                                                                <:Array},
+                                                                         CompactVectorOfVectors{<:Any,
+                                                                                                <:Any,
+                                                                                                <:Array}}},
                                               <:Any, Nothing}
 
 # The points of all cells are stored in `cell_entries(cells)`. The points of a cell are
 # the `n_points_in_cell(cells, cell)` consecutive entries starting at the linear index
 # `first_entry_in_cell(cells, cell)`.
+# For sorted points, the entries of a `CompactVectorOfVectors` are `Base.OneTo(n_points)`.
 @inline cell_entries(cells::DynamicVectorOfVectors) = cells.backend
+@inline cell_entries(cells::CompactVectorOfVectors) = cells.values
 
 @propagate_inbounds function n_points_in_cell(cells::DynamicVectorOfVectors, cell)
     return cells.lengths[cell]
 end
 
+@propagate_inbounds function n_points_in_cell(cells::CompactVectorOfVectors, cell)
+    return cells.first_bin_index[cell + 1] - cells.first_bin_index[cell]
+end
+
 @inline function first_entry_in_cell(cells::DynamicVectorOfVectors, cell)
     return (cell - 1) * size(cells.backend, 1) + 1
+end
+
+@propagate_inbounds function first_entry_in_cell(cells::CompactVectorOfVectors, cell)
+    return cells.first_bin_index[cell]
 end
 
 # Number of points that are stored in all cells.
