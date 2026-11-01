@@ -19,7 +19,8 @@
 # neighbors are loaded through the cell list (gather instructions).
 # For points sorted by cell (see `sorted_neighborhood_search`), the points of a block are
 # contiguous in memory, which the compiler can see from the cell list, so the values of
-# the neighbors are loaded with SIMD loads.
+# the neighbors are loaded with SIMD loads. For these, a faster filter is used
+# (see `nhs_grid_blocked_sorted.jl`).
 #
 # The points of the outer loop are taken from a cell list of the system points on the same
 # grid as the cell list of the neighbor points. Therefore, this is only implemented for the

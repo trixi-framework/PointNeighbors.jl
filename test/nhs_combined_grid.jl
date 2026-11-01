@@ -13,7 +13,8 @@
         foreach_point_(system_coords, neighbor_coords, nhs; simd, points,
                        parallelization_backend = backend) do point, neighbors
             results[point] = mapreduce_neighbor(f, op, neighbors; init)
-            is_blocked[point] = neighbors isa PointNeighbors.NeighborBlocksOfPoint
+            # Any other type than the one of the regular loop.
+            is_blocked[point] = !(neighbors isa PointNeighbors.NeighborsOfPoint)
         end
 
         return results, is_blocked
@@ -214,6 +215,26 @@
             @test [result[1] for result in results] ≈ [result[1] for result in expected]
             @test [result[2][2] for result in results] ==
                   [result[2][2] for result in expected]
+        end
+
+        @testset "Inactive Points" begin
+            # The inactive points of the first point set are sorted to the end.
+            active = setdiff(axes(coords1, 2), [3, 17, 200, 1000])
+            initialize!(nhs_sorting, 1, coords1, eachindex = active)
+            perm1 = point_permutation(point_set_pair(nhs_sorting, 1, 1))
+            points = 1:length(active)
+
+            results,
+            is_blocked = neighbor_sums(foreach_point, coords1[:, perm1],
+                                       coords2[:, perm2],
+                                       sorted_neighborhood_search(pair),
+                                       PolyesterBackend(), Val(true); points)
+            @test count(is_blocked) == length(points)
+            @test all(is_blocked[points])
+            @test [result[1] for result in results[points]] ≈
+                  [result[1] for result in results_expected[2][perm1[points]]]
+            @test [result[2][2] for result in results[points]] ==
+                  [result[2][2] for result in results_expected[2][perm1[points]]]
         end
     end
 
