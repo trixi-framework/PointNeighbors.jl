@@ -20,6 +20,11 @@ function construct_backend(::Type{Vector{Vector{T}}},
     return [T[] for _ in 1:max_outer_length]
 end
 
+function construct_backend(::Type{CompactVectorOfVectors{T}},
+                           max_outer_length, _) where {T}
+    return CompactVectorOfVectors{T}(n_bins = max_outer_length)
+end
+
 function construct_backend(::Type{DynamicVectorOfVectors{T}},
                            max_outer_length, max_inner_length;
                            transpose_backend = false) where {T}
@@ -39,6 +44,13 @@ function construct_backend(::Type{DynamicVectorOfVectors{T1, T2, T3, T4}},
                            transpose_backend = false) where {T1, T2, T3, T4}
     return construct_backend(DynamicVectorOfVectors{T1}, max_outer_length,
                              max_inner_length; transpose_backend)
+end
+
+function construct_backend(::Type{CompactVectorOfVectors{T1, T2, T3, T4}},
+                           max_outer_length, max_inner_length,
+                           transpose_backend = false) where {T1, T2, T3, T4}
+    return construct_backend(CompactVectorOfVectors{T1}, max_outer_length,
+                             max_inner_length)
 end
 
 function max_points_per_cell(cells::DynamicVectorOfVectors)
