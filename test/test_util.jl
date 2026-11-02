@@ -3,6 +3,7 @@
 using Test: @test, @testset, @test_throws
 using TrixiTest: @trixi_test_nowarn, trixi_include
 using PointNeighbors
+using CellListMap: CellListMap
 
 """
     @trixi_testset "name of the testset" #= code to test #=
