@@ -200,39 +200,46 @@
     end
 
     @testset "Neighbor Index Parts $(NDIMS)D" for NDIMS in 1:3
-        # The parts of the neighboring leaves computed with Morton increments and decrements
+        # The parts of the neighboring cells computed with Morton increments and decrements
         # must match the parts computed with `cell_index_part`, also when the neighboring
-        # leaf is in the neighboring root cell.
-        cell_list_ = TreeCellList(min_corner = zeros(NDIMS), max_corner = fill(3.0, NDIMS),
-                                  root_cell_size = 1.0)
-        nhs = TreeNeighborhoodSearch{NDIMS}(cell_list = cell_list_, search_radius = 0.25)
-        (; cell_list) = nhs
-        n_leaves = PointNeighbors.n_cells_per_dimension(cell_list, 2)
+        # cell is in the neighboring root cell.
+        cell_list = TreeCellList(min_corner = zeros(NDIMS), max_corner = fill(3.0, NDIMS),
+                                 root_cell_size = 1.0)
 
-        for dim in 1:NDIMS, leaf in 1:(n_leaves[dim] - 2)
-            parts = PointNeighbors.neighbor_index_parts(cell_list, dim, leaf, nothing)
-            expected = Tuple(PointNeighbors.cell_index_part(cell_list, dim, leaf + i, 2)
-                             for i in -1:1)
-            @test parts == expected
+        for level in 0:3
+            n_cells = PointNeighbors.n_cells_per_dimension(cell_list, level)
+
+            for dim in 1:NDIMS, cell in 1:(n_cells[dim] - 2)
+                parts = PointNeighbors.neighbor_index_parts(cell_list, dim, cell, level,
+                                                            nothing)
+                expected = Tuple(PointNeighbors.cell_index_part(cell_list, dim, cell + i,
+                                                                level)
+                                 for i in -1:1)
+                @test parts == expected
+            end
         end
 
-        # With periodicity, the neighboring leaves of the leaves at the boundary are
-        # the leaves at the opposite boundary.
+        # With periodicity, the neighboring cells of the cells at the boundary are
+        # the cells at the opposite boundary.
         periodic_box = PeriodicBox(min_corner = zeros(NDIMS), max_corner = fill(3.0, NDIMS))
         cell_list_ = TreeCellList(min_corner = zeros(NDIMS), max_corner = fill(3.0, NDIMS),
                                   root_cell_size = 1.0)
         nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list = cell_list_,
                                             search_radius = 0.25, periodic_box)
         (; cell_list) = nhs
-        n_leaves = PointNeighbors.n_cells_per_dimension(cell_list, 2)
 
-        for dim in 1:NDIMS, leaf in 0:(n_leaves[dim] - 1)
-            parts = PointNeighbors.neighbor_index_parts(cell_list, dim, leaf, periodic_box)
-            expected = Tuple(PointNeighbors.cell_index_part(cell_list, dim,
-                                                            mod(leaf + i, n_leaves[dim]),
-                                                            2)
-                             for i in -1:1)
-            @test parts == expected
+        for level in 0:3
+            n_cells = PointNeighbors.n_cells_per_dimension(cell_list, level)
+
+            for dim in 1:NDIMS, cell in 0:(n_cells[dim] - 1)
+                parts = PointNeighbors.neighbor_index_parts(cell_list, dim, cell, level,
+                                                            periodic_box)
+                expected = Tuple(PointNeighbors.cell_index_part(cell_list, dim,
+                                                                mod(cell + i, n_cells[dim]),
+                                                                level)
+                                 for i in -1:1)
+                @test parts == expected
+            end
         end
     end
 

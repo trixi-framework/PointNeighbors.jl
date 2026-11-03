@@ -100,8 +100,8 @@ end
 # and `actual_root_cell_size` is the actual size of the root cells in each dimension.
 #
 # Without periodicity, the grid has one padding layer of root cells around the domain.
-# Then, the 3^d block of leaves around each leaf inside the domain is inside the grid,
-# and we don't need to clip this block to the grid in the query.
+# Then, the 3^d block of cells around each cell inside the domain is inside the grid
+# on every level, and we don't need to clip this block to the grid in the query.
 function root_grid(min_corner, max_corner, root_cell_size, periodic_box::Nothing)
     NDIMS = length(min_corner)
 
@@ -219,16 +219,24 @@ function copy_cell_list(cell_list::TreeCellList, search_radius)
                         max_points_per_cell = max_inner_length(cells, 100))
 end
 
-# Size of the leaves in each dimension
-@inline function leaf_size(cell_list::TreeCellList)
-    (; actual_root_cell_size, leaf_level) = cell_list
+# Size of the cells at level `level` in each dimension
+@inline function cell_size(cell_list::TreeCellList, level)
+    (; actual_root_cell_size) = cell_list
 
-    return actual_root_cell_size ./ (1 << leaf_level)
+    return actual_root_cell_size ./ (1 << level)
 end
 
 # Number of cells at level `level` in each dimension
 @inline function n_cells_per_dimension(cell_list::TreeCellList, level)
     return cell_list.n_roots .<< level
+end
+
+# Zero-based Cartesian coordinates of the cell at level `level` that contains
+# the coordinates `coords`. Note that this can be outside of the grid.
+@inline function cell_coords(coords, cell_list::TreeCellList, level)
+    (; grid_min_corner) = cell_list
+
+    return Tuple(floor_to_int.((coords .- grid_min_corner) ./ cell_size(cell_list, level)))
 end
 
 # ==========================================================================================
@@ -378,23 +386,23 @@ end
 # The first cell in the root cell wraps around to the last cell (all bits in `mask` set).
 @inline morton_decrement(m, mask) = (m - 1) & mask
 
-# The parts of the linear index (see `cell_index_part`) of the leaves with the coordinates
-# `leaf - 1`, `leaf` and `leaf + 1` in dimension `dim`.
+# The parts of the linear index (see `cell_index_part`) of the cells at level `level`
+# with the coordinates `cell - 1`, `cell` and `cell + 1` in dimension `dim`.
 #
 # This is equivalent to calling `cell_index_part` for these three coordinates (with
 # periodic wrap-around), but computes the Morton index only once and then increments and
 # decrements it directly (see `morton_increment`).
 # This significantly reduces the number of registers on GPUs.
-@inline function neighbor_index_parts(cell_list, dim, leaf, periodic_box)
-    (; n_roots, leaf_level) = cell_list
+@inline function neighbor_index_parts(cell_list, dim, cell, level, periodic_box)
+    (; n_roots) = cell_list
     NDIMS = ndims(cell_list)
 
     # Coordinate of the root cell and coordinate within the root cell.
-    root = leaf >> leaf_level
-    local_coord = leaf - (root << leaf_level)
-    last_local_coord = (1 << leaf_level) - 1
+    root = cell >> level
+    local_coord = cell - (root << level)
+    last_local_coord = (1 << level) - 1
 
-    # When the leaf is the first or last leaf in its root cell, the neighbor is in the
+    # When the cell is the first or last cell in its root cell, the neighbor is in the
     # previous or next root cell.
     root_previous = ifelse(local_coord == 0,
                            previous_root(root, n_roots[dim], periodic_box), root)
@@ -408,7 +416,7 @@ end
     local_previous = morton_decrement(local_part, mask)
     local_next = morton_increment(local_part, mask)
 
-    stride = root_stride(cell_list, dim, leaf_level)
+    stride = root_stride(cell_list, dim, level)
 
     return (root_previous * stride + local_previous,
             root * stride + local_part,
@@ -431,9 +439,7 @@ end
 # `coords`, which can be outside of the domain.
 # With periodicity, `coords` must already be inside the periodic box.
 @inline function leaf_coords(coords, cell_list::TreeCellList, periodic_box)
-    (; grid_min_corner) = cell_list
-
-    leaf = Tuple(floor_to_int.((coords .- grid_min_corner) ./ leaf_size(cell_list)))
+    leaf = cell_coords(coords, cell_list, cell_list.leaf_level)
 
     return clamp_leaf(leaf, n_cells_per_dimension(cell_list, cell_list.leaf_level),
                       periodic_box)

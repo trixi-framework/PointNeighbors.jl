@@ -119,7 +119,8 @@ end
     # and `leaf + 1` in dimension `dim`, so that the indices of the 3^d block of leaves
     # around the leaf are all sums of one part from each dimension.
     index_parts = ntuple(dim -> neighbor_index_parts(cell_list, dim, leaf[dim],
-                                                     periodic_box), Val(NDIMS))
+                                                     cell_list.leaf_level, periodic_box),
+                         Val(NDIMS))
 
     reduced = init
     for offset in CartesianIndices(ntuple(_ -> -1:1, Val(NDIMS)))
@@ -129,8 +130,8 @@ end
         # the cell list has been initialized correctly.
         neighbors = points_in_leaf(cell_list, leaf_index)
 
-        reduced = mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
-                                 neighborhood_search, point, point_coords, search_radius)
+        reduced = mapreduce_points(f, op, reduced, neighbors, neighbor_coords,
+                                   neighborhood_search, point, point_coords, search_radius)
     end
 
     return reduced
@@ -143,9 +144,9 @@ end
 end
 
 # Reduce over all neighbors in the list `neighbors`
-@propagate_inbounds function mapreduce_leaf(f, op, reduced, neighbors, neighbor_coords,
-                                            neighborhood_search, point, point_coords,
-                                            search_radius)
+@propagate_inbounds function mapreduce_points(f, op, reduced, neighbors, neighbor_coords,
+                                              neighborhood_search, point, point_coords,
+                                              search_radius)
     (; periodic_box) = neighborhood_search
 
     for neighbor_ in eachindex(neighbors)
