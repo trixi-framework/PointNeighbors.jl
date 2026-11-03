@@ -261,11 +261,7 @@ function foreach_point_neighbor_unsafe(f::T, system_coords, neighbor_coords,
     return nothing
 end
 
-# Query radius of `point` in `foreach_point_neighbor`: the stored radius
-# if `search_radius === nothing`, the number itself if `search_radius` is a number,
-# and otherwise `search_radius(point)`.
-# The radius is converted to the element type of the neighborhood search before it is
-# checked, consistent with `foreach_neighbor`.
+# Query radius of `point` in `foreach_point_neighbor`.
 @inline function point_search_radius(::Nothing, neighborhood_search, point)
     return search_radius(neighborhood_search)
 end
