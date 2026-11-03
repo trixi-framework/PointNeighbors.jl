@@ -115,15 +115,9 @@ end
 
 @inline function check_list_bounds(vov::DynamicVectorOfVectors, i, new_length)
     if new_length > size(vov.backend, 1)
-        throw_list_full(vov, i)
+        Atomix.@atomic vov.lengths[i] -= 1
+        error("cell list is full. Use a larger `max_points_per_cell`.")
     end
-end
-
-# Keeping the error out of the hot loop with `@noinline` makes the parallel
-# initialization with `pushat_atomic!` about 1% faster on CPUs (3D, 1M points).
-@noinline function throw_list_full(vov, i)
-    Atomix.@atomic vov.lengths[i] -= 1
-    error("cell list is full. Use a larger `max_points_per_cell`.")
 end
 
 # `deleteat!(vov[i], j)`
