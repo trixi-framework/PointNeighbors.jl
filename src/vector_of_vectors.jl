@@ -116,7 +116,7 @@ end
 @inline function check_list_bounds(vov::DynamicVectorOfVectors, i, new_length)
     if new_length > size(vov.backend, 1)
         Atomix.@atomic vov.lengths[i] -= 1
-        error("cell list is full. Use a larger `max_points_per_cell`.")
+        error("list is full. Use a larger `max_points_per_cell` or `max_neighbors`.")
     end
 end
 

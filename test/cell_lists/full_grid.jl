@@ -87,7 +87,7 @@
 
             # Move all points into the same cell.
             y2 = fill(5.5, 2, 10)
-            error_string = "cell list is full. Use a larger `max_points_per_cell`."
+            error_string = "list is full. Use a larger `max_points_per_cell`"
             @test_throws error_string update!(nhs, y, y2)
         end
     end
