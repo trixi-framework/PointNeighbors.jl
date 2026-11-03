@@ -1,6 +1,6 @@
 @doc raw"""
     TreeCellList(; min_corner, max_corner, root_cell_size = zero(eltype(min_corner)),
-                 max_level = nothing,
+                 max_level = nothing, capacity = 0,
                  backend = DynamicVectorOfVectors{Int32}, max_points_per_cell = 100)
 
 Cell list for the [`TreeNeighborhoodSearch`](@ref), storing points in the leaves of
@@ -18,7 +18,7 @@ each root cell, so that all descendants of a cell are stored contiguously.
 The tree structure is rebuilt from scratch in every update.
 A cell at level ``L`` is split into ``2^d`` children only if the size of its children is
 at least as large as the maximum radius of all points in the ``3^d`` block of cells
-around this cell at level ``L``, and if it is not empty.
+around this cell at level ``L``, and if it contains more than `capacity` points.
 With a uniform search radius, all leaves containing points are therefore at the finest
 level with cells that are at least as large as the search radius.
 
@@ -51,6 +51,7 @@ the size of the root cells is the search radius.
                 that are at least as large as the `search_radius` of the
                 [`TreeNeighborhoodSearch`](@ref), which is the optimal choice for
                 a uniform search radius.
+- `capacity = 0`: Only split cells that contain more than `capacity` points.
 - `backend = DynamicVectorOfVectors{Int32}`: Type of the data structure to store the
     points of each leaf. Can be
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
@@ -75,6 +76,7 @@ struct TreeCellList{NDIMS, ELTYPE, C, MR, NP, LL} <: AbstractCellList
     # The finest level, or -1 if it is chosen by the neighborhood search
     # in `build_tree`
     max_level::Int
+    capacity::Int
     # The points of a leaf are stored in the list of the first finest cell inside the leaf
     cells::C
     # Pyramids with one entry for each cell at each level, see `pyramid_index`
@@ -86,7 +88,8 @@ end
 
 function TreeCellList(; min_corner, max_corner,
                       root_cell_size = zero(eltype(min_corner)), max_level = nothing,
-                      backend = DynamicVectorOfVectors{Int32}, max_points_per_cell = 100)
+                      capacity = 0, backend = DynamicVectorOfVectors{Int32},
+                      max_points_per_cell = 100)
     NDIMS = length(min_corner)
     if length(max_corner) != NDIMS
         throw(ArgumentError("`min_corner` and `max_corner` must have the same length"))
@@ -127,7 +130,8 @@ function TreeCellList(; min_corner, max_corner,
     leaf_level = zeros(Int8, 0)
 
     return TreeCellList(min_corner_, max_corner_, root_cell_size_, grid_min_corner,
-                        actual_root_cell_size, n_roots, something(max_level, -1), cells,
+                        actual_root_cell_size, n_roots, something(max_level, -1), capacity,
+                        cells,
                         max_radius, zeros(ELTYPE, 1), n_points, leaf_level)
 end
 
@@ -188,7 +192,7 @@ end
 # Without a given `max_level`, the finest level is the finest level with cells that are
 # at least as large as `search_radius`.
 function build_tree(cell_list::TreeCellList, search_radius, periodic_box)
-    (; min_corner, max_corner, root_cell_size, cells) = cell_list
+    (; min_corner, max_corner, root_cell_size, capacity, cells) = cell_list
     NDIMS = ndims(cell_list)
     ELTYPE = eltype(cell_list)
 
@@ -238,7 +242,7 @@ function build_tree(cell_list::TreeCellList, search_radius, periodic_box)
     leaf_level = zeros(Int8, n_cells)
 
     return TreeCellList(min_corner, max_corner, root_cell_size, grid_min_corner,
-                        actual_root_cell_size, n_roots, max_level, cells_,
+                        actual_root_cell_size, n_roots, max_level, capacity, cells_,
                         max_radius,
                         max_radius_all, n_points, leaf_level)
 end
@@ -253,13 +257,13 @@ end
 # Return an empty cell list with the same configuration as `cell_list`, but with root cells
 # of the size of the search radius `search_radius`.
 function copy_cell_list(cell_list::TreeCellList, search_radius)
-    (; min_corner, max_corner, cells) = cell_list
+    (; min_corner, max_corner, capacity, cells) = cell_list
 
     # Keep `max_level` only if it was set explicitly
     max_level = cell_list.max_level < 0 ? nothing : cell_list.max_level
 
     return TreeCellList(; min_corner, max_corner, root_cell_size = search_radius,
-                        max_level, backend = typeof(cells),
+                        max_level, capacity, backend = typeof(cells),
                         max_points_per_cell = max_inner_length(cells, 100))
 end
 
@@ -686,7 +690,7 @@ end
 # is split, and store the level of the leaf containing this cell in `leaf_level`.
 # Note that this requires the parent level to be processed already.
 @inline function split_cell!(cell_list, cell, level, periodic_box)
-    (; leaf_level, n_points, max_level) = cell_list
+    (; leaf_level, n_points, capacity, max_level) = cell_list
     NDIMS = ndims(cell_list)
 
     cell_index_ = cell_index(cell_list, cell, level)
@@ -705,7 +709,7 @@ end
     # This cell is a node of the tree. Split it if possible.
     # Empty cells are never split, so the cells in the padding layer of root cells
     # are leaves at level 0.
-    if level < max_level && n_points[i] > 0 &&
+    if level < max_level && n_points[i] > capacity &&
        can_split(cell_list, cell, level, periodic_box)
         leaf_level[i] = -1
     else
