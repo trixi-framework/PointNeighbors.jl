@@ -319,6 +319,13 @@
         radii = [0.1, 0.4]
         update_tree!(nhs, coords, radii)
         @test finest_leaf_levels(nhs) == [1, 1, 1, 1, 1, 1, 1, 1]
+
+        # With a capacity of 1 point per cell, only the root cell with 2 points is split
+        cell_list = TreeCellList(min_corner = (0.0,), max_corner = (1.0,),
+                                 root_cell_size = 1.0, max_level = 3, capacity = 1)
+        nhs = TreeNeighborhoodSearch{1}(; cell_list)
+        initialize_tree!(nhs, coords, [0.1, 0.2])
+        @test finest_leaf_levels(nhs) == [1, 1, 1, 1, 1, 1, 1, 1]
     end
 
     @testset "Points Stored in Leaves" begin
@@ -402,6 +409,8 @@
             "Vector{Vector} Backend" => TreeCellList(; min_corner, max_corner,
                                                      root_cell_size = 0.25, max_level,
                                                      backend = Vector{Vector{Int32}}),
+            "Capacity 8" => TreeCellList(; min_corner, max_corner, root_cell_size = 0.25,
+                                         max_level, capacity = 8),
             # Larger root cells, so that the 3^d block around a cell can be in multiple
             # root cells on every level
             "Root Cells of Size 1" => TreeCellList(; min_corner, max_corner,
@@ -464,7 +473,7 @@
             # Without the explicit `max_level`, the finest level is chosen for the search
             # radius
             cell_list = TreeCellList(; cell_list_.min_corner, cell_list_.max_corner,
-                                     cell_list_.root_cell_size,
+                                     cell_list_.root_cell_size, cell_list_.capacity,
                                      backend = typeof(cell_list_.cells))
             nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, search_radius)
 
@@ -582,6 +591,36 @@
             end
         end
 
+        @testset "Coarse Leaves at the Periodic Boundary" begin
+            # Many points on the left and only a few points in the strip x > 0.9
+            # at the right side of the periodic box
+            periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [1.0, 1.0])
+            coords = hcat([0.9; 1;;] .* rand(2, 5_000),
+                          [0.9; 0;;] .+ [0.1; 1;;] .* rand(2, 20))
+            radii = fill(0.03, size(coords, 2))
+
+            # With a capacity of 8, the root cells in the right strip with only a few points
+            # are not split. The other root cells are split into cells of size 0.05.
+            cell_list = TreeCellList(; periodic_box.min_corner, periodic_box.max_corner,
+                                     root_cell_size = 0.1, max_level = 3, capacity = 8)
+            nhs = TreeNeighborhoodSearch{2}(; cell_list, periodic_box,
+                                            n_points = size(coords, 2))
+            initialize_tree!(nhs, coords, radii)
+
+            # The leaves on the left side of the periodic boundary are finer than the
+            # leaves on the right side, so the 3^d block around a leaf on the left
+            # contains coarser leaves on the other side of the periodic boundary.
+            function leaf_level(x)
+                finest_cell = PointNeighbors.finest_cell_index(SVector(x...),
+                                                               nhs.cell_list, periodic_box)
+                return PointNeighbors.leaf_level(nhs.cell_list, finest_cell)
+            end
+            @test leaf_level(coords[:, 1]) == 1
+            @test leaf_level(coords[:, end]) == 0
+
+            @test neighbors_match(nhs, coords, radii, coords, radii; periodic_box)
+        end
+
         @testset "Errors" begin
             periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [1.0, 0.5])
 
@@ -678,7 +717,7 @@
 
     @testset "`copy_neighborhood_search`" begin
         cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 2.0),
-                                 root_cell_size = 0.5, max_level = 4)
+                                 root_cell_size = 0.5, max_level = 4, capacity = 3)
         nhs = TreeNeighborhoodSearch{2}(; cell_list, neighbor_criterion = QueryRadius(),
                                         update_strategy = SerialUpdate())
 
@@ -688,6 +727,7 @@
         @test copy.cell_list.min_corner == cell_list.min_corner
         @test copy.cell_list.max_corner == cell_list.max_corner
         @test copy.cell_list.max_level == 4
+        @test copy.cell_list.capacity == 3
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
         @test copy.neighbor_criterion == QueryRadius()
         @test copy.update_strategy == SerialUpdate()
