@@ -31,7 +31,7 @@ export DynamicVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
 export requires_update
-export initialize!, update!, initialize_grid!, update_grid!
+export initialize!, update!, initialize_grid!, update_grid!, initialize_tree!, update_tree!
 export SerialBackend, PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend,
        default_backend
 export PeriodicBox, copy_neighborhood_search
