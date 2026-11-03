@@ -2,9 +2,15 @@
     # Fixed seed to ensure reproducibility of the random point clouds below.
     Random.seed!(1)
 
-    # Brute-force reference: all points `j` in `y` with `|x - y_j| <= max(h, h_j)`.
+    # Search radius of a pair of a query point with radius `h` and a point with radius `h_j`
+    reference_radius(::MaximumRadius, h, h_j) = max(h, h_j)
+    reference_radius(::AverageRadius, h, h_j) = (h + h_j) / 2
+    reference_radius(::QueryRadius, h, h_j) = h
+
+    # Brute-force reference: all points `j` in `y` with `|x - y_j| <= r(h, h_j)`.
     # With periodicity, use the distance to the closest periodic image.
     function brute_force_neighbors(x, h, y, radii; eachindex_y = axes(y, 2),
+                                   neighbor_criterion = MaximumRadius(),
                                    periodic_box = nothing)
         # Compute all distances at once, which is much faster than a loop over all points
         # with a closure inside of a test set
@@ -13,13 +19,15 @@
 
         return [j
                 for j in eachindex_y
-                if distances[j] <= max(h, radii[j])]
+                if distances[j] <= reference_radius(neighbor_criterion, h, radii[j])]
     end
 
     periodic_difference(pos_diff, ::Nothing) = pos_diff
     function periodic_difference(pos_diff, periodic_box)
         return pos_diff .- periodic_box.size .* round.(pos_diff ./ periodic_box.size)
     end
+
+    neighbor_criteria = (MaximumRadius(), AverageRadius(), QueryRadius())
 
     # All neighbors of the point `x` with search radius `h` found by the tree NHS, sorted.
     function tree_neighbors(nhs, x, h, y)
@@ -54,6 +62,13 @@
 
         error_str = "`TreeNeighborhoodSearch` requires a `TreeCellList`"
         @test_throws error_str TreeNeighborhoodSearch{2}(cell_list = DictionaryCellList{2}())
+
+        error_str = "`neighbor_criterion` must be"
+        @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list,
+                                                         neighbor_criterion = :maximum)
+
+        # The maximum radius is the default criterion
+        @test TreeNeighborhoodSearch{2}(; cell_list).neighbor_criterion == MaximumRadius()
 
         error_str = "is not a valid update strategy"
         @test_throws error_str TreeNeighborhoodSearch{2}(; cell_list,
@@ -413,20 +428,27 @@
                                                           radius_distributions
 
             radii = [radius(coords[:, j]) for j in axes(coords, 2)]
-            nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list)
 
-            # Initialize with different coordinates first to also test the update
-            initialize_tree!(nhs, rand(NDIMS, n_points), radii)
-            update_tree!(nhs, coords, radii)
+            # The same tree is used for all neighbor criteria
+            @testset "$(nameof(typeof(neighbor_criterion)))" for neighbor_criterion in
+                                                                 neighbor_criteria
 
-            # Query each point of the tree with its own radius
-            @test neighbors_match(nhs, coords, radii, coords, radii)
+                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, neighbor_criterion)
 
-            # Query arbitrary points with arbitrary radii up to the size of the root
-            # cells, including points outside of the domain
-            query_coords = 1.6 .* rand(NDIMS, 200) .- 0.3
-            query_radii = cell_list.root_cell_size .* rand(200) .^ 2
-            @test neighbors_match(nhs, query_coords, query_radii, coords, radii)
+                # Initialize with different coordinates first to also test the update
+                initialize_tree!(nhs, rand(NDIMS, n_points), radii)
+                update_tree!(nhs, coords, radii)
+
+                # Query each point of the tree with its own radius
+                @test neighbors_match(nhs, coords, radii, coords, radii; neighbor_criterion)
+
+                # Query arbitrary points with arbitrary radii up to the size of the root
+                # cells, including points outside of the domain
+                query_coords = 1.6 .* rand(NDIMS, 200) .- 0.3
+                query_radii = cell_list.root_cell_size .* rand(200) .^ 2
+                @test neighbors_match(nhs, query_coords, query_radii, coords, radii;
+                                      neighbor_criterion)
+            end
         end
 
         # A uniform search radius with `initialize!` and `update!`.
@@ -521,22 +543,29 @@
             cell_list = TreeCellList(; min_corner, max_corner, root_cell_size = 0.11,
                                      max_level = 4, max_points_per_cell = 500)
 
-            nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, periodic_box, n_points)
-            initialize_tree!(nhs, coords, radii)
+            @testset "$(nameof(typeof(neighbor_criterion)))" for neighbor_criterion in
+                                                                 neighbor_criteria
 
-            # The root cells tile the periodic box exactly
-            (; actual_root_cell_size, n_roots) = nhs.cell_list
-            @test actual_root_cell_size .* n_roots ≈ periodic_box.size
+                nhs = TreeNeighborhoodSearch{NDIMS}(; cell_list, periodic_box, n_points,
+                                                    neighbor_criterion)
+                initialize_tree!(nhs, coords, radii)
 
-            # Query each point of the tree with its own radius
-            @test neighbors_match(nhs, coords, radii, coords, radii; periodic_box)
+                # The root cells tile the periodic box exactly
+                (; actual_root_cell_size, n_roots) = nhs.cell_list
+                @test actual_root_cell_size .* n_roots ≈ periodic_box.size
 
-            # Query arbitrary points, including points outside of the periodic box,
-            # with arbitrary radii up to the size of the root cells
-            query_coords = min_corner .- 0.5 .+ 2 .* periodic_box.size .* rand(NDIMS, 200)
-            query_radii = 0.11 .* rand(200)
-            @test neighbors_match(nhs, query_coords, query_radii, coords, radii;
-                                  periodic_box)
+                # Query each point of the tree with its own radius
+                @test neighbors_match(nhs, coords, radii, coords, radii; neighbor_criterion,
+                                      periodic_box)
+
+                # Query arbitrary points, including points outside of the periodic box,
+                # with arbitrary radii up to the size of the root cells
+                query_coords = min_corner .- 0.5 .+
+                               2 .* periodic_box.size .* rand(NDIMS, 200)
+                query_radii = 0.11 .* rand(200)
+                @test neighbors_match(nhs, query_coords, query_radii, coords, radii;
+                                      neighbor_criterion, periodic_box)
+            end
 
             # A uniform search radius with `initialize!`
             @testset "Uniform Search Radius, Root Cells of Size $root_cell_size" for root_cell_size in
@@ -650,7 +679,8 @@
     @testset "`copy_neighborhood_search`" begin
         cell_list = TreeCellList(min_corner = (0.0, 0.0), max_corner = (1.0, 2.0),
                                  root_cell_size = 0.5, max_level = 4)
-        nhs = TreeNeighborhoodSearch{2}(; cell_list, update_strategy = SerialUpdate())
+        nhs = TreeNeighborhoodSearch{2}(; cell_list, neighbor_criterion = QueryRadius(),
+                                        update_strategy = SerialUpdate())
 
         copy = copy_neighborhood_search(nhs, 0.1, 10)
 
@@ -659,6 +689,7 @@
         @test copy.cell_list.max_corner == cell_list.max_corner
         @test copy.cell_list.max_level == 4
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
+        @test copy.neighbor_criterion == QueryRadius()
         @test copy.update_strategy == SerialUpdate()
 
         # The root cells of the copy have the size of the search radius.
