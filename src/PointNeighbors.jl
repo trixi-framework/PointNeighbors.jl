@@ -27,6 +27,7 @@ export foreach_point_neighbor, foreach_point_neighbor_unsafe,
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch,
        TreeNeighborhoodSearch
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeCellList
+export MaximumRadius, AverageRadius, QueryRadius
 export DynamicVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate

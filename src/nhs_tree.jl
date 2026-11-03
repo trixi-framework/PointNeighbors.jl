@@ -1,14 +1,71 @@
+abstract type AbstractNeighborCriterion end
+
+@doc raw"""
+    MaximumRadius()
+
+Neighbor criterion for the [`TreeNeighborhoodSearch`](@ref).
+A point ``j`` with search radius ``h_j`` is a neighbor of a query point ``x`` with search
+radius ``h`` if
+```math
+\| x - y_j \| \leq \max(h, h_j).
+```
+This is the safe default, which finds all pairs of points within the search radius of
+either point. The other criteria find a subset of these pairs.
+
+See also [`AverageRadius`](@ref) and [`QueryRadius`](@ref).
+"""
+struct MaximumRadius <: AbstractNeighborCriterion end
+
+@doc raw"""
+    AverageRadius()
+
+Neighbor criterion for the [`TreeNeighborhoodSearch`](@ref).
+A point ``j`` with search radius ``h_j`` is a neighbor of a query point ``x`` with search
+radius ``h`` if
+```math
+\| x - y_j \| \leq \frac{h + h_j}{2}.
+```
+
+See also [`MaximumRadius`](@ref) and [`QueryRadius`](@ref).
+"""
+struct AverageRadius <: AbstractNeighborCriterion end
+
+@doc raw"""
+    QueryRadius()
+
+Neighbor criterion for the [`TreeNeighborhoodSearch`](@ref).
+A point ``j`` is a neighbor of a query point ``x`` with search radius ``h`` if
+```math
+\| x - y_j \| \leq h,
+```
+independent of the search radius ``h_j`` of the point ``j``.
+Note that the search radii of the neighbor points are still used to build the tree.
+
+See also [`MaximumRadius`](@ref) and [`AverageRadius`](@ref).
+"""
+struct QueryRadius <: AbstractNeighborCriterion end
+
+# The search radius for a pair of a query point with search radius `h` and a point
+# with search radius `h_j`
+@inline pair_radius(::MaximumRadius, h, h_j) = max(h, h_j)
+@inline pair_radius(::AverageRadius, h, h_j) = (h + h_j) / 2
+@inline pair_radius(::QueryRadius, h, h_j) = h
+
 @doc raw"""
     TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list, n_points = 0,
+                                  neighbor_criterion = MaximumRadius(),
                                   periodic_box = nothing, update_strategy = nothing)
 
 Tree-based neighborhood search with a variable search radius ``h_j`` for each point ``j``.
 For a query point ``x`` with search radius ``h``, all points ``j`` with
 ```math
-\| x - y_j \| \leq \max(h, h_j)
+\| x - y_j \| \leq r(h, h_j)
 ```
-are considered neighbors.
-This finds all pairs of points within the search radius of either point.
+are considered neighbors, where the pair search radius ``r(h, h_j)`` is defined by the
+`neighbor_criterion`:
+- [`MaximumRadius()`](@ref): ``r(h, h_j) = \max(h, h_j)``,
+- [`AverageRadius()`](@ref): ``r(h, h_j) = (h + h_j) / 2``,
+- [`QueryRadius()`](@ref): ``r(h, h_j) = h``.
 
 The tree is constructed with [`initialize_tree!`](@ref) or [`update_tree!`](@ref)
 from the neighbor coordinates and their search radii.
@@ -50,6 +107,9 @@ cells around the leaf containing the query point, at the level of this leaf.
 - `n_points = 0`:    Total number of points in the neighbor coordinates array.
                      The default of `0` is useful together with
                      [`copy_neighborhood_search`](@ref).
+- `neighbor_criterion = MaximumRadius()`: Criterion defining which points are neighbors.
+                     See [`MaximumRadius`](@ref), [`AverageRadius`](@ref)
+                     and [`QueryRadius`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                      [`PeriodicBox`](@ref). The root cells are adjusted to tile the box
                      exactly, with at least 3 root cells in each dimension.
@@ -70,22 +130,25 @@ Now, consider a point ``j`` outside of this block.
 Then, let ``m < q`` be the finest level such that the ``3^d`` block around the cell at level
 ``m`` containing ``x`` contains ``j``. Since this cell has been split, we have
 ``s_{m+1} \geq h_j``. Since ``j`` is not in the ``3^d`` block at level ``m + 1``,
-we have ``\| x - y_j \| > s_{m+1} \geq \max(h, h_j)``.
+we have ``\| x - y_j \| > s_{m+1} \geq \max(h, h_j) \geq r(h, h_j)``.
 Therefore, ``j`` is not a neighbor of ``x``.
 
 For a point ``x = y_i`` of the tree with ``h = h_i``, the leaf containing ``x`` satisfies
 ``s_{L_x} \geq h``, so we always search at the level of the leaf, like with the
 [`GridNeighborhoodSearch`](@ref).
 """
-struct TreeNeighborhoodSearch{NDIMS, ELTYPE, US, CL, R, PB} <: AbstractNeighborhoodSearch
-    cell_list       :: CL
-    search_radius   :: ELTYPE
-    search_radii    :: R  # Copy of the search radii of the neighbor points
-    periodic_box    :: PB
-    update_strategy :: US
+struct TreeNeighborhoodSearch{NDIMS, ELTYPE, NC, US, CL, R, PB} <:
+       AbstractNeighborhoodSearch
+    cell_list          :: CL
+    search_radius      :: ELTYPE
+    search_radii       :: R  # Copy of the search radii of the neighbor points
+    neighbor_criterion :: NC
+    periodic_box       :: PB
+    update_strategy    :: US
 end
 
 function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list, n_points = 0,
+                                       neighbor_criterion = MaximumRadius(),
                                        periodic_box = nothing,
                                        update_strategy = nothing) where {NDIMS}
     if !(cell_list isa TreeCellList)
@@ -95,6 +158,11 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list, n_point
     if ndims(cell_list) != NDIMS
         throw(ArgumentError("a $(NDIMS)D cell list is required for " *
                             "a TreeNeighborhoodSearch{$(NDIMS)}"))
+    end
+
+    if !(neighbor_criterion isa AbstractNeighborCriterion)
+        throw(ArgumentError("`neighbor_criterion` must be `MaximumRadius()`, " *
+                            "`AverageRadius()` or `QueryRadius()`"))
     end
 
     if isnothing(update_strategy)
@@ -113,11 +181,12 @@ function TreeNeighborhoodSearch{NDIMS}(; search_radius = 0.0, cell_list, n_point
     # and allocate the tree data structures
     cell_list_ = build_tree(cell_list, search_radius_, periodic_box)
 
-    return TreeNeighborhoodSearch{NDIMS, typeof(search_radius_), typeof(update_strategy),
+    return TreeNeighborhoodSearch{NDIMS, typeof(search_radius_),
+                                  typeof(neighbor_criterion), typeof(update_strategy),
                                   typeof(cell_list_), typeof(search_radii),
                                   typeof(periodic_box)}(cell_list_, search_radius_,
-                                                        search_radii, periodic_box,
-                                                        update_strategy)
+                                                        search_radii, neighbor_criterion,
+                                                        periodic_box, update_strategy)
 end
 
 @inline Base.ndims(::TreeNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -142,7 +211,7 @@ function initialize!(neighborhood_search::TreeNeighborhoodSearch,
                      eachindex_y = axes(y, 2))
     (; search_radii) = neighborhood_search
 
-    # Without search radii of the neighbor points, the neighbor criterion reduces to
+    # Without search radii of the neighbor points, all neighbor criteria reduce to
     # `distance <= h` for a query point with search radius `h`, like with the
     # `GridNeighborhoodSearch`. By default, `max_level` of the cell list is chosen for the
     # search radius of the neighborhood search, so that the leaves are at the same level
@@ -227,7 +296,7 @@ end
                                                       neighborhood_search::TreeNeighborhoodSearch,
                                                       point, point_coords,
                                                       search_radius, init)
-    (; cell_list, search_radii, periodic_box) = neighborhood_search
+    (; cell_list, search_radii, neighbor_criterion, periodic_box) = neighborhood_search
     (; max_radius_all) = cell_list
     NDIMS = ndims(neighborhood_search)
 
@@ -243,8 +312,8 @@ end
 
     # All neighbors are within this radius. Only for points within this radius,
     # we load their search radius to check if they are within the pair search radius.
-    max_pair_radius = max(query_radius, max_radius_all[1])
-    skip_neighbor = skip_neighbor_function(query_radius, search_radii)
+    max_pair_radius = pair_radius(neighbor_criterion, query_radius, max_radius_all[1])
+    skip_neighbor = skip_neighbor_function(neighbor_criterion, query_radius, search_radii)
 
     # The linear index of a cell is a sum of independent parts for each dimension.
     # `index_parts[dim]` contains the parts of the coordinates `cell - 1`, `cell`
@@ -305,11 +374,26 @@ end
 end
 
 # Return a function that is `true` for neighbors (passed to `mapreduce_points` as
-# `skip_neighbor`) that are not within the pair search radius `max(h, h_j)` of the query
-# point. All points within the query radius are neighbors, so we only have to load the
-# search radii of points outside of the query radius.
+# `skip_neighbor`) that are not within the pair search radius of the query point
+@inline function skip_neighbor_function(neighbor_criterion, query_radius, search_radii)
+    return @inline function (neighbor, distance2)
+        pair_radius_ = pair_radius(neighbor_criterion, query_radius,
+                                   search_radii[neighbor])
+        return distance2 > pair_radius_^2
+    end
+end
+
+# With the `QueryRadius` criterion, all points within the query radius are neighbors,
+# so we don't need to load the search radii of the neighbors
+@inline function skip_neighbor_function(::QueryRadius, query_radius, search_radii)
+    return Returns(false)
+end
+
+# With the `MaximumRadius` criterion, all points within the query radius are neighbors,
+# so we only have to load the search radii of points outside of the query radius.
 # Without search radii of the neighbor points (see `initialize!`), this is never the case.
-@inline function skip_neighbor_function(query_radius, search_radii)
+@inline function skip_neighbor_function(neighbor_criterion::MaximumRadius, query_radius,
+                                        search_radii)
     return @inline function (neighbor, distance2)
         distance2 <= query_radius^2 && return false
 
@@ -438,6 +522,7 @@ function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_
     cell_list = copy_cell_list(nhs.cell_list, search_radius)
 
     return TreeNeighborhoodSearch{ndims(nhs)}(; search_radius, cell_list, n_points,
+                                              nhs.neighbor_criterion,
                                               periodic_box = nhs.periodic_box,
                                               update_strategy = nhs.update_strategy)
 end
