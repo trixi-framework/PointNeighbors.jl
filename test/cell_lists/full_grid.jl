@@ -64,4 +64,31 @@
             @test_throws error_string update!(nhs, y, y)
         end
     end
+
+    # Test that `update!` throws an error when a cell is full.
+    @testset "`update!` cell overflow" begin
+        update_strategies = (ParallelUpdate(), ParallelIncrementalUpdate(),
+                             SemiParallelUpdate(), SerialIncrementalUpdate(),
+                             SerialUpdate())
+        @testset "$(nameof(typeof(update_strategy)))" for update_strategy in
+                                                           update_strategies
+            min_corner = (0.0, 0.0)
+            max_corner = (10.0, 10.0)
+            search_radius = 1.0
+
+            cell_list = FullGridCellList(; search_radius, min_corner, max_corner,
+                                         max_points_per_cell = 5)
+            nhs = GridNeighborhoodSearch{2}(; cell_list, search_radius, n_points = 10,
+                                            update_strategy)
+
+            # Spread points evenly on a line from (0.5, 0.5) to (9.5, 9.5).
+            y = [0.5 + i for _ in 1:2, i in 0:9]
+            @trixi_test_nowarn initialize!(nhs, y, y)
+
+            # Move all points into the same cell.
+            y2 = fill(5.5, 2, 10)
+            error_string = "cell list is full. Use a larger `max_points_per_cell`."
+            @test_throws error_string update!(nhs, y, y2)
+        end
+    end
 end

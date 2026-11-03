@@ -54,6 +54,8 @@
             error_ = ErrorException("cell list is full. Use a larger `max_points_per_cell`.")
             @test_throws error_ PointNeighbors.pushat!(vov, 1, type(13))
 
+            # Check that the resulting state is still valid and we didn't end up with
+            # a corrupted vov.
             verify(vov, vov_ref)
         end
 
