@@ -71,7 +71,8 @@
                              SemiParallelUpdate(), SerialIncrementalUpdate(),
                              SerialUpdate())
         @testset "$(nameof(typeof(update_strategy)))" for update_strategy in
-                                                           update_strategies
+                                                          update_strategies
+
             min_corner = (0.0, 0.0)
             max_corner = (10.0, 10.0)
             search_radius = 1.0

@@ -58,13 +58,12 @@
         end
 
         @testset "push! overflow" begin
-            error_ = ErrorException("list is full. Use a larger `max_points_per_cell`")
-            @test_throws error_ PointNeighbors.pushat!(vov, 1, type(13))
+            error_str = "list is full. Use a larger `max_points_per_cell`"
+            @test_throws error_str PointNeighbors.pushat!(vov, 1, type(13))
 
-            @test_throws error_ PointNeighbors.pushat_atomic!(vov, 1, type(13))
+            @test_throws error_str PointNeighbors.pushat_atomic!(vov, 1, type(13))
 
-            # Check that the resulting state is still valid and we didn't end up with
-            # a corrupted vov.
+            # Check that the failed push left `vov` unchanged.
             verify(vov, vov_ref)
         end
 
