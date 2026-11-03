@@ -39,7 +39,7 @@ end
     to_gpu(x) = PointNeighbors.Adapt.adapt(parallelization_backend, x)
 
     cell_list = FullGridCellList(; search_radius = 1.0f0, min_corner = (0.0f0, 0.0f0),
-                                 max_corner = (10.0f0, 10.0f0), max_points_per_cell = 5)
+                                 max_corner = (10.0f0, 10.0f0), max_points_per_cell = 9)
     nhs = GridNeighborhoodSearch{2}(; cell_list, search_radius = 1.0f0, n_points = 10)
     nhs_gpu = to_gpu(nhs)
 

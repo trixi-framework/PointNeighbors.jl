@@ -77,7 +77,7 @@
             search_radius = 1.0
 
             cell_list = FullGridCellList(; search_radius, min_corner, max_corner,
-                                         max_points_per_cell = 5)
+                                         max_points_per_cell = 9)
             nhs = GridNeighborhoodSearch{2}(; cell_list, search_radius, n_points = 10,
                                             update_strategy)
 
