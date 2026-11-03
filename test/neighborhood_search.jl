@@ -754,7 +754,7 @@
                         # receives the point index and not the loop position.
                         for points in (axes(coords, 2), 2:3:n_points),
                             foreach_function in (foreach_point_neighbor,
-                                                 foreach_point_neighbor_unsafe)
+                             foreach_point_neighbor_unsafe)
 
                             neighbors = collect_neighbors(foreach_function, coords,
                                                           radius_function; points)
