@@ -236,7 +236,7 @@ end
 """
     foreach_point(f, system_coords, neighbor_coords, neighborhood_search;
                   parallelization_backend = default_backend(system_coords),
-                  points = axes(system_coords, 2))
+                  points = axes(system_coords, 2), simd = Val(false))
 
 Loop over all `points` and execute `f(i, neighbors)` for each point `i`, where `neighbors`
 is an object that can be passed to [`mapreduce_neighbor`](@ref) to loop over all neighbors
@@ -275,23 +275,43 @@ end
                              specified backend. By default, the backend is selected
                              automatically based on the type of `system_coords`.
                              See [`@threaded`](@ref) for a list of available backends.
+- `simd = Val(false)`: Pass `Val(true)` to allow a SIMD-vectorized neighbor loop.
+                       This is currently only used on CPUs for a pair of point sets of
+                       a [`CombinedGridNeighborhoodSearch`](@ref) (see
+                       [`point_set_pair`](@ref)) of [`GridNeighborhoodSearch`](@ref)es
+                       with a [`FullGridCellList`](@ref) with the default backend
+                       in up to three dimensions without periodicity.
+                       Otherwise, the regular neighbor loop is used.
+                       When the SIMD-vectorized loop is used, all points in `points`
+                       must be stored in the cell list of the system points, i.e.,
+                       `eachindex_y` of the last [`initialize!`](@ref) or
+                       [`update!`](@ref) of this cell list must contain all points in
+                       `points`, and `system_coords` and `neighbor_coords` must have the
+                       same element type. Otherwise, an error is thrown.
+                       With the SIMD-vectorized loop, the function passed to
+                       [`mapreduce_neighbor`](@ref) is also evaluated for points that are
+                       not neighbors, and the results are discarded.
+                       Therefore, this function must not have side effects and must not
+                       throw for any pair of points. To be vectorized, it must not
+                       contain branches that can't be converted to `ifelse`.
+                       `init` must be the identity element of `op`.
 
 See also [`foreach_point_unsafe`](@ref), [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point(f::T, system_coords, neighbor_coords, neighborhood_search;
                        parallelization_backend::ParallelizationBackend = default_backend(system_coords),
-                       points = axes(system_coords, 2)) where {T}
+                       points = axes(system_coords, 2), simd = Val(false)) where {T}
     # Explicit bounds check before the hot loop (or GPU kernel).
     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     foreach_point_inner(f, system_coords, neighbor_coords, neighborhood_search,
-                        parallelization_backend, points, Val(true))
+                        parallelization_backend, points, Val(true), simd)
 end
 
 """
     foreach_point_unsafe(f, system_coords, neighbor_coords, neighborhood_search;
                          parallelization_backend = default_backend(system_coords),
-                         points = axes(system_coords, 2))
+                         points = axes(system_coords, 2), simd = Val(false))
 
 Like [`foreach_point`](@ref), but the neighbor loops of [`mapreduce_neighbor`](@ref)
 skip **all** bounds checks.
@@ -308,12 +328,12 @@ See [`foreach_neighbor_unsafe`](@ref) for more details on which bounds checks ar
 """
 function foreach_point_unsafe(f::T, system_coords, neighbor_coords, neighborhood_search;
                               parallelization_backend::ParallelizationBackend = default_backend(system_coords),
-                              points = axes(system_coords, 2)) where {T}
+                              points = axes(system_coords, 2), simd = Val(false)) where {T}
     # Explicit bounds check before the hot loop (or GPU kernel).
     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     foreach_point_inner(f, system_coords, neighbor_coords, neighborhood_search,
-                        parallelization_backend, points, Val(false))
+                        parallelization_backend, points, Val(false), simd)
 end
 
 # The neighbors of a single point, as passed to the function `f` in `foreach_point`.
@@ -333,10 +353,10 @@ struct NeighborsOfPoint{SAFE, NC, NHS, P, PC}
 end
 
 # Generic version, which loops over all points and calls the regular neighbor loop.
-# Neighborhood searches can specialize this function.
+# Neighborhood searches can specialize this function, for example for `simd = Val(true)`.
 @inline function foreach_point_inner(f, system_coords, neighbor_coords,
                                      neighborhood_search, parallelization_backend,
-                                     points, ::Val{SAFE}) where {SAFE}
+                                     points, ::Val{SAFE}, simd) where {SAFE}
     @threaded parallelization_backend for point in points
         # `points` has been bounds checked in `foreach_point`
         point_coords = @inbounds extract_svector(system_coords,

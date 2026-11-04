@@ -13,6 +13,12 @@ Use [`initialize!`](@ref) and [`update!`](@ref) with the index of a point set to
 initialize or update the cell list of this point set.
 Use [`point_set_pair`](@ref) to obtain a neighborhood search to find neighbors
 of the points of one point set in another point set.
+
+Because all point sets are stored in the same grid, the cell lists of two point sets
+can be used to compute the neighbor loop of [`foreach_point`](@ref) with
+`simd = Val(true)` cell by cell, both for two different point sets and for a point set
+with itself.
+See [`foreach_point`](@ref) for the requirements of the SIMD-vectorized neighbor loop.
 """
 struct CombinedGridNeighborhoodSearch{NHS}
     searches::Vector{NHS}
@@ -79,6 +85,12 @@ in the point set `neighbor_index` of `nhs`.
 The returned neighborhood search shares the cell lists with `nhs`.
 It cannot be initialized or updated itself. Instead, initialize or update the cell lists
 of the point sets of `nhs`.
+
+When calling [`foreach_point`](@ref) with `simd = Val(true)` with this neighborhood search,
+the cell list of the point set `system_index` must have been initialized or updated with
+`system_coords`, and the cell list of the point set `neighbor_index` with `neighbor_coords`.
+The `eachindex` of the cell list of the point set `system_index` must contain all `points`
+passed to [`foreach_point`](@ref).
 """
 @inline function point_set_pair(nhs::CombinedGridNeighborhoodSearch, system_index,
                                 neighbor_index)
@@ -118,7 +130,9 @@ end
 
 @inline Base.ndims(nhs::PointSetPairSearch) = ndims(nhs.neighbor_search)
 
-@inline requires_update(::PointSetPairSearch) = (false, true)
+# Moving points in `x` require an update of the cell list of the system point set,
+# which is used by the SIMD-vectorized neighbor loop.
+@inline requires_update(::PointSetPairSearch) = (true, true)
 
 # The cell lists are shared with the `CombinedGridNeighborhoodSearch`,
 # so they must be initialized and updated there, once for each point set.

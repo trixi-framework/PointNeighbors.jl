@@ -8,8 +8,11 @@ using Base: @propagate_inbounds
 using GPUArraysCore: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions, @kernel, @index
 using LinearAlgebra: dot
+using LLVMLoopInfo: @loopinfo
 using Polyester: Polyester
 @reexport using StaticArrays: SVector
+using StaticArrays: MMatrix
+using SIMD: Vec, vload, vifelse, bitmask
 
 include("util.jl")
 include("vector_of_vectors.jl")
@@ -18,6 +21,7 @@ include("nhs_trivial.jl")
 include("cell_lists/cell_lists.jl")
 include("nhs_grid.jl")
 include("nhs_combined_grid.jl")
+include("nhs_grid_blocked.jl")
 include("nhs_precomputed.jl")
 include("nhs_tree.jl")
 include("gpu.jl")

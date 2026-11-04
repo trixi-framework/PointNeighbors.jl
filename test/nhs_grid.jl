@@ -324,4 +324,22 @@
             @test neighbors[2] == [1, 2]
         end
     end
+
+    @testset "SIMD-Vectorized Neighbor Loop" begin
+        # The SIMD-vectorized loop is only used with a `CombinedGridNeighborhoodSearch`
+        # (see `test/nhs_combined_grid.jl`), so `simd = Val(true)` uses the regular loop.
+        coords = point_cloud((10, 11, 12), 2.5, shuffle = true)
+        cell_list = FullGridCellList(; min_corner = minimum(coords, dims = 2),
+                                     max_corner = maximum(coords, dims = 2),
+                                     search_radius = 2.5)
+        nhs = GridNeighborhoodSearch{3}(; search_radius = 2.5, n_points = size(coords, 2),
+                                        cell_list)
+        initialize!(nhs, coords, coords)
+
+        is_regular = fill(false, size(coords, 2))
+        foreach_point(coords, coords, nhs; simd = Val(true)) do point, neighbors
+            is_regular[point] = neighbors isa PointNeighbors.NeighborsOfPoint
+        end
+        @test all(is_regular)
+    end
 end;
