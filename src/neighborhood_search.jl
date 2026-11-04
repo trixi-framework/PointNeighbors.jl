@@ -234,6 +234,156 @@ function foreach_point_neighbor_unsafe(f::T, system_coords, neighbor_coords,
 end
 
 """
+    foreach_point(f, system_coords, neighbor_coords, neighborhood_search;
+                  parallelization_backend = default_backend(system_coords),
+                  points = axes(system_coords, 2))
+
+Loop over all `points` and execute `f(i, neighbors)` for each point `i`, where `neighbors`
+is an object that can be passed to [`mapreduce_neighbor`](@ref) to loop over all neighbors
+of `i` in `neighbor_coords`.
+
+This is a more flexible version of [`foreach_point_neighbor`](@ref), which allows to load
+data of point `i` once and to write the result of the neighbor loop once per point:
+```jldoctest; output = false, setup = :(system_coords = neighbor_coords = rand(2, 10); data = rand(10); result = zeros(10); nhs = GridNeighborhoodSearch{2}(search_radius = 0.1, n_points = 10); initialize!(nhs, system_coords, neighbor_coords))
+foreach_point(system_coords, neighbor_coords, nhs) do i, neighbors
+    data_i = data[i]
+    result_i = mapreduce_neighbor(+, neighbors; init = 0.0) do i, j, pos_diff, distance
+        return data_i * data[j] * distance
+    end
+    result[i] = result_i
+end
+
+# output
+```
+
+!!! warning
+    The `neighborhood_search` must have been initialized or updated with `system_coords`
+    as first coordinate array and `neighbor_coords` as second coordinate array.
+    For some implementations, this requirement can be relaxed; see [`requires_update`](@ref).
+
+# Arguments
+- `f`: The function explained above.
+- `system_coords`: A matrix where the `i`-th column contains the coordinates of point `i`.
+- `neighbor_coords`: A matrix where the `j`-th column contains the coordinates of point `j`.
+- `neighborhood_search`: A neighborhood search initialized or updated with `system_coords`
+                         as first coordinate array and `neighbor_coords` as second
+                         coordinate array.
+
+# Keywords
+- `points`: Loop over these point indices. By default all columns of `system_coords`.
+- `parallelization_backend`: Run the outer loop over `points` in parallel with the
+                             specified backend. By default, the backend is selected
+                             automatically based on the type of `system_coords`.
+                             See [`@threaded`](@ref) for a list of available backends.
+
+See also [`foreach_point_unsafe`](@ref), [`initialize!`](@ref), [`update!`](@ref).
+"""
+function foreach_point(f::T, system_coords, neighbor_coords, neighborhood_search;
+                       parallelization_backend::ParallelizationBackend = default_backend(system_coords),
+                       points = axes(system_coords, 2)) where {T}
+    # Explicit bounds check before the hot loop (or GPU kernel).
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+
+    foreach_point_inner(f, system_coords, neighbor_coords, neighborhood_search,
+                        parallelization_backend, points, Val(true))
+end
+
+"""
+    foreach_point_unsafe(f, system_coords, neighbor_coords, neighborhood_search;
+                         parallelization_backend = default_backend(system_coords),
+                         points = axes(system_coords, 2))
+
+Like [`foreach_point`](@ref), but the neighbor loops of [`mapreduce_neighbor`](@ref)
+skip **all** bounds checks.
+See [`foreach_neighbor_unsafe`](@ref) for more details on which bounds checks are skipped.
+
+!!! warning
+    The `neighborhood_search` must have been initialized or updated with `system_coords`
+    as first coordinate array and `neighbor_coords` as second coordinate array.
+    For some implementations, this requirement can be relaxed; see [`requires_update`](@ref).
+
+!!! warning
+    Use this only when `neighborhood_search` is known to be initialized correctly for
+    `system_coords` and `neighbor_coords`.
+"""
+function foreach_point_unsafe(f::T, system_coords, neighbor_coords, neighborhood_search;
+                              parallelization_backend::ParallelizationBackend = default_backend(system_coords),
+                              points = axes(system_coords, 2)) where {T}
+    # Explicit bounds check before the hot loop (or GPU kernel).
+    @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
+
+    foreach_point_inner(f, system_coords, neighbor_coords, neighborhood_search,
+                        parallelization_backend, points, Val(false))
+end
+
+# The neighbors of a single point, as passed to the function `f` in `foreach_point`.
+# `SAFE` determines whether the neighbor loop in `mapreduce_neighbor` performs bounds checks.
+struct NeighborsOfPoint{SAFE, NC, NHS, P, PC}
+    neighbor_coords     :: NC
+    neighborhood_search :: NHS
+    point               :: P
+    point_coords        :: PC
+
+    function NeighborsOfPoint{SAFE}(neighbor_coords, neighborhood_search,
+                                    point, point_coords) where {SAFE}
+        new{SAFE, typeof(neighbor_coords), typeof(neighborhood_search), typeof(point),
+            typeof(point_coords)}(neighbor_coords, neighborhood_search, point,
+                                  point_coords)
+    end
+end
+
+# Generic version, which loops over all points and calls the regular neighbor loop.
+# Neighborhood searches can specialize this function.
+@inline function foreach_point_inner(f, system_coords, neighbor_coords,
+                                     neighborhood_search, parallelization_backend,
+                                     points, ::Val{SAFE}) where {SAFE}
+    @threaded parallelization_backend for point in points
+        # `points` has been bounds checked in `foreach_point`
+        point_coords = @inbounds extract_svector(system_coords,
+                                                 Val(ndims(neighborhood_search)), point)
+        neighbors = NeighborsOfPoint{SAFE}(neighbor_coords, neighborhood_search,
+                                           point, point_coords)
+
+        @inline f(point, neighbors)
+    end
+
+    return nothing
+end
+
+"""
+    mapreduce_neighbor(f, op, neighbors; init)
+
+Apply `f(i, j, pos_diff, d)` to every neighbor `j` of point `i` and reduce the results with
+the binary operator `op`, analogous to `mapreduce(f, op, collection)`, where
+`pos_diff` is the vector from neighbor to point and `d` is the distance.
+`neighbors` is the object passed to the function in [`foreach_point`](@ref)
+or [`foreach_point_unsafe`](@ref).
+
+The keyword argument `init` is required. It provides the starting value for
+the reduction. Choose `init` so that combining it with the first mapped neighbor value
+using `op` gives the desired result, typically the identity element of `op`.
+
+This function skips bounds checks if `neighbors` was provided by
+[`foreach_point_unsafe`](@ref) instead of [`foreach_point`](@ref).
+See [`foreach_neighbor_unsafe`](@ref) for more details on which bounds checks are skipped.
+"""
+@inline function mapreduce_neighbor(f, op, neighbors::NeighborsOfPoint{true}; init)
+    (; neighbor_coords, neighborhood_search, point, point_coords) = neighbors
+
+    # No `@inbounds` here, so all bounds checks in the neighbor loop are performed.
+    mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search, point,
+                             point_coords, search_radius(neighborhood_search), init)
+end
+
+@inline function mapreduce_neighbor(f, op, neighbors::NeighborsOfPoint{false}; init)
+    (; neighbor_coords, neighborhood_search, point, point_coords) = neighbors
+
+    @inbounds mapreduce_neighbor_inner(f, op, neighbor_coords, neighborhood_search, point,
+                                       point_coords, search_radius(neighborhood_search),
+                                       init)
+end
+
+"""
     foreach_neighbor(f, system_coords, neighbor_coords,
                      neighborhood_search::AbstractNeighborhoodSearch, point;
                      search_radius = search_radius(neighborhood_search))
@@ -329,6 +479,8 @@ end
 
 Apply `f(i, j, pos_diff, d)` to every neighbor of `point` and reduce the results with
 the binary operator `op`, analogous to `mapreduce(f, op, collection)`.
+Here, `i` is `point`, `j` is the neighbor index, `pos_diff` is the vector from neighbor
+to point, and `d` is the distance.
 
 The keyword argument `init` is required. It provides the starting value for
 the reduction. Choose `init` so that combining it with the first mapped neighbor value

@@ -491,6 +491,67 @@
                                                        empty_nhs, point; init = 123)
                     @test result == 123
                 end
+
+                @testset "`$(nameof(foreach_point_))`" for foreach_point_ in
+                                                           (foreach_point,
+                                                            foreach_point_unsafe)
+                    # Compute the sum of the neighbor indices for each point.
+                    neighbor_sums = zeros(Int, size(coords, 2))
+                    foreach_point_(coords, coords, nhs,
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbors
+                        sum = mapreduce_neighbor(+, neighbors;
+                                                 init = 0) do point_, neighbor,
+                                                              pos_diff, distance
+                            point_ == point || error("incorrect point index")
+                            neighbor
+                        end
+                        neighbor_sums[point] = sum
+                    end
+
+                    @test neighbor_sums == sum.(neighbors_expected)
+
+                    # Loop only over a subset of the points to count each point's neighbors.
+                    points = 2:2:size(coords, 2)
+                    neighbor_counts = zeros(Int, size(coords, 2))
+                    foreach_point_(coords, coords, nhs; points,
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbors
+                        count = mapreduce_neighbor(+, neighbors;
+                                                   init = 0) do point_, neighbor,
+                                                                pos_diff, distance
+                            1
+                        end
+                        neighbor_counts[point] = count
+                    end
+
+                    @test neighbor_counts[points] == length.(neighbors_expected[points])
+                    @test all(iszero, neighbor_counts[1:2:end])
+
+                    # Test that the loop does not allocate.
+                    function allocations_foreach_point(foreach_point_, coords, nhs,
+                                                       neighbor_sums)
+                        @allocated foreach_point_(coords, coords, nhs,
+                                                  parallelization_backend = SerialBackend()) do point,
+                                                                                                neighbors
+                            sum = mapreduce_neighbor((point, neighbor, pos_diff, distance) -> neighbor,
+                                                     +, neighbors; init = 0)
+                            neighbor_sums[point] = sum
+                        end
+                    end
+                    # Call the function once to compile it before measuring allocations.
+                    allocations_foreach_point(foreach_point_, coords, nhs, neighbor_sums)
+                    @test allocations_foreach_point(foreach_point_, coords, nhs,
+                                                    neighbor_sums) == 0
+
+                    # Test that both the safe and the unsafe version check the bounds
+                    # of `points` before entering the hot loop (or GPU kernel).
+                    points = 1:(size(coords, 2) + 1)
+                    @test_throws BoundsError foreach_point_(coords, coords, nhs;
+                                                            points) do point, neighbors
+                        nothing
+                    end
+                end
             end
         end
     end
