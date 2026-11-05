@@ -56,6 +56,25 @@
         end
     end
 
+    @testset verbose=true "Element type of `point_cloud` follows `search_radius`" begin
+        # The coordinates of the test point cloud must have the type of `search_radius`,
+        # also when the lattice is rotated.
+        cloud_sizes = [(10,), (10, 11), (9, 10, 7)]
+        eltypes = (Float32, Float64)
+        rotation_angles = (0, 10)
+
+        name(size, ELTYPE, angle) = "$(length(size))D, $ELTYPE, Rotated by $(angle)°"
+        @testset "$(name(cloud_size, ELTYPE, rotation_angle))" for cloud_size in cloud_sizes,
+                                                                   ELTYPE in eltypes,
+                                                                   rotation_angle in rotation_angles
+            search_radius = ELTYPE(2.5)
+            coords = point_cloud(cloud_size, search_radius; rotation_angle)
+
+            @test eltype(coords) == ELTYPE
+            @test size(coords) == (length(cloud_size), prod(cloud_size))
+        end
+    end
+
     @testset "Mixed precision query `search_radius`" begin
         # This test checks that mixed precision queries don't raise false errors.
         # `0.7f0` is rounded down, so `0.7f0 < 0.7`.

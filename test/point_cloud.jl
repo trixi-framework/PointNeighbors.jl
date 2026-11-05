@@ -1,17 +1,20 @@
 using Random
+using StaticArrays: SMatrix
 
 # Generate a rectangular point cloud, optionally with a perturbation in the point positions
 # and rotated by `rotation_angle` degrees (see `rotation_matrix` below).
 # The bounding box of the unperturbed lattice starts at 1 in each dimension, even when
 # the lattice is rotated.
+# The element type of the coordinates is the type of `search_radius`.
 function point_cloud(n_points_per_dimension, search_radius;
                      seed = 1, perturbation_factor_position = 1.0, rotation_angle = 0,
                      shuffle = false, sort = !shuffle)
     # Fixed seed to ensure reproducibility
     rng = Random.Xoshiro(seed)
 
+    ELTYPE = typeof(search_radius)
     n_dims = length(n_points_per_dimension)
-    coordinates = Array{Float64}(undef, n_dims, prod(n_points_per_dimension))
+    coordinates = Array{ELTYPE}(undef, n_dims, prod(n_points_per_dimension))
     cartesian_indices = CartesianIndices(n_points_per_dimension)
 
     # Extra data structures for the sorting code below
@@ -76,19 +79,26 @@ end
 # Rotation by `angle` degrees. In 3D, rotate around the z-axis and then around the x-axis,
 # so that no lattice axis is aligned with a coordinate axis anymore.
 # In 1D, there is nothing to rotate.
-# The matrices are constructed column by column as static matrices.
-rotation_matrix(angle, ::Val{1}) = hcat(SVector(1.0))
+rotation_matrix(angle, ::Val{1}) = SMatrix{1, 1}(1.0)
 
 function rotation_matrix(angle, ::Val{2})
     s, c = sincosd(angle)
 
-    return hcat(SVector(c, s), SVector(-s, c))
+    # Arguments are in column-major order, so the matrix below has to be read transposed.
+    return SMatrix{2, 2}(c, s,
+                         -s, c)
 end
 
 function rotation_matrix(angle, ::Val{3})
     s, c = sincosd(angle)
-    rotation_z = hcat(SVector(c, s, 0.0), SVector(-s, c, 0.0), SVector(0.0, 0.0, 1.0))
-    rotation_x = hcat(SVector(1.0, 0.0, 0.0), SVector(0.0, c, s), SVector(0.0, -s, c))
+
+    # Arguments are in column-major order, so the matrices below have to be read transposed.
+    rotation_z = SMatrix{3, 3}(c, s, 0.0,
+                               -s, c, 0.0,
+                               0.0, 0.0, 1.0)
+    rotation_x = SMatrix{3, 3}(1.0, 0.0, 0.0,
+                               0.0, c, s,
+                               0.0, -s, c)
 
     return rotation_x * rotation_z
 end
