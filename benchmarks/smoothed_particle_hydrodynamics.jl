@@ -2,6 +2,7 @@ using PointNeighbors
 using PointNeighbors.Adapt
 using TrixiParticles
 using BenchmarkTools
+using Random
 
 # Create a dummy semidiscretization type to be able to use a specific neighborhood search
 struct DummySemidiscretization{N, P, IT}
@@ -55,13 +56,16 @@ function benchmark_wcsph(neighborhood_search, coordinates;
                              mass = convert(ELTYPE, 0.1) * particle_spacing,
                              particle_spacing)
 
+    # Use the same perturbation every time to make comparisons fair and reproducible.
+    rng = Random.Xoshiro(1)
+
     # Perturb the initial velocity so that approaching particle pairs exercise the
     # `vr < 0` branch of ArtificialViscosityMonaghan.
-    fluid.velocity .+= convert(ELTYPE, 1.0e-3) .* randn(ELTYPE, size(fluid.velocity))
+    fluid.velocity .+= convert(ELTYPE, 1.0e-3) .* randn(rng, ELTYPE, size(fluid.velocity))
 
     # Make sure that the computed forces are not all zero
     for i in eachindex(fluid.density)
-        fluid.density[i] += randn(eltype(fluid.density))
+        fluid.density[i] += randn(rng, eltype(fluid.density))
     end
 
     sound_speed = convert(ELTYPE, 10.0)
