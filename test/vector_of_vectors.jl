@@ -44,16 +44,26 @@
         end
 
         @testset "push! to an inner vector" begin
+            # `pushat!`
             push!(vov_ref[1], type(12))
             PointNeighbors.pushat!(vov, 1, type(12))
+
+            verify(vov, vov_ref)
+
+            # `pushat_atomic!`
+            push!(vov_ref[2], type(9))
+            PointNeighbors.pushat_atomic!(vov, 2, type(9))
 
             verify(vov, vov_ref)
         end
 
         @testset "push! overflow" begin
-            error_ = ErrorException("cell list is full. Use a larger `max_points_per_cell`.")
-            @test_throws error_ PointNeighbors.pushat!(vov, 1, type(13))
+            error_str = "list is full. Use a larger `max_points_per_cell`"
+            @test_throws error_str PointNeighbors.pushat!(vov, 1, type(13))
 
+            @test_throws error_str PointNeighbors.pushat_atomic!(vov, 1, type(13))
+
+            # Check that the failed push left `vov` unchanged.
             verify(vov, vov_ref)
         end
 
