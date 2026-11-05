@@ -55,9 +55,13 @@ function benchmark_wcsph(neighborhood_search, coordinates;
                              mass = convert(ELTYPE, 0.1) * particle_spacing,
                              particle_spacing)
 
+    # Perturb the initial velocity so that approaching particle pairs exercise the
+    # `vr < 0` branch of ArtificialViscosityMonaghan.
+    fluid.velocity .+= convert(ELTYPE, 1.0e-3) .* randn(ELTYPE, size(fluid.velocity))
+
     # Make sure that the computed forces are not all zero
     for i in eachindex(fluid.density)
-        fluid.density[i] += rand(eltype(fluid.density))
+        fluid.density[i] += randn(eltype(fluid.density))
     end
 
     sound_speed = convert(ELTYPE, 10.0)
