@@ -8,7 +8,8 @@ include("../test/point_cloud.jl")
                    search_radius_factor = 3.0,
                    parallelization_backend = PolyesterBackend(),
                    names = ["Neighborhood search 1" "Neighborhood search 2" ...],
-                   seed = 1, perturbation_factor_position = 1.0, shuffle = false)
+                   seed = 1, perturbation_factor_position = 1.0,
+                   sort_displacement = 0.01, shuffle = false)
 
 Run a benchmark with several neighborhood searches multiple times for increasing numbers
 of points and return the results as `(n_particles_vec, times)`, where `n_particles_vec`
@@ -47,6 +48,12 @@ See also
 - `perturbation_factor_position = 1.0`: Scale the point position perturbation by this factor.
                             A factor of `1.0` corresponds to a standard deviation
                             similar to that of a realistic simulation.
+- `sort_displacement = 0.01`: Sort the points by the cells of the first neighborhood
+                            search, but using their positions before a uniform displacement
+                            of this length (in units of the search radius).
+                            This models a real simulation, where points are sorted only
+                            every few time steps and are therefore almost, but never
+                            perfectly sorted. Use `0` for a perfect sorting.
 - `shuffle = false`:        Randomly shuffle the point ordering instead of sorting points by
                             cell index.
 
@@ -64,7 +71,8 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
                        parallelization_backend = PolyesterBackend(),
                        names = ["Neighborhood search $i"
                                 for i in 1:length(neighborhood_searches)]',
-                       seed = 1, perturbation_factor_position = 1.0, shuffle = false)
+                       seed = 1, perturbation_factor_position = 1.0,
+                       sort_displacement = 0.01, shuffle = false)
     if !(search_radius_factor isa AbstractFloat && isfinite(search_radius_factor) &&
          search_radius_factor > 0)
         throw(ArgumentError("`search_radius_factor` must be a finite, positive float"))
@@ -87,7 +95,7 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
         # In 3D, the point cloud is rotated around two axes, so that no axis is aligned.
         coordinates = point_cloud(sizes[iter], search_radius_factor;
                                   seed, perturbation_factor_position,
-                                  rotation_angle = 10, shuffle)
+                                  rotation_angle = 10)
         domain_size_ = maximum(point_cloud_size(sizes[iter]; rotation_angle = 10)) + 1
         domain_size = convert(typeof(search_radius_factor), domain_size_)
 
@@ -99,6 +107,15 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
 
         neighborhood_searches_copy = copy_neighborhood_search.(neighborhood_searches,
                                                                search_radius, n_particles)
+
+        if shuffle
+            permutation = Random.shuffle(Random.Xoshiro(seed), axes(coordinates, 2))
+        else
+            permutation = almost_sorted_permutation(coordinates,
+                                                    neighborhood_searches_copy[1],
+                                                    sort_displacement)
+        end
+        coordinates = coordinates[:, permutation]
 
         for i in eachindex(neighborhood_searches_copy)
             neighborhood_search_ = neighborhood_searches_copy[i]
@@ -401,4 +418,32 @@ function create_precomputed_neighborhood_search(grid_nhs, parallelization_backen
                                                 update_neighborhood_search = grid_nhs,
                                                 sort_neighbor_lists = true,
                                                 transpose_backend)
+end
+
+# Permutation that sorts the points by cell like the `SortingCallback` of TrixiParticles.jl,
+# using the cells of the neighborhood search `nhs`.
+# In a real simulation, points are sorted only every few time steps and move in between,
+# so they are almost, but never perfectly sorted.
+# We model this by sorting by the positions before a uniform displacement of length
+# `sort_displacement` (in units of the search radius) in diagonal direction.
+function almost_sorted_permutation(coordinates, nhs, sort_displacement)
+    NDIMS = size(coordinates, 1)
+    grid_nhs = sorting_grid(nhs)
+    displacement = sort_displacement * PointNeighbors.search_radius(nhs) / sqrt(NDIMS)
+
+    cell_coords = map(axes(coordinates, 2)) do point
+        point_coords = PointNeighbors.extract_svector(coordinates, Val(NDIMS), point)
+        return PointNeighbors.cell_coords(point_coords .- displacement, grid_nhs)
+    end
+
+    return sortperm(cell_coords)
+end
+
+sorting_grid(nhs::GridNeighborhoodSearch) = nhs
+sorting_grid(nhs::PrecomputedNeighborhoodSearch) = nhs.neighborhood_search
+
+function sorting_grid(nhs)
+    search_radius = PointNeighbors.search_radius(nhs)
+
+    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius)
 end
