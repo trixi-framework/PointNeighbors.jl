@@ -85,11 +85,11 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
         # A lattice that is aligned with the grid might be beneficial for performance,
         # which would make this synthetic benchmark unrepresentative of a real simulation.
         # In 3D, the point cloud is rotated around two axes, so that no axis is aligned.
-        coordinates_ = point_cloud(sizes[iter], search_radius_factor;
-                                   seed, perturbation_factor_position,
-                                   rotation_angle = 10, shuffle)
-        coordinates = convert.(typeof(search_radius_factor), coordinates_)
-        domain_size = maximum(point_cloud_size(sizes[iter]; rotation_angle = 10)) + 1
+        coordinates = point_cloud(sizes[iter], search_radius_factor;
+                                  seed, perturbation_factor_position,
+                                  rotation_angle = 10, shuffle)
+        domain_size_ = maximum(point_cloud_size(sizes[iter]; rotation_angle = 10)) + 1
+        domain_size = convert(typeof(search_radius_factor), domain_size_)
 
         # Normalize domain size to 1
         coordinates ./= domain_size
