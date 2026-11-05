@@ -80,10 +80,16 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
     times = zeros(iterations, length(neighborhood_searches))
 
     for iter in 1:iterations
+        # Rotate the point cloud by 10 degrees, so that the lattice is not
+        # aligned with the cell grid of the neighborhood search.
+        # A lattice that is aligned with the grid might be beneficial for performance,
+        # which would make this synthetic benchmark unrepresentative of a real simulation.
+        # In 3D, the point cloud is rotated around two axes, so that no axis is aligned.
         coordinates_ = point_cloud(sizes[iter], search_radius_factor;
-                                   seed, perturbation_factor_position, shuffle)
+                                   seed, perturbation_factor_position,
+                                   rotation_angle = 10, shuffle)
         coordinates = convert.(typeof(search_radius_factor), coordinates_)
-        domain_size = maximum(sizes[iter]) + 1
+        domain_size = maximum(point_cloud_size(sizes[iter]; rotation_angle = 10)) + 1
 
         # Normalize domain size to 1
         coordinates ./= domain_size
@@ -153,8 +159,9 @@ run_benchmark_default(benchmark_n_body, (10, 10), 3)
 function run_benchmark_default(benchmark, n_points_per_dimension, iterations;
                                max_neighbors = 128, kwargs...)
     NDIMS = length(n_points_per_dimension)
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
+    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle = 10)
+    max_corner = Float32.(domain_size ./ maximum(domain_size))
+    min_corner = zero(max_corner)
 
     neighborhood_searches = [
         GridNeighborhoodSearch{NDIMS}(),
@@ -377,8 +384,9 @@ function create_full_grid_neighborhood_search(n_points_per_dimension;
                                               update_strategy = ParallelUpdate())
     NDIMS = length(n_points_per_dimension)
 
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
+    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle = 10)
+    max_corner = Float32.(domain_size ./ maximum(domain_size))
+    min_corner = zero(max_corner)
     cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
     return GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
                                          update_strategy)
