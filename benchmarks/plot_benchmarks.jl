@@ -15,8 +15,9 @@ Keyword arguments are passed to `Plots.plot`. For example, use `title = "My titl
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
-include("benchmarks/plot_benchmarks.jl")
+using PointNeighbors
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "plot_benchmarks.jl"));
 
 n_particles_vec, times = run_benchmark_default(benchmark_count_neighbors, (10, 10), 3)
 plot_benchmark(n_particles_vec, times; title = "Count neighbors benchmark")
@@ -41,6 +42,8 @@ function plot_benchmark!(p, n_particles_vec, times; kwargs...)
 
     plot!(p, n_particles_vec, n_particles_vec ./ times .* 1e-6;
           xaxis = :log, xticks = (n_particles_vec, xticks), linewidth = 2,
+          # Make sure the plot starts at y = 0.
+          ylimits = (0, Inf), widen = true,
           xlabel = "#particles", ylabel = "million particles processed per second",
           legend = :outerright, size = (700, 350), dpi = 600, margin = 4 * Plots.mm,
           palette = palette(:tab10), kwargs...)
@@ -50,6 +53,7 @@ end
 # Run these benchmarks like this. The type of `search_radius_factor` determines
 # if the benchmark is run in Float32 or Float64.
 #
+# using PointNeighbors
 # include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 # _, times = run_benchmark_full_grid(benchmark_wcsph, (10, 10, 10), 9,
 #                                    search_radius_factor=3.0f0,
