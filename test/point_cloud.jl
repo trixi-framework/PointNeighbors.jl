@@ -7,8 +7,7 @@ using StaticArrays: SMatrix
 # the lattice is rotated.
 # The element type of the coordinates is the type of `search_radius`.
 function point_cloud(n_points_per_dimension, search_radius;
-                     seed = 1, perturbation_factor_position = 1.0, rotation_angle = 0,
-                     shuffle = false, sort = !shuffle)
+                     seed = 1, perturbation_factor_position = 1.0, rotation_angle = 0)
     # Fixed seed to ensure reproducibility
     rng = Random.Xoshiro(seed)
 
@@ -16,10 +15,6 @@ function point_cloud(n_points_per_dimension, search_radius;
     n_dims = length(n_points_per_dimension)
     coordinates = Array{ELTYPE}(undef, n_dims, prod(n_points_per_dimension))
     cartesian_indices = CartesianIndices(n_points_per_dimension)
-
-    # Extra data structures for the sorting code below
-    cell_coords = Vector{SVector{n_dims, Int}}(undef, size(coordinates, 2))
-    cell_size = ntuple(dim -> search_radius, n_dims)
 
     # Rotate around the center of the lattice. The bounding box of the rotated lattice
     # is then centered around the origin, so we shift by half its size
@@ -42,25 +37,6 @@ function point_cloud(n_points_per_dimension, search_radius;
                         randn(rng, typeof(point_coords))
 
         coordinates[:, i] .= point_coords
-        cell_coords[i] = PointNeighbors.nonperiodic_cell_coords(point_coords, nothing,
-                                                                cell_size) .+ 1
-    end
-
-    # Sort by the cell coordinates of the perturbed points.
-    if sort
-        if shuffle
-            throw(ArgumentError("cannot sort and shuffle at the same time"))
-        end
-
-        # Sort by Z index (with `using Morton`)
-        # permutation = sortperm(cell_coords, by = c -> cartesian2morton(c))
-
-        permutation = sortperm(cell_coords)
-        coordinates .= coordinates[:, permutation]
-    elseif shuffle
-        # Sort randomly
-        permutation = Random.shuffle(rng, axes(coordinates, 2))
-        coordinates .= coordinates[:, permutation]
     end
 
     return coordinates
