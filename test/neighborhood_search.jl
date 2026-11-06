@@ -64,9 +64,12 @@
         rotation_angles = (0, 10)
 
         name(size, ELTYPE, angle) = "$(length(size))D, $ELTYPE, Rotated by $(angle)°"
-        @testset "$(name(cloud_size, ELTYPE, rotation_angle))" for cloud_size in cloud_sizes,
+        @testset "$(name(cloud_size, ELTYPE, rotation_angle))" for cloud_size in
+                                                                   cloud_sizes,
                                                                    ELTYPE in eltypes,
-                                                                   rotation_angle in rotation_angles
+                                                                   rotation_angle in
+                                                                   rotation_angles
+
             search_radius = ELTYPE(2.5)
             coords = point_cloud(cloud_size, search_radius; rotation_angle)
 
