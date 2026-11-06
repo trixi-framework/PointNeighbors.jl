@@ -428,7 +428,7 @@ end
 # We model this by applying a uniform displacement `sort_displacement * search_radius`
 # in diagonal direction to the point positions before sorting.
 # This corresponds to a simulation where all points are moving at a uniform velocity,
-# but it produces a similar noticable slowdown on GPUs as measured in a dam break simulation.
+# but it produces a similar noticeable slowdown on GPUs as measured in a dam break simulation.
 function almost_sorted_permutation(coordinates, nhs, sort_displacement)
     NDIMS = size(coordinates, 1)
     grid_nhs = sorting_grid(nhs)
