@@ -42,16 +42,25 @@ end
 A benchmark of the right-hand side of a full real-life Weakly Compressible
 Smoothed Particle Hydrodynamics (WCSPH) simulation with TrixiParticles.jl.
 This method is used to simulate an incompressible fluid.
+
+When the neighborhood search sorts the points in every update
+(see `PointNeighbors.sorts_points`), each benchmark iteration first sorts the particles
+like `kick!` does when TrixiParticles.jl sorts the particles in every update,
+so that the benchmark includes the sorting.
+See [`benchmark_sorting`](@ref) for a benchmark of only the sorting.
 """
 function benchmark_wcsph(neighborhood_search, coordinates;
                          parallelization_backend = default_backend(coordinates))
     # System initialization has to happen on the CPU
     coordinates_cpu = PointNeighbors.Adapt.adapt(Array, coordinates)
 
-    search_radius = PointNeighbors.search_radius(neighborhood_search)
+    # The neighborhood search to find the neighbors (see `query_search`)
+    nhs_query = query_search(neighborhood_search)
+
+    search_radius = PointNeighbors.search_radius(nhs_query)
     ELTYPE = typeof(search_radius)
     density = convert(ELTYPE, 1000.0)
-    particle_spacing = PointNeighbors.search_radius(neighborhood_search) / 3
+    particle_spacing = search_radius / 3
     fluid = InitialCondition(; coordinates = coordinates_cpu, density,
                              mass = convert(ELTYPE, 0.1) * particle_spacing,
                              particle_spacing)
@@ -77,11 +86,11 @@ function benchmark_wcsph(neighborhood_search, coordinates;
     density_diffusion = DensityDiffusionMolteniColagrossi(delta = convert(ELTYPE, 0.1))
 
     # Compact support == 2 * smoothing length for these kernels
-    smoothing_length = PointNeighbors.search_radius(neighborhood_search) / 2
-    if ndims(neighborhood_search) == 1
+    smoothing_length = search_radius / 2
+    if ndims(nhs_query) == 1
         smoothing_kernel = SchoenbergCubicSplineKernel{1}()
     else
-        smoothing_kernel = WendlandC2Kernel{ndims(neighborhood_search)}()
+        smoothing_kernel = WendlandC2Kernel{ndims(nhs_query)}()
     end
 
     fluid_system = WeaklyCompressibleSPHSystem(fluid;
@@ -92,21 +101,116 @@ function benchmark_wcsph(neighborhood_search, coordinates;
 
     system = Adapt.adapt(parallelization_backend, fluid_system)
 
-    # Remove unnecessary data structures that are only used for initialization
-    nhs = PointNeighbors.freeze_neighborhood_search(neighborhood_search)
-
-    semi = DummySemidiscretization(nhs, parallelization_backend, true)
-
     v = Adapt.adapt(parallelization_backend,
                     vcat(fluid.velocity, fluid.density'))
     u = Adapt.adapt(parallelization_backend, fluid.coordinates)
     dv = zero(v)
+
+    if PointNeighbors.sorts_points(nhs_query)
+        return benchmark_wcsph_sorted(dv, v, u, system, neighborhood_search,
+                                      parallelization_backend)
+    end
+
+    # Remove unnecessary data structures that are only used for initialization
+    nhs = PointNeighbors.freeze_neighborhood_search(nhs_query)
+
+    semi = DummySemidiscretization(nhs, parallelization_backend, true)
 
     # Initialize the system
     TrixiParticles.initialize!(system, semi)
     TrixiParticles.compute_pressure!(system, v, semi)
 
     return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
+end
+
+# Benchmark the WCSPH interaction with a neighborhood search that sorts the points
+# in every update. Each benchmark iteration first sorts the particles like `kick!` does
+# when TrixiParticles.jl sorts the particles in every update
+# (see `src/general/particle_sorting.jl` in TrixiParticles.jl):
+# 1. Update the neighborhood search with the coordinates in the previous system order
+#    and compose the permutation (`update_nhs_and_sort!`).
+# 2. Reorder the arrays of the system with the new permutation (`sort_particles_by_nhs!`).
+# 3. Copy `v` and `u` to arrays in system order (`sorted_ode_arrays!`).
+# 4. Compute the interaction on the sorted particles.
+# 5. Copy `dv` back to the order of the integration arrays (`unsort_dv!`).
+# All steps except 2 and 4 are benchmarked by `benchmark_sorting`.
+#
+# The integration arrays `v`, `u` and `dv` are never reordered. Their order is given by
+# `run_benchmark` and almost sorted (see `sort_displacement` in `run_benchmark`), like
+# the integration arrays in a simulation that are only sorted by the `SortingCallback`.
+function benchmark_wcsph_sorted(dv, v, u, system, neighborhood_search,
+                                parallelization_backend)
+    sorting = BenchmarkParticleSorting(v, u, dv, parallelization_backend)
+
+    arrays = system_arrays_to_reorder(system)
+    buffers = map(similar, arrays)
+
+    # The neighborhood search has been initialized with the unsorted particles by
+    # `run_benchmark`. Sort the particles for the first time like `create_particle_sorting`
+    # does and compute the pressure in system order.
+    old_index = update_permutation!(sorting, neighborhood_search, parallelization_backend)
+    reorder_arrays!(arrays, buffers, old_index, parallelization_backend)
+
+    semi = sorted_semi(neighborhood_search, parallelization_backend)
+    TrixiParticles.initialize!(system, semi)
+    copy_to_sorted!(sorting, v, u, parallelization_backend)
+    TrixiParticles.compute_pressure!(system, sorting.v_sorted, semi)
+
+    function sort_and_interact!(dv, v, u, system, neighborhood_search, sorting, arrays,
+                                buffers, parallelization_backend)
+        old_index = update_and_sort!(sorting, neighborhood_search, u,
+                                     parallelization_backend)
+        reorder_arrays!(arrays, buffers, old_index, parallelization_backend)
+        copy_to_sorted!(sorting, v, u, parallelization_backend)
+
+        (; dv_sorted, v_sorted, u_sorted) = sorting
+        semi = sorted_semi(neighborhood_search, parallelization_backend)
+        TrixiParticles.interact!(dv_sorted, v_sorted, u_sorted, v_sorted, u_sorted,
+                                 system, system, semi)
+
+        copy_from_sorted!(dv, sorting, parallelization_backend)
+
+        return dv
+    end
+
+    return @belapsed $sort_and_interact!($dv, $v, $u, $system, $neighborhood_search,
+                                         $sorting, $arrays, $buffers,
+                                         $parallelization_backend)
+end
+
+# The semidiscretization for the interaction of the sorted particles.
+# Like TrixiParticles.jl, we create the neighborhood search for the sorted particles
+# in every update. This is cheap, since it shares its data with `neighborhood_search`.
+function sorted_semi(neighborhood_search, parallelization_backend)
+    sorted_nhs = PointNeighbors.sorted_neighborhood_search(query_search(neighborhood_search))
+
+    return DummySemidiscretization(sorted_nhs, parallelization_backend, true)
+end
+
+# Arrays of `system` that have to be reordered when the particles are sorted.
+# TrixiParticles.jl only reorders the mass (see `particle_arrays_to_sort`) and recomputes
+# the pressure and the other per-particle quantities in every update after sorting.
+# We reorder them instead, since the benchmark without sorting doesn't compute them either.
+# Arrays that are not stored in memory (like a constant mass) are not reordered.
+function system_arrays_to_reorder(system)
+    n_particles = TrixiParticles.nparticles(system)
+    cache_arrays = Tuple(array for array in values(system.cache)
+                         if array isa AbstractVector && length(array) == n_particles)
+    arrays = (system.mass, system.pressure, cache_arrays...)
+
+    return Tuple(array for array in arrays if array isa DenseArray)
+end
+
+# `array[i] = array[old_index[i]]` for all arrays
+function reorder_arrays!(arrays, buffers, old_index, parallelization_backend)
+    foreach(arrays, buffers) do array, buffer
+        copy_parallel!(buffer, array, parallelization_backend)
+        PointNeighbors.@threaded parallelization_backend for i in eachindex(array)
+            @inbounds array[i] = buffer[old_index[i]]
+        end
+    end
+
+    return arrays
 end
 
 """

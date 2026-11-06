@@ -9,7 +9,7 @@ include("../test/point_cloud.jl")
                    parallelization_backend = PolyesterBackend(),
                    names = ["Neighborhood search 1" "Neighborhood search 2" ...],
                    seed = 1, perturbation_factor_position = 1.0,
-                   sort_displacement = 0.01, shuffle = false)
+                   sort_displacement = 0.01, shuffle = false, rotation_angle = 10)
 
 Run a benchmark with several neighborhood searches multiple times for increasing numbers
 of points and return the results as `(n_particles_vec, times)`, where `n_particles_vec`
@@ -56,6 +56,11 @@ See also
                             perfectly sorted. Use `0` for a perfect sorting.
 - `shuffle = false`:        Randomly shuffle the point ordering instead of sorting points by
                             cell index.
+- `rotation_angle = 10`:    Rotate the point cloud by this angle in degrees, so that the
+                            lattice is not aligned with the cell grid of the neighborhood
+                            search. Use `0` for a lattice that is aligned with the grid.
+                            The neighborhood searches must be created for the same angle
+                            (see the keyword `rotation_angle` of the shortcuts below).
 
 # Examples
 ```julia
@@ -72,7 +77,7 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
                        names = ["Neighborhood search $i"
                                 for i in 1:length(neighborhood_searches)]',
                        seed = 1, perturbation_factor_position = 1.0,
-                       sort_displacement = 0.01, shuffle = false)
+                       sort_displacement = 0.01, shuffle = false, rotation_angle = 10)
     if !(search_radius_factor isa AbstractFloat && isfinite(search_radius_factor) &&
          search_radius_factor > 0)
         throw(ArgumentError("`search_radius_factor` must be a finite, positive float"))
@@ -88,15 +93,15 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
     times = zeros(iterations, length(neighborhood_searches))
 
     for iter in 1:iterations
-        # Rotate the point cloud by 10 degrees, so that the lattice is not
+        # Rotate the point cloud (by 10 degrees by default), so that the lattice is not
         # aligned with the cell grid of the neighborhood search.
         # A lattice that is aligned with the grid might be beneficial for performance,
         # which would make this synthetic benchmark unrepresentative of a real simulation.
         # In 3D, the point cloud is rotated around two axes, so that no axis is aligned.
         coordinates = point_cloud(sizes[iter], search_radius_factor;
                                   seed, perturbation_factor_position,
-                                  rotation_angle = 10)
-        domain_size_ = maximum(point_cloud_size(sizes[iter]; rotation_angle = 10)) + 1
+                                  rotation_angle)
+        domain_size_ = maximum(point_cloud_size(sizes[iter]; rotation_angle)) + 1
         domain_size = convert(typeof(search_radius_factor), domain_size_)
 
         # Normalize domain size to 1
@@ -105,8 +110,8 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
         search_radius = search_radius_factor / domain_size
         n_particles = size(coordinates, 2)
 
-        neighborhood_searches_copy = copy_neighborhood_search.(neighborhood_searches,
-                                                               search_radius, n_particles)
+        neighborhood_searches_copy = copy_benchmark_search.(neighborhood_searches,
+                                                            search_radius, n_particles)
 
         if shuffle
             permutation = Random.shuffle(Random.Xoshiro(seed), axes(coordinates, 2))
@@ -122,7 +127,7 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
             neighborhood_search = PointNeighbors.Adapt.adapt(parallelization_backend,
                                                              neighborhood_search_)
             coords = PointNeighbors.Adapt.adapt(parallelization_backend, coordinates)
-            PointNeighbors.initialize!(neighborhood_search, coords, coords)
+            benchmark_initialize!(neighborhood_search, coords; parallelization_backend)
 
             time = benchmark(neighborhood_search, coords; parallelization_backend)
             times[iter, i] = time
@@ -174,9 +179,9 @@ run_benchmark_default(benchmark_n_body, (10, 10), 3)
 ```
 """
 function run_benchmark_default(benchmark, n_points_per_dimension, iterations;
-                               max_neighbors = 128, kwargs...)
+                               max_neighbors = 128, rotation_angle = 10, kwargs...)
     NDIMS = length(n_points_per_dimension)
-    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle = 10)
+    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle)
     max_corner = Float32.(domain_size ./ maximum(domain_size))
     min_corner = zero(max_corner)
 
@@ -193,7 +198,7 @@ function run_benchmark_default(benchmark, n_points_per_dimension, iterations;
              "PrecomputedNeighborhoodSearch"]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
-                  neighborhood_searches; names, kwargs...)
+                  neighborhood_searches; names, rotation_angle, kwargs...)
 end
 
 """
@@ -233,8 +238,9 @@ run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 """
 function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
                            parallelization_backend = PolyesterBackend(),
-                           max_neighbors = 128, kwargs...)
-    grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension)
+                           max_neighbors = 128, rotation_angle = 10, kwargs...)
+    grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                    rotation_angle)
     precomputed_nhs = create_precomputed_neighborhood_search(grid_nhs,
                                                              parallelization_backend;
                                                              max_neighbors)
@@ -244,7 +250,8 @@ function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
              "PrecomputedNeighborhoodSearch"]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
-                  neighborhood_searches; names, parallelization_backend, kwargs...)
+                  neighborhood_searches; names, parallelization_backend, rotation_angle,
+                  kwargs...)
 end
 
 """
@@ -266,7 +273,16 @@ Use this function to benchmark and profile TrixiParticles.jl kernels.
 - `iterations`:             Number of refinement iterations
 
 # Keywords
-See [`run_benchmark`](@ref) for a list of available keywords.
+- `sort_points = false`: Use the `CompactVectorOfVectors` backend for the `FullGridCellList`,
+                         so that the neighborhood search sorts the points in every update.
+                         This is required for [`benchmark_sorting`](@ref).
+- `combined = false`:    Use a `CombinedGridNeighborhoodSearch` with a single point set,
+                         like the `CombinedNHSHandler` of TrixiParticles.jl.
+                         The benchmarks use the `PointSetPairSearch` of this point set with
+                         itself, which allows the SIMD-vectorized neighbor loop on CPUs.
+- `rotation_angle = 10`: See [`run_benchmark`](@ref).
+
+See [`run_benchmark`](@ref) for a list of additional available keywords.
 
 # Examples
 ```julia
@@ -277,13 +293,23 @@ run_benchmark_full_grid(benchmark_n_body, (10, 10), 3)
 ```
 """
 function run_benchmark_full_grid(benchmark, n_points_per_dimension, iterations;
-                                 parallelization_backend = PolyesterBackend(), kwargs...)
-    neighborhood_searches = (create_full_grid_neighborhood_search(n_points_per_dimension),)
+                                 parallelization_backend = PolyesterBackend(),
+                                 sort_points = false, combined = false,
+                                 rotation_angle = 10, kwargs...)
+    neighborhood_searches = (create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                                  sort_points, combined,
+                                                                  rotation_angle),)
 
-    names = ["GridNeighborhoodSearch with FullGridCellList";;]
+    name = sort_points ? "GridNeighborhoodSearch with sorting FullGridCellList" :
+           "GridNeighborhoodSearch with FullGridCellList"
+    if combined
+        name = "CombinedGridNeighborhoodSearch of " * name
+    end
+    names = [name;;]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
-                  neighborhood_searches; names, parallelization_backend, kwargs...)
+                  neighborhood_searches; names, parallelization_backend, rotation_angle,
+                  kwargs...)
 end
 
 """
@@ -323,8 +349,9 @@ run_benchmark_precomputed(benchmark_n_body, (10, 10), 3)
 """
 function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations;
                                    parallelization_backend = PolyesterBackend(),
-                                   max_neighbors = 128, kwargs...)
-    grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension)
+                                   max_neighbors = 128, rotation_angle = 10, kwargs...)
+    grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                    rotation_angle)
     precomputed_nhs = create_precomputed_neighborhood_search(grid_nhs,
                                                              parallelization_backend;
                                                              max_neighbors)
@@ -333,7 +360,8 @@ function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations
     names = ["PrecomputedNeighborhoodSearch";;]
 
     run_benchmark(benchmark, n_points_per_dimension, iterations,
-                  neighborhood_searches; names, parallelization_backend, kwargs...)
+                  neighborhood_searches; names, parallelization_backend, rotation_angle,
+                  kwargs...)
 end
 
 """
@@ -376,13 +404,16 @@ run_benchmark_updates((10, 10, 10), 3)
 """
 function run_benchmark_updates(n_points_per_dimension, iterations;
                                parallelization_backend = PolyesterBackend(),
-                               max_neighbors = 128, kwargs...)
+                               max_neighbors = 128, rotation_angle = 10, kwargs...)
     parallel = create_full_grid_neighborhood_search(n_points_per_dimension;
-                                                    update_strategy = ParallelUpdate())
+                                                    update_strategy = ParallelUpdate(),
+                                                    rotation_angle)
     parallel_incremental = create_full_grid_neighborhood_search(n_points_per_dimension;
-                                                                update_strategy = ParallelIncrementalUpdate())
+                                                                update_strategy = ParallelIncrementalUpdate(),
+                                                                rotation_angle)
     semi_parallel = create_full_grid_neighborhood_search(n_points_per_dimension;
-                                                         update_strategy = SemiParallelUpdate())
+                                                         update_strategy = SemiParallelUpdate(),
+                                                         rotation_angle)
     precomputed_nhs = create_precomputed_neighborhood_search(parallel,
                                                              parallelization_backend;
                                                              max_neighbors)
@@ -394,19 +425,35 @@ function run_benchmark_updates(n_points_per_dimension, iterations;
              "PrecomputedNeighborhoodSearch";;]
 
     run_benchmark(benchmark_update_alternating, n_points_per_dimension, iterations,
-                  neighborhood_searches; names, parallelization_backend, kwargs...)
+                  neighborhood_searches; names, parallelization_backend, rotation_angle,
+                  kwargs...)
 end
 
 function create_full_grid_neighborhood_search(n_points_per_dimension;
-                                              update_strategy = ParallelUpdate())
+                                              update_strategy = ParallelUpdate(),
+                                              sort_points = false, combined = false,
+                                              rotation_angle = 10)
     NDIMS = length(n_points_per_dimension)
 
-    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle = 10)
+    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle)
     max_corner = Float32.(domain_size ./ maximum(domain_size))
     min_corner = zero(max_corner)
-    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
-    return GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
-                                         update_strategy)
+
+    # With the `CompactVectorOfVectors` backend, the points are sorted in every update
+    if sort_points
+        backend = CompactVectorOfVectors{Int32}
+    else
+        backend = DynamicVectorOfVectors{Int32}
+    end
+    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner, backend)
+    nhs = GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
+                                        update_strategy)
+
+    # Template for a `CombinedGridNeighborhoodSearch` with a single point set
+    # (see `copy_benchmark_search`)
+    combined && return CombinedGridNeighborhoodSearch([nhs])
+
+    return nhs
 end
 
 function create_precomputed_neighborhood_search(grid_nhs, parallelization_backend;
@@ -436,14 +483,63 @@ function almost_sorted_permutation(coordinates, nhs, sort_displacement)
         return PointNeighbors.cell_coords(point_coords .- displacement, grid_nhs)
     end
 
-    return sortperm(cell_coords)
+    # `sortperm` is stable, so points in the same cell keep their order
+    return sortperm(cell_coords, by = cell_sort_key(grid_nhs))
+end
+
+# The `SortingCallback` of TrixiParticles.jl sorts the particles by their cell coordinates.
+# A neighborhood search that sorts the points in every update sorts them by the index
+# of their cell instead. Then, the `SortingCallback` sorts the particles in the same order,
+# so that we use the same order here.
+function cell_sort_key(nhs)
+    if PointNeighbors.sorts_points(nhs)
+        return cell -> PointNeighbors.cell_index(nhs.cell_list, cell)
+    end
+
+    return identity
 end
 
 sorting_grid(nhs::GridNeighborhoodSearch) = nhs
 sorting_grid(nhs::PrecomputedNeighborhoodSearch) = nhs.neighborhood_search
+sorting_grid(nhs::CombinedGridNeighborhoodSearch) = sorting_grid(first(nhs.searches))
 
 function sorting_grid(nhs)
     search_radius = PointNeighbors.search_radius(nhs)
 
     return GridNeighborhoodSearch{ndims(nhs)}(; search_radius)
 end
+
+# A `CombinedGridNeighborhoodSearch` with a single point set is used in the benchmarks
+# like a regular neighborhood search. It is initialized and updated as a whole, but
+# the neighbors are found with the `PointSetPairSearch` of the point set with itself
+# (see `query_search`).
+function copy_benchmark_search(nhs, search_radius, n_points)
+    return copy_neighborhood_search(nhs, search_radius, n_points)
+end
+
+function copy_benchmark_search(nhs::CombinedGridNeighborhoodSearch, search_radius,
+                               n_points)
+    return CombinedGridNeighborhoodSearch(first(nhs.searches), search_radius, (n_points,))
+end
+
+function benchmark_initialize!(nhs, coordinates; parallelization_backend)
+    return initialize!(nhs, coordinates, coordinates; parallelization_backend)
+end
+
+function benchmark_initialize!(nhs::CombinedGridNeighborhoodSearch, coordinates;
+                               parallelization_backend)
+    return initialize!(nhs, 1, coordinates; parallelization_backend)
+end
+
+function benchmark_update!(nhs, coordinates; parallelization_backend)
+    return update!(nhs, coordinates, coordinates; parallelization_backend)
+end
+
+function benchmark_update!(nhs::CombinedGridNeighborhoodSearch, coordinates;
+                           parallelization_backend)
+    return update!(nhs, 1, coordinates; parallelization_backend)
+end
+
+# The neighborhood search to find the neighbors
+query_search(nhs) = nhs
+query_search(nhs::CombinedGridNeighborhoodSearch) = PointNeighbors.point_set_pair(nhs, 1, 1)

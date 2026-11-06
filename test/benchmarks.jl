@@ -33,6 +33,25 @@
                                                  search_radius_factor = 3.0f0)
         end
 
+        @testset verbose=true "`benchmark_wcsph` with sorting" begin
+            @trixi_test_nowarn run_benchmark_full_grid(benchmark_wcsph, size, 2;
+                                                       sort_points = true)
+            @trixi_test_nowarn run_benchmark_full_grid(benchmark_wcsph, size, 2;
+                                                       sort_points = true,
+                                                       combined = true)
+            @trixi_test_nowarn run_benchmark_full_grid(benchmark_wcsph, size, 2;
+                                                       combined = true)
+        end
+
+        @testset verbose=true "`benchmark_sorting`" begin
+            @trixi_test_nowarn run_benchmark_full_grid(benchmark_sorting, size, 2;
+                                                       sort_points = true)
+            @trixi_test_nowarn run_benchmark_full_grid(benchmark_sorting, size, 2;
+                                                       sort_points = true,
+                                                       combined = true,
+                                                       rotation_angle = 0)
+        end
+
         @testset verbose=true "`benchmark_tlsph`" begin
             @trixi_test_nowarn run_benchmark_default(benchmark_tlsph, size, 2)
             @trixi_test_nowarn run_benchmark_gpu(benchmark_tlsph, size, 2)
