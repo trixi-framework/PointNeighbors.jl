@@ -49,8 +49,9 @@ See also
                             A factor of `1.0` corresponds to a standard deviation
                             similar to that of a realistic simulation.
 - `sort_displacement = 0.01`: Sort the points by the cells of the first neighborhood
-                            search, but using their positions before a uniform displacement
-                            of this length (in units of the search radius).
+                            search, but apply a uniform displacement
+                            `sort_displacement * search_radius` to the point positions
+                            before sorting to obtain an almost sorted configuration.
                             This models a real simulation, where points are sorted only
                             every few time steps and are therefore almost, but never
                             perfectly sorted. Use `0` for a perfect sorting.
@@ -424,11 +425,14 @@ end
 # using the cells of the neighborhood search `nhs`.
 # In a real simulation, points are sorted only every few time steps and move in between,
 # so they are almost, but never perfectly sorted.
-# We model this by sorting by the positions before a uniform displacement of length
-# `sort_displacement` (in units of the search radius) in diagonal direction.
+# We model this by applying a uniform displacement `sort_displacement * search_radius`
+# in diagonal direction to the point positions before sorting.
+# This corresponds to a simulation where all points are moving at a uniform velocity,
+# but it produces a similar noticable slowdown on GPUs as measured in a dam break simulation.
 function almost_sorted_permutation(coordinates, nhs, sort_displacement)
     NDIMS = size(coordinates, 1)
     grid_nhs = sorting_grid(nhs)
+    # [`displacement`, `displacement`, `displacement`] has the desired length.
     displacement = sort_displacement * PointNeighbors.search_radius(nhs) / sqrt(NDIMS)
 
     cell_coords = map(axes(coordinates, 2)) do point
@@ -443,6 +447,8 @@ sorting_grid(nhs::GridNeighborhoodSearch) = nhs
 sorting_grid(nhs::PrecomputedNeighborhoodSearch) = nhs.neighborhood_search
 
 function sorting_grid(nhs)
+    # For other NHS implementations (currently only `TrivialNeighborhoodSearch`),
+    # we create a temporary `GridNeighborhoodSearch` to obtain a grid for sorting.
     search_radius = PointNeighbors.search_radius(nhs)
 
     return GridNeighborhoodSearch{ndims(nhs)}(; search_radius)
