@@ -133,15 +133,6 @@ end
 
 @inline requires_update(::GridNeighborhoodSearch) = (false, true)
 
-# Incremental update strategies don't support inactive points.
-@inline supports_inactive_points(::GridNeighborhoodSearch) = true
-@inline function supports_inactive_points(::GridNeighborhoodSearch{<:Any,
-                                                                   <:Union{SerialIncrementalUpdate,
-                                                                           SemiParallelUpdate,
-                                                                           ParallelIncrementalUpdate}})
-    return false
-end
-
 @inline function supports_infinite_domain(search::GridNeighborhoodSearch)
     return supports_infinite_domain(search.cell_list)
 end
@@ -204,6 +195,15 @@ This strategy reinitializes the cell lists in every update.
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
+
+# Incremental update strategies don't support inactive points.
+@inline supports_inactive_points(::GridNeighborhoodSearch) = true
+@inline function supports_inactive_points(::GridNeighborhoodSearch{<:Any,
+                                                                   <:Union{SerialIncrementalUpdate,
+                                                                           SemiParallelUpdate,
+                                                                           ParallelIncrementalUpdate}})
+    return false
+end
 
 # No update buffer needed for non-incremental update/initialize
 @inline function create_update_buffer(::Union{SerialUpdate, ParallelUpdate}, _, _)
