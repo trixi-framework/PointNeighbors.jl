@@ -38,6 +38,8 @@ steps:
       POINTNEIGHBORS_TEST: metal
     timeout_in_minutes: 60
 
+  # oneAPI doesn't support exceptions, which fails some of our tests.
+  # Additionally, we never worked with Intel data center GPUs, so these tests would suggest support that isn't actually there.
   # - label: "oneAPI"
   #   plugins:
   #     - JuliaCI/julia#v1:
