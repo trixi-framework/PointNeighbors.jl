@@ -145,11 +145,11 @@ end
 """
     foreach_point_neighbor(f, system_coords, neighbor_coords, neighborhood_search;
                            parallelization_backend = default_backend(system_coords),
-                           points = axes(system_coords, 2))
+                           points = axes(system_coords, 2), search_radius = nothing)
 
 Loop for each point in `system_coords` over all points in `neighbor_coords` whose distances
-to that point are smaller than the search radius and execute the function `f(i, j, pos_diff, d)`,
-where
+to that point are smaller than the search radius of that point (see the keyword
+`search_radius`) and execute the function `f(i, j, pos_diff, d)`, where
 - `i` is the column index of the point in `system_coords`,
 - `j` the column index of the neighbor in `neighbor_coords`,
 - `pos_diff` the vector ``x - y`` where ``x`` denotes the coordinates of the point
@@ -177,12 +177,30 @@ Note that `system_coords` and `neighbor_coords` can be identical.
                              specified backend. By default, the backend is selected
                              automatically based on the type of `system_coords`.
                              See [`@threaded`](@ref) for a list of available backends.
+- `search_radius = nothing`: The query search radius (see the keyword argument
+                             `search_radius` of [`foreach_neighbor`](@ref)).
+                             By default, the search radius of the neighborhood search
+                             is used for all points. This can either be a number, which is
+                             used for all points, or a function `i -> search radius`
+                             to query the neighbors of each point with its own search
+                             radius. This function receives the column index `i` of the
+                             point in `system_coords` (the same `i` that `f` receives).
+                             It is evaluated once per point inside the threaded loop
+                             or GPU kernel, so all data captured by it must be accessible
+                             from there (e.g., on the GPU).
+                             Each returned radius must be between zero and the search
+                             radius of the neighborhood search, except with
+                             [`TrivialNeighborhoodSearch`](@ref), which searches all points.
+                             [`PrecomputedNeighborhoodSearch`](@ref) requires the radius
+                             to equal its search radius, so varying radii are not
+                             supported there.
 
 See also [`foreach_point_neighbor_unsafe`](@ref), [`initialize!`](@ref), [`update!`](@ref).
 """
 function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborhood_search;
                                 parallelization_backend::ParallelizationBackend = default_backend(system_coords),
-                                points = axes(system_coords, 2)) where {T}
+                                points = axes(system_coords, 2),
+                                search_radius = nothing) where {T}
     # The type annotation above is to make Julia specialize on the type of the function.
     # Otherwise, unspecialized code will cause a lot of allocations
     # and heavily impact performance.
@@ -192,9 +210,15 @@ function foreach_point_neighbor(f::T, system_coords, neighbor_coords, neighborho
     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     @threaded parallelization_backend for point in points
-        # Now we can safely assume that `point` is inbounds
+        query_radius = point_search_radius(search_radius, neighborhood_search, point)
+
+        # The `@inbounds` below also disables the query radius check in `foreach_neighbor`,
+        # so we check the radius explicitly here.
+        check_point_search_radius(search_radius, neighborhood_search, query_radius)
+
+        # `point` is inbounds because of the `checkbounds` above the loop.
         @inbounds foreach_neighbor(f, system_coords, neighbor_coords,
-                                   neighborhood_search, point)
+                                   neighborhood_search, point; search_radius = query_radius)
     end
 
     return nothing
@@ -203,11 +227,13 @@ end
 """
     foreach_point_neighbor_unsafe(f, system_coords, neighbor_coords, neighborhood_search;
                                   parallelization_backend = default_backend(system_coords),
-                                  points = axes(system_coords, 2))
+                                  points = axes(system_coords, 2), search_radius = nothing)
 
 Like [`foreach_point_neighbor`](@ref), but skips **all** bounds checks inside the
 threaded loop or GPU kernel.
 See [`foreach_neighbor_unsafe`](@ref) for more details on which bounds checks are skipped.
+This includes validation of the radii specified by the keyword argument `search_radius`.
+An unsupported radius can silently produce incorrect neighbors.
 
 !!! warning
     The `neighborhood_search` must have been initialized or updated with `system_coords`
@@ -221,16 +247,38 @@ See [`foreach_neighbor_unsafe`](@ref) for more details on which bounds checks ar
 function foreach_point_neighbor_unsafe(f::T, system_coords, neighbor_coords,
                                        neighborhood_search;
                                        parallelization_backend::ParallelizationBackend = default_backend(system_coords),
-                                       points = axes(system_coords, 2)) where {T}
+                                       points = axes(system_coords, 2),
+                                       search_radius = nothing) where {T}
     # Explicit bounds check before the hot loop (or GPU kernel)
     @boundscheck checkbounds(system_coords, ndims(neighborhood_search), points)
 
     @threaded parallelization_backend for point in points
+        query_radius = point_search_radius(search_radius, neighborhood_search, point)
         foreach_neighbor_unsafe(f, system_coords, neighbor_coords,
-                                neighborhood_search, point)
+                                neighborhood_search, point; search_radius = query_radius)
     end
 
     return nothing
+end
+
+# Query radius of `point` in `foreach_point_neighbor`.
+@inline function point_search_radius(::Nothing, neighborhood_search, point)
+    return search_radius(neighborhood_search)
+end
+
+@inline function point_search_radius(radius::Real, neighborhood_search, point)
+    return convert(eltype(neighborhood_search), radius)
+end
+
+@inline function point_search_radius(radius_function, neighborhood_search, point)
+    return convert(eltype(neighborhood_search), radius_function(point))
+end
+
+# The stored radius of the neighborhood search is always valid, so we can skip the check.
+@inline check_point_search_radius(::Nothing, neighborhood_search, query_radius) = nothing
+
+@inline function check_point_search_radius(search_radius, neighborhood_search, query_radius)
+    check_search_radius(neighborhood_search, query_radius)
 end
 
 """
@@ -272,8 +320,8 @@ See [`foreach_neighbor_unsafe`](@ref) for a version that skips all bounds checks
                      point, point_coords, search_radius_)
 end
 
-# Check that the query radius passed to `foreach_neighbor` or `mapreduce_neighbor`
-# is supported by this neighborhood search.
+# Check that the query radius passed to `foreach_neighbor`, `mapreduce_neighbor`
+# or `foreach_point_neighbor` is supported by this neighborhood search.
 @inline function check_search_radius(neighborhood_search::AbstractNeighborhoodSearch,
                                      query_radius)
     # Neighbors outside of the search radius of the neighborhood search
