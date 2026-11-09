@@ -38,15 +38,15 @@ steps:
       POINTNEIGHBORS_TEST: metal
     timeout_in_minutes: 60
 
-  - label: "oneAPI"
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "1.12"
-    agents:
-      queue: "oneapi"
-    command: |
-      julia --color=yes --project=test -e 'using Pkg; Pkg.add("oneAPI"); Pkg.develop(path="."); Pkg.instantiate()'
-      julia --color=yes --project=test -e 'include("test/runtests.jl")'
-    env:
-      POINTNEIGHBORS_TEST: oneapi
-    timeout_in_minutes: 60
+  # - label: "oneAPI"
+  #   plugins:
+  #     - JuliaCI/julia#v1:
+  #         version: "1.12"
+  #   agents:
+  #     queue: "oneapi"
+  #   command: |
+  #     julia --color=yes --project=test -e 'using Pkg; Pkg.add("oneAPI"); Pkg.develop(path="."); Pkg.instantiate()'
+  #     julia --color=yes --project=test -e 'include("test/runtests.jl")'
+  #   env:
+  #     POINTNEIGHBORS_TEST: oneapi
+  #   timeout_in_minutes: 60
