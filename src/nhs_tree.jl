@@ -74,6 +74,13 @@ end
 @inline Base.ndims(::TreeNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
 @inline Base.eltype(::TreeNeighborhoodSearch{<:Any, ELTYPE}) where {ELTYPE} = ELTYPE
 
+# The tree is always rebuilt from scratch, so there is no incremental update strategy
+# that would be incompatible with inactive points.
+@inline supports_inactive_points(::TreeNeighborhoodSearch) = true
+
+# This NHS has a bounding box.
+@inline supports_infinite_domain(::TreeNeighborhoodSearch) = false
+
 @inline requires_update(::TreeNeighborhoodSearch) = (false, true)
 
 function initialize!(neighborhood_search::TreeNeighborhoodSearch,
@@ -96,7 +103,7 @@ function update!(neighborhood_search::TreeNeighborhoodSearch,
     # The NHS stores only the points in `y`, so only rebuild it when `y` moves.
     points_moving[2] || return neighborhood_search
 
-    # The tree is always rebuilt from scratch
+    # The tree is always rebuilt from scratch.
     initialize!(neighborhood_search, x, y; parallelization_backend, eachindex_y)
 end
 

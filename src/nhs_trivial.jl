@@ -39,6 +39,10 @@ end
 
 @inline requires_update(::TrivialNeighborhoodSearch) = (false, false)
 
+# TODO `eachindex_y` is ignored, so inactive points are not supported.
+@inline supports_inactive_points(::TrivialNeighborhoodSearch) = false
+@inline supports_infinite_domain(::TrivialNeighborhoodSearch) = true
+
 @inline function initialize!(search::TrivialNeighborhoodSearch, x, y;
                              parallelization_backend = default_backend(x),
                              eachindex_y = axes(y, 2))

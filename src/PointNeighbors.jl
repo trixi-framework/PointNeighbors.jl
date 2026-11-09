@@ -30,7 +30,7 @@ export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeCellLis
 export DynamicVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
-export requires_update
+export requires_update, supports_inactive_points, supports_infinite_domain
 export initialize!, update!, initialize_grid!, update_grid!
 export SerialBackend, PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend,
        default_backend

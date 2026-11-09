@@ -1,5 +1,8 @@
 abstract type AbstractCellList end
 
+# Fallback is `false` for cell lists, so that new cell lists are conservative.
+supports_infinite_domain(::AbstractCellList) = false
+
 # For the `DictionaryCellList`, this is a `KeySet`, which has to be `collect`ed first to be
 # able to be used in a threaded loop.
 @inline each_cell_index_threadable(cell_list::AbstractCellList) = each_cell_index(cell_list)
