@@ -181,3 +181,5 @@ function coordinates_flattened(cell_coordinate)
 
     return result
 end
+
+@inline supports_infinite_domain(::SpatialHashingCellList) = true
