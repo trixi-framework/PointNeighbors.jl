@@ -12,6 +12,10 @@ for each point during initialization and update.
 This neighborhood search maximizes the performance of neighbor loops at the cost of a much
 slower [`update!`](@ref).
 
+Since the neighbor lists are precomputed, the neighbor loop skips the distance check.
+Therefore, querying with a smaller `search_radius` in [`foreach_neighbor`](@ref)
+or [`mapreduce_neighbor`](@ref) is not supported.
+
 A [`GridNeighborhoodSearch`](@ref) is used internally to compute the neighbor lists during
 initialization and update.
 
@@ -127,15 +131,20 @@ end
 
 @inline requires_update(::PrecomputedNeighborhoodSearch) = (true, true)
 
+# TODO Theoretically, inactive points can be supported, but the NHS would need to know
+# about inactive points in both point sets, which is not supported by the current API.
+@inline supports_inactive_points(::PrecomputedNeighborhoodSearch) = false
+@inline function supports_infinite_domain(search::PrecomputedNeighborhoodSearch)
+    return supports_infinite_domain(search.neighborhood_search)
+end
+
 function initialize!(search::PrecomputedNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
                      eachindex_y = axes(y, 2))
     (; neighborhood_search, neighbor_lists) = search
 
-    if eachindex_y != axes(y, 2)
-        error("this neighborhood search does not support inactive points")
-    end
+    check_inactive_points(search, y, eachindex_y)
 
     # Initialize grid NHS
     initialize!(neighborhood_search, x, y; parallelization_backend)
@@ -152,9 +161,7 @@ function update!(search::PrecomputedNeighborhoodSearch,
                  eachindex_y = axes(y, 2))
     (; neighborhood_search, neighbor_lists) = search
 
-    if eachindex_y != axes(y, 2)
-        error("this neighborhood search does not support inactive points")
-    end
+    check_inactive_points(search, y, eachindex_y)
 
     # Update the internal neighborhood search
     update!(neighborhood_search, x, y; points_moving, parallelization_backend)
@@ -203,6 +210,18 @@ function initialize_neighbor_lists!(neighbor_lists::DynamicVectorOfVectors,
     if sort_neighbor_lists
         sorteach!(neighbor_lists)
     end
+end
+
+@inline function check_search_radius(neighborhood_search::PrecomputedNeighborhoodSearch,
+                                     query_radius)
+    # The neighbor loop below skips the distance check for performance reasons,
+    # so a different query radius would silently be ignored.
+    search_radius_ = search_radius(neighborhood_search)
+    if !isapprox(query_radius, search_radius_, atol = eps(search_radius_))
+        error("this neighborhood search requires the query `search_radius` to equal its search radius")
+    end
+
+    return nothing
 end
 
 # Note that calling this function with `@inbounds` is not safe.

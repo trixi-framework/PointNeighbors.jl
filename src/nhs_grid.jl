@@ -133,6 +133,10 @@ end
 
 @inline requires_update(::GridNeighborhoodSearch) = (false, true)
 
+@inline function supports_infinite_domain(search::GridNeighborhoodSearch)
+    return supports_infinite_domain(search.cell_list)
+end
+
 """
     ParallelUpdate()
 
@@ -191,6 +195,15 @@ This strategy reinitializes the cell lists in every update.
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
+
+# Incremental update strategies don't support inactive points.
+@inline supports_inactive_points(::GridNeighborhoodSearch) = true
+@inline function supports_inactive_points(::GridNeighborhoodSearch{<:Any,
+                                                                   <:Union{SerialIncrementalUpdate,
+                                                                           SemiParallelUpdate,
+                                                                           ParallelIncrementalUpdate}})
+    return false
+end
 
 # No update buffer needed for non-incremental update/initialize
 @inline function create_update_buffer(::Union{SerialUpdate, ParallelUpdate}, _, _)
@@ -288,6 +301,8 @@ function update!(neighborhood_search::GridNeighborhoodSearch,
     # The NHS stores only the points in `y`, so only rebuild it when `y` moves.
     points_moving[2] || return neighborhood_search
 
+    check_inactive_points(neighborhood_search, y, eachindex_y)
+
     update_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
 end
 
@@ -300,11 +315,6 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
                       parallelization_backend = default_backend(y),
                       eachindex_y = axes(y, 2))
     (; cell_list, update_buffer) = neighborhood_search
-
-    if eachindex_y != axes(y, 2)
-        # Incremental update doesn't support inactive points
-        error("this neighborhood search/update strategy does not support inactive points")
-    end
 
     # Empty each thread's list
     @threaded parallelization_backend for i in eachindex(update_buffer)
@@ -410,11 +420,6 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                       y::AbstractMatrix; parallelization_backend = default_backend(y),
                       eachindex_y = axes(y, 2))
     (; cell_list, update_buffer) = neighborhood_search
-
-    if eachindex_y != axes(y, 2)
-        # Incremental update doesn't support inactive points
-        error("this neighborhood search/update strategy does not support inactive points")
-    end
 
     # Note that we need two separate loops for adding and removing points.
     # `push_cell_atomic!` only guarantees thread-safety when different threads push

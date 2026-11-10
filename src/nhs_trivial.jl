@@ -39,6 +39,10 @@ end
 
 @inline requires_update(::TrivialNeighborhoodSearch) = (false, false)
 
+# TODO `eachindex_y` is ignored, so inactive points are not supported.
+@inline supports_inactive_points(::TrivialNeighborhoodSearch) = false
+@inline supports_infinite_domain(::TrivialNeighborhoodSearch) = true
+
 @inline function initialize!(search::TrivialNeighborhoodSearch, x, y;
                              parallelization_backend = default_backend(x),
                              eachindex_y = axes(y, 2))
@@ -53,6 +57,12 @@ end
 end
 
 @inline eachneighbor(coords, search::TrivialNeighborhoodSearch) = search.eachpoint
+
+# All points are considered, so the query radius may exceed the stored radius.
+@inline function check_search_radius(neighborhood_search::TrivialNeighborhoodSearch,
+                                     query_radius)
+    return nothing
+end
 
 # Create a copy of a neighborhood search but with a different search radius and different
 # number of points.

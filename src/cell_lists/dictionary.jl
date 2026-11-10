@@ -90,3 +90,5 @@ function copy_cell_list(::DictionaryCellList{NDIMS}, search_radius,
                         periodic_box) where {NDIMS}
     return DictionaryCellList{NDIMS}()
 end
+
+@inline supports_infinite_domain(::DictionaryCellList) = true
