@@ -23,6 +23,11 @@ See [`copy_neighborhood_search`](@ref) for more details.
     - `Vector{Vector{Int32}}`: Scattered memory, but very memory-efficient.
     - `DynamicVectorOfVectors{Int32}`: Contiguous memory, optimizing cache-hits
                                        and GPU-compatible.
+    - `CompactVectorOfVectors{Int32}`: Contiguous memory without unused entries and
+                                       GPU-compatible. The points are sorted by cell
+                                       in every update with a (parallel) counting sort.
+                                       Only [`ParallelUpdate`](@ref) and
+                                       [`SerialUpdate`](@ref) are supported.
 - `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.
@@ -39,6 +44,10 @@ end
 function supported_update_strategies(::FullGridCellList{<:DynamicVectorOfVectors})
     return (ParallelUpdate, ParallelIncrementalUpdate, SemiParallelUpdate,
             SerialIncrementalUpdate, SerialUpdate)
+end
+
+function supported_update_strategies(::FullGridCellList{<:CompactVectorOfVectors})
+    return (ParallelUpdate, SerialUpdate)
 end
 
 function supported_update_strategies(::FullGridCellList)

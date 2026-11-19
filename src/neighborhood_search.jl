@@ -4,6 +4,39 @@ abstract type AbstractNeighborhoodSearch end
 @inline Base.eltype(search::AbstractNeighborhoodSearch) = eltype(search_radius(search))
 
 """
+    supports_inactive_points(search::AbstractNeighborhoodSearch)
+
+Returns `true` if this neighborhood search (including its configuration, such as the
+update strategy) supports ignoring points in `y` via the keyword argument `eachindex_y`
+of [`initialize!`](@ref) and [`update!`](@ref).
+Otherwise, passing an `eachindex_y` that is not `axes(y, 2)` throws an error.
+"""
+function supports_inactive_points(::AbstractNeighborhoodSearch)
+    error("`supports_inactive_points` not implemented for this neighborhood search.")
+end
+
+# Throw an error if `eachindex_y` excludes points, but the NHS doesn't support this.
+@inline function check_inactive_points(search, y, eachindex_y)
+    if !supports_inactive_points(search) && eachindex_y != axes(y, 2)
+        error("this neighborhood search/update strategy does not support inactive points")
+    end
+end
+
+"""
+    supports_infinite_domain(search::AbstractNeighborhoodSearch)
+
+Returns `true` if this neighborhood search works for points anywhere in space, without
+the need to specify a bounded domain (as opposed to, for example,
+a [`GridNeighborhoodSearch`](@ref) with a [`FullGridCellList`](@ref),
+which requires all points to be inside a bounding box).
+This is the case for example for the [`GridNeighborhoodSearch`](@ref)
+with a [`DictionaryCellList`](@ref) or [`SpatialHashingCellList`](@ref).
+"""
+function supports_infinite_domain(::AbstractNeighborhoodSearch)
+    error("`supports_infinite_domain` not implemented for this neighborhood search.")
+end
+
+"""
     requires_update(search::AbstractNeighborhoodSearch)
 
 Returns a tuple `(x_changed, y_changed)` indicating if this type of neighborhood search

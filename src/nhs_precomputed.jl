@@ -131,15 +131,20 @@ end
 
 @inline requires_update(::PrecomputedNeighborhoodSearch) = (true, true)
 
+# TODO Theoretically, inactive points can be supported, but the NHS would need to know
+# about inactive points in both point sets, which is not supported by the current API.
+@inline supports_inactive_points(::PrecomputedNeighborhoodSearch) = false
+@inline function supports_infinite_domain(search::PrecomputedNeighborhoodSearch)
+    return supports_infinite_domain(search.neighborhood_search)
+end
+
 function initialize!(search::PrecomputedNeighborhoodSearch,
                      x::AbstractMatrix, y::AbstractMatrix;
                      parallelization_backend = default_backend(x),
                      eachindex_y = axes(y, 2))
     (; neighborhood_search, neighbor_lists) = search
 
-    if eachindex_y != axes(y, 2)
-        error("this neighborhood search does not support inactive points")
-    end
+    check_inactive_points(search, y, eachindex_y)
 
     # Initialize grid NHS
     initialize!(neighborhood_search, x, y; parallelization_backend)
@@ -156,9 +161,7 @@ function update!(search::PrecomputedNeighborhoodSearch,
                  eachindex_y = axes(y, 2))
     (; neighborhood_search, neighbor_lists) = search
 
-    if eachindex_y != axes(y, 2)
-        error("this neighborhood search does not support inactive points")
-    end
+    check_inactive_points(search, y, eachindex_y)
 
     # Update the internal neighborhood search
     update!(neighborhood_search, x, y; points_moving, parallelization_backend)

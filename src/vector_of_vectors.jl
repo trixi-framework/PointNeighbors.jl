@@ -233,3 +233,135 @@ end
 @inline function transposed_backend(::Any)
     return false
 end
+
+# Data structure that behaves like a `Vector{Vector{T}}`. We call each inner vector a "bin".
+# All bins are stored in one flat vector `values`: first all values of bin 1,
+# then all values of bin 2, and so on.
+# `first_bin_index[bin]` is the index in `values` where `bin` starts.
+#
+# The values are always the integers `1:n_values` (e.g., point indices),
+# and each value is in at most one bin.
+# Unlike `DynamicVectorOfVectors`, values cannot be added with `push!`.
+# Instead, `update!` rebuilds the entire data structure from a function that
+# assigns a bin to each value.
+# Values without a bin (see `active_values` in `update!`) are stored after the last bin,
+# so `values` is always a permutation of `1:n_values`.
+struct CompactVectorOfVectors{T, V, I, B} <: AbstractVector{Vector{T}}
+    values          :: V # Values `1:n_values`, sorted by bin
+    first_bin_index :: I # Index of the first value of each bin, plus one entry (`n_values + 1`)
+    bin_counts      :: I # Buffer for `update!`: number of values in each bin
+    value_bins      :: B # Buffer for `update!`: bin of each value and index in this bin
+    tail_index      :: I # Buffer for `update!`: index of the unassigned values after all bins
+
+    # This constructor is necessary for Adapt.jl to work with this struct.
+    # See the comments in gpu.jl for more details.
+    function CompactVectorOfVectors(values, first_bin_index, bin_counts, value_bins,
+                                    tail_index)
+        new{eltype(values), typeof(values), typeof(first_bin_index),
+            typeof(value_bins)}(values, first_bin_index, bin_counts, value_bins,
+                                tail_index)
+    end
+end
+
+function CompactVectorOfVectors{T}(; n_bins) where {T}
+    values = T[]
+    first_bin_index = ones(Int32, n_bins + 1)
+    bin_counts = zeros(Int32, n_bins)
+    value_bins = NTuple{2, Int32}[]
+    tail_index = Int32[]
+
+    return CompactVectorOfVectors(values, first_bin_index, bin_counts, value_bins,
+                                  tail_index)
+end
+
+@inline Base.size(vov::CompactVectorOfVectors) = (length(vov.bin_counts),)
+
+@inline default_backend(vov::CompactVectorOfVectors) = default_backend(vov.first_bin_index)
+
+@inline function Base.getindex(vov::CompactVectorOfVectors, i)
+    (; values, first_bin_index) = vov
+
+    @boundscheck checkbounds(vov, i)
+
+    first_index = @inbounds first_bin_index[i]
+    last_index = @inbounds first_bin_index[i + 1] - 1
+
+    return view(values, first_index:last_index)
+end
+
+# Sort all values in `1:n_values` by bin.
+# The values that are not in `active_values` are not assigned to any bin
+# and instead are stored in increasing order after all bins.
+#
+# This is a parallel counting sort, which also works on GPUs.
+# Note that this is not a stable sort and the result is non-deterministic (in parallel).
+#
+# `active_values` must be unique and only contain values in `1:n_values`.
+function update!(vov::CompactVectorOfVectors, value_to_bin, n_values,
+                 parallelization_backend; active_values = Base.OneTo(n_values))
+    (; values, first_bin_index, bin_counts, value_bins, tail_index) = vov
+
+    eachvalue = Base.OneTo(n_values)
+
+    # Resize data structures if necessary.
+    if length(values) != n_values
+        resize!(values, n_values)
+        resize!(value_bins, n_values)
+    end
+
+    # We assume that `active_values` is unique and only contains values in `1:n_values`.
+    all_values_active = length(active_values) == n_values
+
+    if !all_values_active
+        # Mark all values as unassigned (bin zero).
+        @threaded parallelization_backend for value in eachvalue
+            @inbounds value_bins[value] = (zero(Int32), zero(Int32))
+        end
+    end
+
+    # Count the values in each bin. The atomic increment also yields the index of
+    # this value in its bin, so that only one atomic operation per value is needed.
+    fill!(bin_counts, 0)
+    @threaded parallelization_backend for value in active_values
+        bin = value_to_bin(value)
+        index_in_bin = @inbounds Atomix.@atomic bin_counts[bin] += one(Int32)
+        @inbounds value_bins[value] = (Int32(bin), index_in_bin)
+    end
+
+    # `first_bin_index[bin] = 1 + sum(bin_counts[1:(bin - 1)])`
+    first_bin_index_tail = view(first_bin_index, 2:length(first_bin_index))
+    cumsum!(first_bin_index_tail, bin_counts)
+    first_bin_index_tail .+= 1
+    # Use a `view` to avoid scalar indexing on GPUs.
+    fill!(view(first_bin_index, 1:1), 1)
+
+    if !all_values_active
+        # The `i`-th unassigned value is stored at index `i` after all bins.
+        # Count the unassigned values with a cumulative sum, for which we can use
+        # `values` as a temporary buffer, since it is overwritten below.
+        if length(tail_index) != n_values
+            resize!(tail_index, n_values)
+        end
+
+        @threaded parallelization_backend for value in eachvalue
+            bin, _ = @inbounds value_bins[value]
+            @inbounds values[value] = iszero(bin)
+        end
+        cumsum!(tail_index, values)
+    end
+
+    # Write each value to its index in its bin.
+    n_bins = length(bin_counts)
+    @threaded parallelization_backend for value in eachvalue
+        bin, index_in_bin = @inbounds value_bins[value]
+
+        if iszero(bin)
+            index = @inbounds first_bin_index[n_bins + 1] + tail_index[value] - 1
+        else
+            index = @inbounds first_bin_index[bin] + index_in_bin - 1
+        end
+        @inbounds values[index] = value
+    end
+
+    return vov
+end

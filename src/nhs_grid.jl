@@ -133,6 +133,10 @@ end
 
 @inline requires_update(::GridNeighborhoodSearch) = (false, true)
 
+@inline function supports_infinite_domain(search::GridNeighborhoodSearch)
+    return supports_infinite_domain(search.cell_list)
+end
+
 """
     ParallelUpdate()
 
@@ -191,6 +195,15 @@ This strategy reinitializes the cell lists in every update.
 See [`GridNeighborhoodSearch`](@ref) for usage information.
 """
 struct SerialUpdate end
+
+# Incremental update strategies don't support inactive points.
+@inline supports_inactive_points(::GridNeighborhoodSearch) = true
+@inline function supports_inactive_points(::GridNeighborhoodSearch{<:Any,
+                                                                   <:Union{SerialIncrementalUpdate,
+                                                                           SemiParallelUpdate,
+                                                                           ParallelIncrementalUpdate}})
+    return false
+end
 
 # No update buffer needed for non-incremental update/initialize
 @inline function create_update_buffer(::Union{SerialUpdate, ParallelUpdate}, _, _)
@@ -288,6 +301,8 @@ function update!(neighborhood_search::GridNeighborhoodSearch,
     # The NHS stores only the points in `y`, so only rebuild it when `y` moves.
     points_moving[2] || return neighborhood_search
 
+    check_inactive_points(neighborhood_search, y, eachindex_y)
+
     update_grid!(neighborhood_search, y; eachindex_y, parallelization_backend)
 end
 
@@ -300,11 +315,6 @@ function update_grid!(neighborhood_search::Union{GridNeighborhoodSearch{<:Any,
                       parallelization_backend = default_backend(y),
                       eachindex_y = axes(y, 2))
     (; cell_list, update_buffer) = neighborhood_search
-
-    if eachindex_y != axes(y, 2)
-        # Incremental update doesn't support inactive points
-        error("this neighborhood search/update strategy does not support inactive points")
-    end
 
     # Empty each thread's list
     @threaded parallelization_backend for i in eachindex(update_buffer)
@@ -410,11 +420,6 @@ function update_grid!(neighborhood_search::GridNeighborhoodSearch{<:Any,
                       y::AbstractMatrix; parallelization_backend = default_backend(y),
                       eachindex_y = axes(y, 2))
     (; cell_list, update_buffer) = neighborhood_search
-
-    if eachindex_y != axes(y, 2)
-        # Incremental update doesn't support inactive points
-        error("this neighborhood search/update strategy does not support inactive points")
-    end
 
     # Note that we need two separate loops for adding and removing points.
     # `push_cell_atomic!` only guarantees thread-safety when different threads push
@@ -636,6 +641,56 @@ end
 @inline function nonperiodic_cell_coords(coords, cell_list, cell_size)
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
+
+# A `GridNeighborhoodSearch` with a `FullGridCellList` with the `CompactVectorOfVectors`
+# backend, which sorts the points by cell in every update.
+# Only non-incremental update strategies (i.e., `ParallelUpdate` and `SerialUpdate`)
+# are supported for the `CompactVectorOfVectors` backend.
+# This has to be a union of two types with concrete update strategies to avoid
+# method ambiguities with `initialize_grid!` for `ParallelUpdate`.
+const CompactGridNHS = Union{GridNeighborhoodSearch{<:Any, ParallelUpdate,
+                                                    <:FullGridCellList{<:CompactVectorOfVectors}},
+                             GridNeighborhoodSearch{<:Any, SerialUpdate,
+                                                    <:FullGridCellList{<:CompactVectorOfVectors}}}
+
+function initialize_grid!(neighborhood_search::CompactGridNHS, y::AbstractMatrix;
+                          parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
+    (; cell_list) = neighborhood_search
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
+
+    @inline function point_to_cell(point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+
+        # Make sure that points are not added to the outer padding layer
+        check_cell_bounds(cell_list, cell)
+
+        return cell_index(cell_list, cell)
+    end
+
+    # Use the serial backend for `SerialUpdate`.
+    backend = compact_update_backend(neighborhood_search.update_strategy,
+                                     parallelization_backend)
+
+    # Sort the points by cell. The inactive points are sorted to the end.
+    update!(cell_list.cells, point_to_cell, size(y, 2), backend;
+            active_values = eachindex_y)
+
+    return neighborhood_search
+end
+
+@inline function compact_update_backend(::ParallelUpdate, parallelization_backend)
+    return parallelization_backend
+end
+@inline compact_update_backend(::SerialUpdate, _) = SerialBackend()
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
