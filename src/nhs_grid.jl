@@ -692,6 +692,16 @@ end
 end
 @inline compact_update_backend(::SerialUpdate, _) = SerialBackend()
 
+# The field `values` of `CompactVectorOfVectors` is set to `nothing` when a
+# `SortingGridNeighborhoodSearch` is used because the values would always be
+# just the range `1:n_points` and can therefore be skipped in the query.
+# We can use that to identify a `SortingGridNeighborhoodSearch`.
+const SortingCellList = FullGridCellList{<:CompactVectorOfVectors{<:Any, Nothing}}
+const SortingGridNeighborhoodSearch{NDIMS} = GridNeighborhoodSearch{NDIMS,
+                                                                    <:Union{ParallelUpdate,
+                                                                            SerialUpdate},
+                                                                    <:SortingCellList}
+
 """
     SortingGridNeighborhoodSearch{NDIMS}(; min_corner, max_corner, search_radius = 0.0,
                                          n_points = 0, periodic_box = nothing,
@@ -738,16 +748,6 @@ function SortingGridNeighborhoodSearch{NDIMS}(; min_corner, max_corner,
     return GridNeighborhoodSearch{NDIMS}(; search_radius, n_points, periodic_box, cell_list,
                                          update_strategy)
 end
-
-# The field `values` of `CompactVectorOfVectors` is set to `nothing` when a
-# `SortingGridNeighborhoodSearch` is used because the values would always be
-# just the range `1:n_points` and can therefore be skipped in the query.
-# We can use that to identify a `SortingGridNeighborhoodSearch`.
-const SortingCellList = FullGridCellList{<:CompactVectorOfVectors{<:Any, Nothing}}
-const SortingGridNeighborhoodSearch{NDIMS} = GridNeighborhoodSearch{NDIMS,
-                                                                    <:Union{ParallelUpdate,
-                                                                            SerialUpdate},
-                                                                    <:SortingCellList}
 
 @inline sorts_points(::SortingGridNeighborhoodSearch) = true
 
