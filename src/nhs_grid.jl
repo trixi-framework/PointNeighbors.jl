@@ -642,6 +642,56 @@ end
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
 
+# A `GridNeighborhoodSearch` with a `FullGridCellList` with the `CompactVectorOfVectors`
+# backend, which sorts the points by cell in every update.
+# Only non-incremental update strategies (i.e., `ParallelUpdate` and `SerialUpdate`)
+# are supported for the `CompactVectorOfVectors` backend.
+# This has to be a union of two types with concrete update strategies to avoid
+# method ambiguities with `initialize_grid!` for `ParallelUpdate`.
+const CompactGridNHS = Union{GridNeighborhoodSearch{<:Any, ParallelUpdate,
+                                                    <:FullGridCellList{<:CompactVectorOfVectors}},
+                             GridNeighborhoodSearch{<:Any, SerialUpdate,
+                                                    <:FullGridCellList{<:CompactVectorOfVectors}}}
+
+function initialize_grid!(neighborhood_search::CompactGridNHS, y::AbstractMatrix;
+                          parallelization_backend = default_backend(y),
+                          eachindex_y = axes(y, 2))
+    (; cell_list) = neighborhood_search
+
+    if neighborhood_search.search_radius < eps()
+        # Cannot initialize with zero search radius.
+        # This is used in TrixiParticles when a neighborhood search is not used.
+        return neighborhood_search
+    end
+
+    @boundscheck checkbounds(y, ndims(neighborhood_search), eachindex_y)
+
+    @inline function point_to_cell(point)
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+        cell = cell_coords(point_coords, neighborhood_search)
+
+        # Make sure that points are not added to the outer padding layer
+        check_cell_bounds(cell_list, cell)
+
+        return cell_index(cell_list, cell)
+    end
+
+    # Use the serial backend for `SerialUpdate`.
+    backend = compact_update_backend(neighborhood_search.update_strategy,
+                                     parallelization_backend)
+
+    # Sort the points by cell. The inactive points are sorted to the end.
+    update!(cell_list.cells, point_to_cell, size(y, 2), backend;
+            active_values = eachindex_y)
+
+    return neighborhood_search
+end
+
+@inline function compact_update_backend(::ParallelUpdate, parallelization_backend)
+    return parallelization_backend
+end
+@inline compact_update_backend(::SerialUpdate, _) = SerialBackend()
+
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
     (; periodic_box) = nhs

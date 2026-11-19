@@ -28,7 +28,7 @@ export foreach_point_neighbor, foreach_point_neighbor_unsafe,
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch,
        TreeNeighborhoodSearch, CombinedGridNeighborhoodSearch, grid_nhs_pair
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeCellList
-export DynamicVectorOfVectors
+export DynamicVectorOfVectors, CompactVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
 export requires_update, supports_inactive_points, supports_infinite_domain
