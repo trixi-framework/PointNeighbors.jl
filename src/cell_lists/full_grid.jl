@@ -28,6 +28,7 @@ See [`copy_neighborhood_search`](@ref) for more details.
                                        in every update with a (parallel) counting sort.
                                        Only [`ParallelUpdate`](@ref) and
                                        [`SerialUpdate`](@ref) are supported.
+                                       See also [`SortingGridNeighborhoodSearch`](@ref).
 - `max_points_per_cell = 100`: Maximum number of points per cell. This will be used to
                                allocate the `DynamicVectorOfVectors`. It is not used with
                                the `Vector{Vector{Int32}}` backend.

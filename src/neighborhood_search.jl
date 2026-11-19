@@ -47,6 +47,38 @@ function requires_update(::AbstractNeighborhoodSearch)
 end
 
 """
+    sorts_points(search::AbstractNeighborhoodSearch)
+
+Returns `true` if this neighborhood search sorts the points in `y` in every
+[`initialize!`](@ref) and [`update!`](@ref), so that the points have to be reordered
+with [`point_permutation`](@ref) before the neighborhood search can be used.
+Currently, this is only the case for a [`SortingGridNeighborhoodSearch`](@ref).
+"""
+sorts_points(::AbstractNeighborhoodSearch) = false
+
+"""
+    point_permutation(search::AbstractNeighborhoodSearch)
+
+Return a permutation `perm` of the points in `y` (the second coordinate array passed to
+[`initialize!`](@ref) and [`update!`](@ref)) with which `y` has to be reordered before the
+neighborhood search can be used, that is, the neighbor coordinates must be `y[:, perm]`
+when passed to functions like [`foreach_point_neighbor`](@ref) or [`foreach_point`](@ref).
+`perm[i]` is the index in `y` (as passed to the last `initialize!` or `update!`)
+of the point at position `i` after sorting.
+The neighbor indices passed to the neighbor loops are positions in the sorted order,
+so neighbor data must be reordered with `perm` as well, or accessed with `perm[neighbor]`.
+The inactive points, which are not in `eachindex_y`, are sorted to the end
+in increasing order.
+
+This is only supported when [`sorts_points`](@ref) returns `true`.
+The permutation is overwritten in the next `update!` and has to be applied again
+after every `update!`.
+"""
+function point_permutation(::AbstractNeighborhoodSearch)
+    error("`point_permutation` is not supported for this neighborhood search")
+end
+
+"""
     initialize!(search::AbstractNeighborhoodSearch, x, y;
                 parallelization_backend = default_backend(x),
                 eachindex_y = axes(y, 2))

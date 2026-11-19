@@ -9,9 +9,23 @@
 # `Adapt.@adapt_structure` automatically generates the `adapt` function for our custom types.
 Adapt.@adapt_structure FullGridCellList
 Adapt.@adapt_structure DynamicVectorOfVectors
-Adapt.@adapt_structure CompactVectorOfVectors
 Adapt.@adapt_structure GridNeighborhoodSearch
 Adapt.@adapt_structure GridNHSPair
+
+# `values` is either `nothing` or a reference to `permutation`.
+# Adapting both fields separately would create two copies, so that `values` would
+# not be a reference of `permutation` anymore.
+function Adapt.adapt_structure(to, vov::CompactVectorOfVectors)
+    permutation = Adapt.adapt_structure(to, vov.permutation)
+    values = isnothing(vov.values) ? nothing : permutation
+    first_bin_index = Adapt.adapt_structure(to, vov.first_bin_index)
+    bin_counts = Adapt.adapt_structure(to, vov.bin_counts)
+    value_bins = Adapt.adapt_structure(to, vov.value_bins)
+    tail_index = Adapt.adapt_structure(to, vov.tail_index)
+
+    return CompactVectorOfVectors(values, permutation, first_bin_index, bin_counts,
+                                  value_bins, tail_index)
+end
 
 # `adapt(CuArray, ::SVector)::SVector`, but `adapt(Array, ::SVector)::Vector`.
 # We don't want to change the type of the `SVector` here.

@@ -235,9 +235,9 @@ end
 end
 
 # Data structure that behaves like a `Vector{Vector{T}}`. We call each inner vector a "bin".
-# All bins are stored in one flat vector `values`: first all values of bin 1,
+# All bins are stored in one flat vector `permutation`: first all values of bin 1,
 # then all values of bin 2, and so on.
-# `first_bin_index[bin]` is the index in `values` where `bin` starts.
+# `first_bin_index[bin]` is the index in `permutation` where `bin` starts.
 #
 # The values are always the integers `1:n_values` (e.g., point indices),
 # and each value is in at most one bin.
@@ -245,9 +245,19 @@ end
 # Instead, `update!` rebuilds the entire data structure from a function that
 # assigns a bin to each value.
 # Values without a bin (see `active_values` in `update!`) are stored after the last bin,
-# so `values` is always a permutation of `1:n_values`.
-struct CompactVectorOfVectors{T, V, I, B} <: AbstractVector{Vector{T}}
-    values          :: V # Values `1:n_values`, sorted by bin
+# so `permutation` is always a permutation of `1:n_values`.
+#
+# By default, `values` is the same array as `permutation`, so that each bin is a view
+# of `permutation`.
+# When the values are indices of points, reordering the points with `permutation`
+# makes the points of each bin contiguous in memory.
+# The values of the reordered points are then simply `1:n_values`, so that each bin
+# is a range of indices.
+# With `sorted = true`, `values` is `nothing` to represent this.
+# The user is then responsible for reordering the points after every update.
+struct CompactVectorOfVectors{T, V, P, I, B} <: AbstractVector{Vector{T}}
+    values          :: V # either a reference to `permutation` or `nothing` (see above)
+    permutation     :: P # Values `1:n_values`, sorted by bin
     first_bin_index :: I # Index of the first value of each bin, plus one entry (`n_values + 1`)
     bin_counts      :: I # Buffer for `update!`: number of values in each bin
     value_bins      :: B # Buffer for `update!`: bin of each value and index in this bin
@@ -255,23 +265,25 @@ struct CompactVectorOfVectors{T, V, I, B} <: AbstractVector{Vector{T}}
 
     # This constructor is necessary for Adapt.jl to work with this struct.
     # See the comments in gpu.jl for more details.
-    function CompactVectorOfVectors(values, first_bin_index, bin_counts, value_bins,
-                                    tail_index)
-        new{eltype(values), typeof(values), typeof(first_bin_index),
-            typeof(value_bins)}(values, first_bin_index, bin_counts, value_bins,
-                                tail_index)
+    function CompactVectorOfVectors(values, permutation, first_bin_index, bin_counts,
+                                    value_bins, tail_index)
+        new{eltype(permutation), typeof(values), typeof(permutation),
+            typeof(first_bin_index), typeof(value_bins)}(values, permutation,
+                                                         first_bin_index, bin_counts,
+                                                         value_bins, tail_index)
     end
 end
 
-function CompactVectorOfVectors{T}(; n_bins) where {T}
-    values = T[]
+function CompactVectorOfVectors{T}(; n_bins, sorted = false) where {T}
+    permutation = T[]
+    values = sorted ? nothing : permutation
     first_bin_index = ones(Int32, n_bins + 1)
     bin_counts = zeros(Int32, n_bins)
     value_bins = NTuple{2, Int32}[]
     tail_index = Int32[]
 
-    return CompactVectorOfVectors(values, first_bin_index, bin_counts, value_bins,
-                                  tail_index)
+    return CompactVectorOfVectors(values, permutation, first_bin_index, bin_counts,
+                                  value_bins, tail_index)
 end
 
 @inline Base.size(vov::CompactVectorOfVectors) = (length(vov.bin_counts),)
@@ -286,8 +298,12 @@ end
     first_index = @inbounds first_bin_index[i]
     last_index = @inbounds first_bin_index[i + 1] - 1
 
-    return view(values, first_index:last_index)
+    return bin_view(values, first_index:last_index)
 end
+
+# When the values are sorted (see above), each bin is simply a range of indices.
+@inline bin_view(::Nothing, range) = range
+@inline bin_view(values, range) = view(values, range)
 
 # Sort all values in `1:n_values` by bin.
 # The values that are not in `active_values` are not assigned to any bin
@@ -299,13 +315,13 @@ end
 # `active_values` must be unique and only contain values in `1:n_values`.
 function update!(vov::CompactVectorOfVectors, value_to_bin, n_values,
                  parallelization_backend; active_values = Base.OneTo(n_values))
-    (; values, first_bin_index, bin_counts, value_bins, tail_index) = vov
+    (; permutation, first_bin_index, bin_counts, value_bins, tail_index) = vov
 
     eachvalue = Base.OneTo(n_values)
 
     # Resize data structures if necessary.
-    if length(values) != n_values
-        resize!(values, n_values)
+    if length(permutation) != n_values
+        resize!(permutation, n_values)
         resize!(value_bins, n_values)
     end
 
@@ -338,16 +354,16 @@ function update!(vov::CompactVectorOfVectors, value_to_bin, n_values,
     if !all_values_active
         # The `i`-th unassigned value is stored at index `i` after all bins.
         # Count the unassigned values with a cumulative sum, for which we can use
-        # `values` as a temporary buffer, since it is overwritten below.
+        # `permutation` as a temporary buffer, since it is overwritten below.
         if length(tail_index) != n_values
             resize!(tail_index, n_values)
         end
 
         @threaded parallelization_backend for value in eachvalue
             bin, _ = @inbounds value_bins[value]
-            @inbounds values[value] = iszero(bin)
+            @inbounds permutation[value] = iszero(bin)
         end
-        cumsum!(tail_index, values)
+        cumsum!(tail_index, permutation)
     end
 
     # Write each value to its index in its bin.
@@ -360,7 +376,7 @@ function update!(vov::CompactVectorOfVectors, value_to_bin, n_values,
         else
             index = @inbounds first_bin_index[bin] + index_in_bin - 1
         end
-        @inbounds values[index] = value
+        @inbounds permutation[index] = value
     end
 
     return vov
