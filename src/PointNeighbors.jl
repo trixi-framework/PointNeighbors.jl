@@ -17,15 +17,16 @@ include("neighborhood_search.jl")
 include("nhs_trivial.jl")
 include("cell_lists/cell_lists.jl")
 include("nhs_grid.jl")
+include("nhs_combined_grid.jl")
 include("nhs_precomputed.jl")
 include("nhs_tree.jl")
 include("gpu.jl")
 
 export foreach_point_neighbor, foreach_point_neighbor_unsafe,
        foreach_neighbor, foreach_neighbor_unsafe,
-       mapreduce_neighbor, mapreduce_neighbor_unsafe
+       mapreduce_neighbor, mapreduce_neighbor_unsafe, foreach_point, foreach_point_unsafe
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch,
-       TreeNeighborhoodSearch
+       TreeNeighborhoodSearch, CombinedGridNeighborhoodSearch, grid_nhs_pair
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeCellList
 export DynamicVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
