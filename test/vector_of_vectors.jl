@@ -169,13 +169,25 @@ end
             @test sort(vov[bin]) == vov_ref[bin]
         end
 
-        # `values` is a permutation of all values.
-        @test sort(vov.values) == 1:n_values
+        # `permutation` is a permutation of all values.
+        @test sort(vov.permutation) == 1:n_values
+        @test vov.values === vov.permutation
 
         # The inactive values are stored in increasing order after all bins.
         n_active = length(active_values)
         inactive_values = setdiff(1:n_values, active_values)
         @test vov.first_bin_index[end] == n_active + 1
-        @test vov.values[(n_active + 1):end] == inactive_values
+        @test vov.permutation[(n_active + 1):end] == inactive_values
+
+        # For sorted values, each bin is the range of its values in `permutation`.
+        vov_sorted = PointNeighbors.CompactVectorOfVectors{Int32}(; n_bins, sorted = true)
+        PointNeighbors.update!(vov_sorted, value_to_bin, n_values, backend; active_values)
+
+        @test isnothing(vov_sorted.values)
+        @test vov_sorted.first_bin_index == vov.first_bin_index
+        for bin in 1:n_bins
+            @test vov_sorted[bin] isa AbstractUnitRange
+            @test sort(vov_sorted.permutation[vov_sorted[bin]]) == vov_ref[bin]
+        end
     end
 end

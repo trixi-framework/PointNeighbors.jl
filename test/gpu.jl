@@ -55,7 +55,7 @@ end
     @test_throws Exception update!(nhs_gpu, y, y2)
 end
 
-@testset verbose=true "Sorting on the GPU: `FullGridCellList` with `CompactVectorOfVectors`" begin
+@testset verbose=true "`SortingGridNeighborhoodSearch`" begin
     ELTYPE = supports_double_precision ? Float64 : Float32
     search_radius = convert(ELTYPE, 2.5)
     coords = convert.(ELTYPE, point_cloud((7, 6), search_radius, shuffle = true))
@@ -63,9 +63,8 @@ end
 
     min_corner = minimum(coords, dims = 2)
     max_corner = maximum(coords, dims = 2)
-    cell_list = FullGridCellList(; min_corner, max_corner, search_radius,
-                                 backend = CompactVectorOfVectors{Int32})
-    nhs = GridNeighborhoodSearch{2}(; search_radius, n_points, cell_list)
+    nhs = SortingGridNeighborhoodSearch{2}(; min_corner, max_corner, search_radius,
+                                           n_points)
 
     coords_gpu = Adapt.adapt(parallelization_backend, coords)
     nhs_gpu = Adapt.adapt(parallelization_backend, nhs)
@@ -79,21 +78,26 @@ end
     initialize!(nhs_gpu, coords_gpu, coords_gpu; eachindex_y = eachindex_y_gpu,
                 parallelization_backend)
 
-    @test nhs_gpu.cell_list.cells.values isa PointNeighbors.AbstractGPUArray
+    @test point_permutation(nhs_gpu) isa PointNeighbors.AbstractGPUArray
 
     # The order inside each cell is not deterministic, so we compare sorted cells.
     cells = nhs.cell_list.cells
     cells_gpu = Adapt.adapt(Array, nhs_gpu.cell_list.cells)
+    perm = point_permutation(nhs)
+    perm_gpu = cells_gpu.permutation
     @test cells_gpu.first_bin_index == cells.first_bin_index
-    @test all(sort(cells_gpu[cell]) == sort(cells[cell]) for cell in eachindex(cells))
+    @test all(sort(perm_gpu[cells_gpu[cell]]) == sort(perm[cells[cell]])
+              for cell in eachindex(cells))
 
     # The inactive points are stored in increasing order after all cells.
     n_active = length(eachindex_y)
-    @test cells_gpu.values[(n_active + 1):end] == cells.values[(n_active + 1):end]
+    @test perm_gpu[(n_active + 1):end] == perm[(n_active + 1):end]
 
-    # Count the neighbors on the GPU.
+    # Count the neighbors on the GPU with the points sorted by the GPU permutation.
+    sorted_coords_gpu = Adapt.adapt(parallelization_backend, coords[:, perm_gpu])
+
     n_neighbors_gpu = Adapt.adapt(parallelization_backend, zeros(Int, n_points))
-    foreach_point(coords_gpu, coords_gpu, nhs_gpu) do point, neighbors
+    foreach_point(coords_gpu, sorted_coords_gpu, nhs_gpu) do point, neighbors
         n_neighbors = mapreduce_neighbor((point, neighbor, pos_diff, distance) -> 1,
                                          +, neighbors; init = 0)
         @inbounds n_neighbors_gpu[point] = n_neighbors

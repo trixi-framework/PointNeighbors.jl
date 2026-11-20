@@ -92,6 +92,14 @@ Instead, initialize or update the cell lists of the point sets of `nhs`.
 Note that this neighborhood search cannot be used to find neighbors of arbitrary points.
 The `point_coords` array passed to the neighbor loops must be identical to the
 coordinates of the point set `point_set` that were used in `initialize!` or `update!`.
+
+When the cell lists sort the points (see [`sorts_points`](@ref)),
+[`point_permutation`](@ref) of the returned neighborhood search is the permutation of the
+point set `neighbor_set`.
+The returned neighborhood search can then only be used when the points of both point sets
+are reordered with the permutations of their own cell lists, that is,
+with `point_permutation(grid_nhs_pair(nhs, i, i))` for point set `i`.
+See [`point_permutation`](@ref) for more details.
 """
 @inline function grid_nhs_pair(nhs::CombinedGridNeighborhoodSearch, point_set,
                                 neighbor_set)
@@ -125,6 +133,11 @@ function update!(nhs::GridNHSPair, x::AbstractMatrix, y::AbstractMatrix; kwargs.
     throw(ArgumentError("a `GridNHSPair` cannot be updated. " *
                         "Update the `CombinedGridNeighborhoodSearch` instead."))
 end
+
+# The permutation sorts the points of the neighbor point set.
+@inline sorts_points(nhs::GridNHSPair) = sorts_points(nhs.neighbor_search)
+
+@inline point_permutation(nhs::GridNHSPair) = point_permutation(nhs.neighbor_search)
 
 # # Create a standalone neighborhood search like the one of the neighbor point set.
 # function copy_neighborhood_search(nhs::GridNHSPair, search_radius, n_points;

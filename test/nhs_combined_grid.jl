@@ -82,6 +82,49 @@
         @test_throws ArgumentError update!(pair, coords2, coords1)
     end
 
+    @testset "Sorting Points" begin
+        (; min_corner, max_corner) = cell_list
+        template_sorting = SortingGridNeighborhoodSearch{3}(; min_corner, max_corner)
+        nhs_sorting = CombinedGridNeighborhoodSearch(template_sorting, search_radius,
+                                                     size.(coords, 2))
+        initialize!(nhs_sorting, 1, coords1)
+        initialize!(nhs_sorting, 2, coords2)
+
+        pair = grid_nhs_pair(nhs_sorting, 1, 2)
+        @test sorts_points(pair)
+        @test !sorts_points(grid_nhs_pair(nhs, 1, 2))
+
+        # Reorder both point sets with the permutations of their own cell lists
+        perm1 = point_permutation(grid_nhs_pair(nhs_sorting, 1, 1))
+        perm2 = point_permutation(pair)
+        @test perm2 == point_permutation(grid_nhs_pair(nhs_sorting, 2, 2))
+        @test sort(perm1) == axes(coords1, 2)
+        @test sort(perm2) == axes(coords2, 2)
+
+        # Sums of the original indices of the neighbors
+        results_expected = zeros(Int, size(coords1, 2))
+        foreach_point_neighbor(coords1, coords2, grid_nhs_pair(nhs, 1, 2),
+                               parallelization_backend = SerialBackend()) do point,
+                                                                             neighbor,
+                                                                             pos_diff,
+                                                                             distance
+            results_expected[point] += neighbor
+        end
+
+        results = zeros(Int, size(coords1, 2))
+        foreach_point_neighbor(coords1[:, perm1], coords2[:, perm2],
+                               pair,
+                               parallelization_backend = SerialBackend()) do point,
+                                                                             neighbor,
+                                                                             pos_diff,
+                                                                             distance
+            results[point] += perm2[neighbor]
+        end
+
+        # Point `i` of the sorted points is point `perm1[i]` of the original points
+        @test results == results_expected[perm1]
+    end
+
     # @testset "Copy" begin
     #     pair = grid_nhs_pair(nhs, 1, 2)
     #     @test copy_neighborhood_search(pair, 1.0, 10) isa GridNeighborhoodSearch

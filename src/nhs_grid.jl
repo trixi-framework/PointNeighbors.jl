@@ -692,6 +692,69 @@ end
 end
 @inline compact_update_backend(::SerialUpdate, _) = SerialBackend()
 
+# The field `values` of `CompactVectorOfVectors` is set to `nothing` when a
+# `SortingGridNeighborhoodSearch` is used because the values would always be
+# just the range `1:n_points` and can therefore be skipped in the query.
+# We can use that to identify a `SortingGridNeighborhoodSearch`.
+const SortingCellList = FullGridCellList{<:CompactVectorOfVectors{<:Any, Nothing}}
+const SortingGridNeighborhoodSearch{NDIMS} = GridNeighborhoodSearch{NDIMS,
+                                                                    <:Union{ParallelUpdate,
+                                                                            SerialUpdate},
+                                                                    <:SortingCellList}
+
+"""
+    SortingGridNeighborhoodSearch{NDIMS}(; min_corner, max_corner, search_radius = 0.0,
+                                         n_points = 0, periodic_box = nothing,
+                                         update_strategy = ParallelUpdate())
+
+A [`GridNeighborhoodSearch`](@ref) with a [`FullGridCellList`](@ref) that sorts the points
+by cell in every [`initialize!`](@ref) and [`update!`](@ref).
+After reordering the points with this permutation, the points of each cell are contiguous
+in memory, which improves the memory locality of the neighbor loops.
+Furthermore, compared to a non-sorting [`GridNeighborhoodSearch`](@ref), the neighbor loops
+can omit the index array of the cell list because it simplifies to a range.
+
+!!! warning "Reordering required"
+    After every `initialize!` and `update!` with the coordinates `y`, this neighborhood
+    search can only be used with the points reordered by [`point_permutation`](@ref),
+    that is, with `y[:, point_permutation(search)]` as neighbor coordinates.
+    The neighbor indices passed to the neighbor loops are the indices of the reordered
+    points.
+    The first coordinate array `x` can be arbitrary.
+
+# Arguments
+- `NDIMS`: Number of dimensions.
+
+# Keywords
+- `min_corner`, `max_corner`: Domain corners of the [`FullGridCellList`](@ref).
+- `search_radius = 0.0`:    The fixed search radius. The default of `0.0` is useful together
+                            with [`copy_neighborhood_search`](@ref).
+- `n_points = 0`:           Maximum total number of points in the neighbor coordinates array.
+                            The default of `0` is useful together with
+                            [`copy_neighborhood_search`](@ref).
+- `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
+                            [`PeriodicBox`](@ref).
+- `update_strategy = ParallelUpdate()`: Strategy to parallelize `initialize!` and `update!`.
+                            Only [`ParallelUpdate`](@ref) and [`SerialUpdate`](@ref)
+                            are supported.
+"""
+function SortingGridNeighborhoodSearch{NDIMS}(; min_corner, max_corner,
+                                              search_radius = 0.0, n_points = 0,
+                                              periodic_box = nothing,
+                                              update_strategy = ParallelUpdate()) where {NDIMS}
+    cell_list = FullGridCellList(; min_corner, max_corner, search_radius,
+                                 backend = CompactVectorOfVectors{Int32, Nothing})
+
+    return GridNeighborhoodSearch{NDIMS}(; search_radius, n_points, periodic_box, cell_list,
+                                         update_strategy)
+end
+
+@inline sorts_points(::SortingGridNeighborhoodSearch) = true
+
+@inline function point_permutation(neighborhood_search::SortingGridNeighborhoodSearch)
+    return neighborhood_search.cell_list.cells.permutation
+end
+
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
                                   eachpoint = 1:n_points)
     (; periodic_box) = nhs

@@ -37,14 +37,18 @@ function construct_backend(::Type{<:DynamicVectorOfVectors{T}},
 end
 
 # See the comment above for why `Type{<:CompactVectorOfVectors{T}}` is used.
-function construct_backend(::Type{<:CompactVectorOfVectors{T}},
+function construct_backend(backend::Type{<:CompactVectorOfVectors{T}},
                            max_outer_length, max_inner_length;
                            transpose_backend = false) where {T}
     if transpose_backend
         error("transpose backend is only supported for DynamicVectorOfVectors backend")
     end
 
-    return CompactVectorOfVectors{T}(; n_bins = max_outer_length)
+    # `CompactVectorOfVectors{T, Nothing}` is the variant for sorted points
+    # (see `SortingGridNeighborhoodSearch`).
+    sorted = backend <: CompactVectorOfVectors{<:Any, Nothing}
+
+    return CompactVectorOfVectors{T}(; n_bins = max_outer_length, sorted)
 end
 
 function max_points_per_cell(cells::DynamicVectorOfVectors)
