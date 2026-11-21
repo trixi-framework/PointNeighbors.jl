@@ -212,7 +212,8 @@ Two points `i` and `j` are neighbors if their distance is at most the pair searc
 defined by `neighbor_criterion` (see [`TreeNeighborhoodSearch`](@ref)).
 
 The following neighborhood searches are compared:
-- `TreeNeighborhoodSearch`, querying each point with its own search radius,
+- `TreeNeighborhoodSearch` without and with pruning, querying each point with its own
+  search radius,
 - `GridNeighborhoodSearch` with `FullGridCellList` with the maximum search radius,
   filtering the neighbors by the pair search radius inside the neighbor loop.
 
@@ -261,6 +262,7 @@ function run_benchmark_variable_radius(benchmark, n_points_per_dimension, iterat
 
     n_particles_vec = zeros(Int, iterations)
     names = ["TreeNeighborhoodSearch";;
+             "TreeNeighborhoodSearch with pruning";;
              "GridNeighborhoodSearch with FullGridCellList and maximum radius"]
     times = zeros(iterations, length(names))
 
@@ -288,20 +290,19 @@ function run_benchmark_variable_radius(benchmark, n_points_per_dimension, iterat
 
         # The cells of the grid have the size of the maximum radius,
         # so they can contain many fine points.
-        # The `DynamicVectorOfVectors` storage needs the same capacity for all lists.
-        fine_spacing = min_radius / search_radius_factor
-        max_points_per_cell = ceil(Int, 2 * (max_radius / fine_spacing + 1)^NDIMS)
-
         # Since a cell of the tree is only split if all radii in the surrounding cells
         # are small enough, the fine region next to the transition region is covered by
         # leaves of the size of the maximum radius as well.
-        # The `DynamicVectorOfVectors` storage of the tree would therefore need the same
-        # capacity as the grid for each cell at the finest level, so we use
-        # the `Vector{Vector}` storage instead.
+        # The `DynamicVectorOfVectors` storage needs the same capacity for all lists,
+        # so the tree needs the same capacity as the grid.
+        fine_spacing = min_radius / search_radius_factor
+        max_points_per_cell = ceil(Int, 2 * (max_radius / fine_spacing + 1)^NDIMS)
+
         tree_cell_list = TreeCellList(; min_corner, max_corner, max_level, root_cell_size,
-                                      backend = Vector{Vector{Int32}})
-        tree_nhs = TreeNeighborhoodSearch{NDIMS}(; n_points, neighbor_criterion,
-                                                 cell_list = tree_cell_list)
+                                      max_points_per_cell)
+        tree_nhs = [TreeNeighborhoodSearch{NDIMS}(; n_points, pruning, neighbor_criterion,
+                                                  cell_list = tree_cell_list)
+                    for pruning in (false, true)]
 
         grid_cell_list = FullGridCellList(; search_radius = max_radius, min_corner,
                                           max_corner,
@@ -310,7 +311,7 @@ function run_benchmark_variable_radius(benchmark, n_points_per_dimension, iterat
                                                  cell_list = grid_cell_list,
                                                  update_strategy = ParallelUpdate())
 
-        neighborhood_searches = (tree_nhs, grid_nhs)
+        neighborhood_searches = (tree_nhs..., grid_nhs)
 
         for i in eachindex(neighborhood_searches)
             neighborhood_search = PointNeighbors.Adapt.adapt(parallelization_backend,
