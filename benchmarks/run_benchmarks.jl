@@ -8,7 +8,8 @@ include("../test/point_cloud.jl")
                    search_radius_factor = 3.0,
                    parallelization_backend = PolyesterBackend(),
                    names = ["Neighborhood search 1" "Neighborhood search 2" ...],
-                   seed = 1, perturbation_factor_position = 1.0, shuffle = false)
+                   seed = 1, perturbation_factor_position = 1.0,
+                   sort_displacement = 0.01, shuffle = false)
 
 Run a benchmark with several neighborhood searches multiple times for increasing numbers
 of points and return the results as `(n_particles_vec, times)`, where `n_particles_vec`
@@ -38,7 +39,8 @@ See also
                             of `search_radius_factor` determines if the benchmark
                             is run in single or double precision.
 - `parallelization_backend = PolyesterBackend()`: Parallelization strategy to use. See
-                            [`@threaded`](@ref) for a list of available backends.
+                            [`PointNeighbors.@threaded`](@ref) for a list of available
+                            backends.
 - `names = ["Neighborhood search 1" ...]`: Names of the neighborhood searches used in the
                             benchmark output.
 - `seed = 1`:               Seed to perturb the point positions. Different seeds yield
@@ -46,12 +48,20 @@ See also
 - `perturbation_factor_position = 1.0`: Scale the point position perturbation by this factor.
                             A factor of `1.0` corresponds to a standard deviation
                             similar to that of a realistic simulation.
+- `sort_displacement = 0.01`: Sort the points by the cells of the first neighborhood
+                            search, but apply a uniform displacement
+                            `sort_displacement * search_radius` to the point positions
+                            before sorting to obtain an almost sorted configuration.
+                            This models a real simulation, where points are sorted only
+                            every few time steps and are therefore almost, but never
+                            perfectly sorted. Use `0` for a perfect sorting.
 - `shuffle = false`:        Randomly shuffle the point ordering instead of sorting points by
                             cell index.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+using PointNeighbors
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark(benchmark_count_neighbors, (10, 10), 3,
               [TrivialNeighborhoodSearch{2}(), GridNeighborhoodSearch{2}()])
@@ -62,7 +72,8 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
                        parallelization_backend = PolyesterBackend(),
                        names = ["Neighborhood search $i"
                                 for i in 1:length(neighborhood_searches)]',
-                       seed = 1, perturbation_factor_position = 1.0, shuffle = false)
+                       seed = 1, perturbation_factor_position = 1.0,
+                       sort_displacement = 0.01, shuffle = false)
     if !(search_radius_factor isa AbstractFloat && isfinite(search_radius_factor) &&
          search_radius_factor > 0)
         throw(ArgumentError("`search_radius_factor` must be a finite, positive float"))
@@ -78,10 +89,16 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
     times = zeros(iterations, length(neighborhood_searches))
 
     for iter in 1:iterations
-        coordinates_ = point_cloud(sizes[iter], search_radius_factor;
-                                   seed, perturbation_factor_position, shuffle)
-        coordinates = convert.(typeof(search_radius_factor), coordinates_)
-        domain_size = maximum(sizes[iter]) + 1
+        # Rotate the point cloud by 10 degrees, so that the lattice is not
+        # aligned with the cell grid of the neighborhood search.
+        # A lattice that is aligned with the grid might be beneficial for performance,
+        # which would make this synthetic benchmark unrepresentative of a real simulation.
+        # In 3D, the point cloud is rotated around two axes, so that no axis is aligned.
+        coordinates = point_cloud(sizes[iter], search_radius_factor;
+                                  seed, perturbation_factor_position,
+                                  rotation_angle = 10)
+        domain_size_ = maximum(point_cloud_size(sizes[iter]; rotation_angle = 10)) + 1
+        domain_size = convert(typeof(search_radius_factor), domain_size_)
 
         # Normalize domain size to 1
         coordinates ./= domain_size
@@ -91,6 +108,15 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
 
         neighborhood_searches_copy = copy_neighborhood_search.(neighborhood_searches,
                                                                search_radius, n_particles)
+
+        if shuffle
+            permutation = Random.shuffle(Random.Xoshiro(seed), axes(coordinates, 2))
+        else
+            permutation = almost_sorted_permutation(coordinates,
+                                                    neighborhood_searches_copy[1],
+                                                    sort_displacement)
+        end
+        coordinates = coordinates[:, permutation]
 
         for i in eachindex(neighborhood_searches_copy)
             neighborhood_search_ = neighborhood_searches_copy[i]
@@ -113,7 +139,8 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
 end
 
 """
-    run_benchmark_default(benchmark, n_points_per_dimension, iterations; kwargs...)
+    run_benchmark_default(benchmark, n_points_per_dimension, iterations;
+                          max_neighbors = 128, kwargs...)
 
 Shortcut to call [`run_benchmark`](@ref) with the most commonly used neighborhood search
 implementations:
@@ -132,26 +159,34 @@ implementations:
 - `iterations`:             Number of refinement iterations
 
 # Keywords
-See [`run_benchmark`](@ref) for a list of available keywords.
+- `max_neighbors = 128`: Maximum neighbor-list capacity for the precomputed neighborhood
+                         search. This needs to be increased for a larger
+                         `search_radius_factor` and can be decreased if the benchmark runs
+                         out of memory.
+
+See [`run_benchmark`](@ref) for a list of additional available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+using PointNeighbors
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_default(benchmark_n_body, (10, 10), 3)
 ```
 """
-function run_benchmark_default(benchmark, n_points_per_dimension, iterations; kwargs...)
+function run_benchmark_default(benchmark, n_points_per_dimension, iterations;
+                               max_neighbors = 128, kwargs...)
     NDIMS = length(n_points_per_dimension)
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
+    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle = 10)
+    max_corner = Float32.(domain_size ./ maximum(domain_size))
+    min_corner = zero(max_corner)
 
     neighborhood_searches = [
         GridNeighborhoodSearch{NDIMS}(),
         GridNeighborhoodSearch{NDIMS}(search_radius = 0.0f0,
                                       cell_list = FullGridCellList(; search_radius = 0.0f0,
                                                                    min_corner, max_corner)),
-        PrecomputedNeighborhoodSearch{NDIMS}()
+        PrecomputedNeighborhoodSearch{NDIMS}(; max_neighbors, sort_neighbor_lists = true)
     ]
 
     names = ["GridNeighborhoodSearch";;
@@ -163,7 +198,8 @@ function run_benchmark_default(benchmark, n_points_per_dimension, iterations; kw
 end
 
 """
-    run_benchmark_gpu(benchmark, n_points_per_dimension, iterations; kwargs...)
+    run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
+                      max_neighbors = 128, kwargs...)
 
 Shortcut to call [`run_benchmark`](@ref) with all GPU-compatible neighborhood search
 implementations:
@@ -181,20 +217,28 @@ implementations:
 - `iterations`:             Number of refinement iterations
 
 # Keywords
-See [`run_benchmark`](@ref) for a list of available keywords.
+- `max_neighbors = 128`: Maximum neighbor-list capacity for the precomputed neighborhood
+                         search. This needs to be increased for a larger
+                         `search_radius_factor` and can be decreased if the benchmark runs
+                         out of memory.
+
+See [`run_benchmark`](@ref) for a list of additional available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+using PointNeighbors
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 ```
 """
 function run_benchmark_gpu(benchmark, n_points_per_dimension, iterations;
-                           parallelization_backend = PolyesterBackend(), kwargs...)
+                           parallelization_backend = PolyesterBackend(),
+                           max_neighbors = 128, kwargs...)
     grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension)
     precomputed_nhs = create_precomputed_neighborhood_search(grid_nhs,
-                                                             parallelization_backend)
+                                                             parallelization_backend;
+                                                             max_neighbors)
     neighborhood_searches = (grid_nhs, precomputed_nhs)
 
     names = ["GridNeighborhoodSearch with FullGridCellList";;
@@ -227,7 +271,8 @@ See [`run_benchmark`](@ref) for a list of available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+using PointNeighbors
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_full_grid(benchmark_n_body, (10, 10), 3)
 ```
@@ -243,7 +288,8 @@ function run_benchmark_full_grid(benchmark, n_points_per_dimension, iterations;
 end
 
 """
-    run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations; kwargs...)
+    run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations;
+                              max_neighbors = 128, kwargs...)
 
 Shortcut to call [`run_benchmark`](@ref) with a `PrecomputedNeighborhoodSearch`.
 This is the neighborhood search implementation that is used in TrixiParticles.jl for
@@ -261,20 +307,28 @@ Use this function to benchmark and profile TrixiParticles.jl kernels.
 - `iterations`:             Number of refinement iterations
 
 # Keywords
-See [`run_benchmark`](@ref) for a list of available keywords.
+- `max_neighbors = 128`: Maximum neighbor-list capacity for the precomputed neighborhood
+                         search. This needs to be increased for a larger
+                         `search_radius_factor` and can be decreased if the benchmark runs
+                         out of memory.
+
+See [`run_benchmark`](@ref) for a list of additional available keywords.
 
 # Examples
 ```julia
-include("benchmarks/benchmarks.jl")
+using PointNeighbors
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
 
 run_benchmark_precomputed(benchmark_n_body, (10, 10), 3)
 ```
 """
 function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations;
-                                   parallelization_backend = PolyesterBackend(), kwargs...)
+                                   parallelization_backend = PolyesterBackend(),
+                                   max_neighbors = 128, kwargs...)
     grid_nhs = create_full_grid_neighborhood_search(n_points_per_dimension)
     precomputed_nhs = create_precomputed_neighborhood_search(grid_nhs,
-                                                             parallelization_backend)
+                                                             parallelization_backend;
+                                                             max_neighbors)
     neighborhood_searches = (precomputed_nhs,)
 
     names = ["PrecomputedNeighborhoodSearch";;]
@@ -283,21 +337,119 @@ function run_benchmark_precomputed(benchmark, n_points_per_dimension, iterations
                   neighborhood_searches; names, parallelization_backend, kwargs...)
 end
 
-function create_full_grid_neighborhood_search(n_points_per_dimension)
-    NDIMS = length(n_points_per_dimension)
+"""
+    run_benchmark_updates(n_points_per_dimension, iterations;
+                          max_neighbors = 128, kwargs...)
 
-    min_corner = 0.0f0 .* n_points_per_dimension
-    max_corner = Float32.(n_points_per_dimension ./ maximum(n_points_per_dimension))
-    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
-    return GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
-                                         update_strategy = ParallelUpdate())
+Benchmark [`benchmark_update_alternating`](@ref) with the update strategies
+[`ParallelUpdate`](@ref), [`ParallelIncrementalUpdate`](@ref), and
+[`SemiParallelUpdate`](@ref), as well as with a [`PrecomputedNeighborhoodSearch`](@ref)
+using [`ParallelUpdate`](@ref) internally.
+
+The benchmark alternates between two perturbed point clouds. In 3D, approximately 0.7% of
+the particles change cells between them, representative of an SPH update. This fraction is
+not relevant for [`ParallelUpdate`](@ref), which reinitializes all particles on every
+update.
+
+Returns `(n_particles_vec, times)` as described for [`run_benchmark`](@ref).
+
+# Arguments
+- `n_points_per_dimension`: Initial resolution as tuple. The product is the initial number
+                            of points. For example, use `(100, 100)` for a 2D benchmark or
+                            `(10, 10, 10)` for a 3D benchmark.
+- `iterations`:             Number of refinement iterations
+
+# Keywords
+- `max_neighbors = 128`: Maximum neighbor-list capacity for the precomputed neighborhood
+                         search. This needs to be increased for a larger
+                         `search_radius_factor` and can be decreased if the benchmark runs
+                         out of memory.
+
+See [`run_benchmark`](@ref) for a list of additional available keywords.
+
+# Examples
+```julia
+using PointNeighbors
+include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+
+run_benchmark_updates((10, 10, 10), 3)
+```
+"""
+function run_benchmark_updates(n_points_per_dimension, iterations;
+                               parallelization_backend = PolyesterBackend(),
+                               max_neighbors = 128, kwargs...)
+    parallel = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                    update_strategy = ParallelUpdate())
+    parallel_incremental = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                                update_strategy = ParallelIncrementalUpdate())
+    semi_parallel = create_full_grid_neighborhood_search(n_points_per_dimension;
+                                                         update_strategy = SemiParallelUpdate())
+    precomputed_nhs = create_precomputed_neighborhood_search(parallel,
+                                                             parallelization_backend;
+                                                             max_neighbors)
+    neighborhood_searches = (parallel, parallel_incremental, semi_parallel, precomputed_nhs)
+
+    names = ["GNHS with ParallelUpdate";;
+             "GNHS with ParallelIncrementalUpdate";;
+             "GNHS with SemiParallelUpdate";;
+             "PrecomputedNeighborhoodSearch";;]
+
+    run_benchmark(benchmark_update_alternating, n_points_per_dimension, iterations,
+                  neighborhood_searches; names, parallelization_backend, kwargs...)
 end
 
-function create_precomputed_neighborhood_search(grid_nhs, parallelization_backend)
+function create_full_grid_neighborhood_search(n_points_per_dimension;
+                                              update_strategy = ParallelUpdate())
+    NDIMS = length(n_points_per_dimension)
+
+    domain_size = point_cloud_size(n_points_per_dimension; rotation_angle = 10)
+    max_corner = Float32.(domain_size ./ maximum(domain_size))
+    min_corner = zero(max_corner)
+    cell_list = FullGridCellList(; search_radius = 0.0f0, min_corner, max_corner)
+    return GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0, cell_list,
+                                         update_strategy)
+end
+
+function create_precomputed_neighborhood_search(grid_nhs, parallelization_backend;
+                                                max_neighbors = 128)
     NDIMS = ndims(grid_nhs)
     transpose_backend = parallelization_backend isa PointNeighbors.KernelAbstractions.GPU
     return PrecomputedNeighborhoodSearch{NDIMS}(; search_radius = 0.0f0,
-                                                max_neighbors = 128,
+                                                max_neighbors,
                                                 update_neighborhood_search = grid_nhs,
+                                                sort_neighbor_lists = true,
                                                 transpose_backend)
+end
+
+# Permutation that sorts the points by cell like the `SortingCallback` of TrixiParticles.jl,
+# using the cells of the neighborhood search `nhs`.
+# In a real simulation, points are sorted only every few time steps and move in between,
+# so they are almost, but never perfectly sorted.
+# We model this by applying a uniform displacement `sort_displacement * search_radius`
+# in diagonal direction to the point positions before sorting.
+# This corresponds to a simulation where all points are moving at a uniform velocity,
+# but it produces a similar noticeable slowdown on GPUs as measured in a dam break simulation.
+function almost_sorted_permutation(coordinates, nhs, sort_displacement)
+    NDIMS = size(coordinates, 1)
+    grid_nhs = sorting_grid(nhs)
+    # [`displacement`, `displacement`, `displacement`] has the desired length.
+    displacement = sort_displacement * PointNeighbors.search_radius(nhs) / sqrt(NDIMS)
+
+    cell_coords = map(axes(coordinates, 2)) do point
+        point_coords = PointNeighbors.extract_svector(coordinates, Val(NDIMS), point)
+        return PointNeighbors.cell_coords(point_coords .- displacement, grid_nhs)
+    end
+
+    return sortperm(cell_coords)
+end
+
+sorting_grid(nhs::GridNeighborhoodSearch) = nhs
+sorting_grid(nhs::PrecomputedNeighborhoodSearch) = nhs.neighborhood_search
+
+function sorting_grid(nhs)
+    # For other NHS implementations (currently only `TrivialNeighborhoodSearch`),
+    # we create a temporary `GridNeighborhoodSearch` to obtain a grid for sorting.
+    search_radius = PointNeighbors.search_radius(nhs)
+
+    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius)
 end

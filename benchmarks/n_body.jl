@@ -1,5 +1,6 @@
 using PointNeighbors
 using BenchmarkTools
+using Random
 
 """
     benchmark_n_body(neighborhood_search, coordinates;
@@ -26,7 +27,11 @@ function benchmark_n_body(neighborhood_search, coordinates_;
 
     # Preserve the data type of `coordinates`.
     ELTYPE = eltype(coordinates)
-    mass = 10^10 * (rand!(similar(coordinates, size(coordinates, 2))) .+ 1)
+    # Use the same masses every time to make comparisons fair and reproducible.
+    # Generate them on the CPU, since seeded RNGs are not portable to GPU arrays.
+    rng = Random.Xoshiro(1)
+    mass_cpu = 10^10 * (rand(rng, ELTYPE, size(coordinates, 2)) .+ 1)
+    mass = PointNeighbors.Adapt.adapt(parallelization_backend, mass_cpu)
     G = convert(ELTYPE, 6.6743e-11)
 
     dv = similar(coordinates)
