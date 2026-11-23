@@ -92,6 +92,27 @@
                 push!(neighbors, neighbor)
             end
             @test sort(neighbors) == [1]
+
+            # `foreach_point_neighbor` must convert the radius before checking it as well,
+            # both when passed as a number and when returned by a function.
+            for radius in (query_radius, _ -> query_radius)
+                neighbors = Int[]
+                foreach_point_neighbor(coords, coords, nhs,
+                                       parallelization_backend = SerialBackend(),
+                                       search_radius = radius) do point, neighbor, _, _
+                    push!(neighbors, neighbor)
+                end
+                @test sort(neighbors) == [1]
+
+                neighbors_unsafe = Int[]
+                foreach_point_neighbor_unsafe(coords, coords, nhs,
+                                              parallelization_backend = SerialBackend(),
+                                              search_radius = radius) do point, neighbor,
+                                                                         _, _
+                    push!(neighbors_unsafe, neighbor)
+                end
+                @test sort(neighbors_unsafe) == [1]
+            end
         end
     end
 
@@ -309,6 +330,41 @@
                 # Make sure that the reported distance is the actual distance
                 @assert distance <= small_radius
                 push!(neighbors_expected_small[point], neighbor)
+            end
+
+            # Expected neighbor lists when querying each point with its own search radius,
+            # cycling through 7 evenly spaced radii from `small_radius` to `search_radius`
+            # (inclusive).
+            radii = LinRange(small_radius, search_radius, 7)
+            query_radii = [radii[i % 7 + 1] for i in axes(coords, 2)]
+            neighbors_expected_variable = [Int[] for _ in axes(coords, 2)]
+
+            foreach_point_neighbor(coords, coords, trivial_nhs,
+                                   parallelization_backend = SerialBackend()) do point,
+                                                                                 neighbor,
+                                                                                 pos_diff,
+                                                                                 distance
+                if distance <= query_radii[point]
+                    push!(neighbors_expected_variable[point], neighbor)
+                end
+            end
+
+            # The `TrivialNeighborhoodSearch` searches all points, so it supports query
+            # radii larger than its own search radius. Most of the `query_radii` are larger
+            # than `small_radius`.
+            @testset "`TrivialNeighborhoodSearch` with larger query `search_radius`" begin
+                neighbors = [Int[] for _ in axes(coords, 2)]
+
+                foreach_point_neighbor(coords, coords, trivial_nhs_small,
+                                       parallelization_backend = SerialBackend(),
+                                       search_radius = i -> query_radii[i]) do point,
+                                                                               neighbor,
+                                                                               pos_diff,
+                                                                               distance
+                    push!(neighbors[point], neighbor)
+                end
+
+                @test sort.(neighbors) == neighbors_expected_variable
             end
 
             # Expand the domain by `search_radius`, as we need the neighboring cells of
@@ -591,6 +647,10 @@
                         @test_throws error_str foreach_neighbor((_...) -> nothing, coords,
                                                                 coords, nhs, 1,
                                                                 search_radius = large_radius)
+                        @test_throws error_str foreach_point_neighbor((_...) -> nothing,
+                                                                      coords, coords, nhs,
+                                                                      parallelization_backend = SerialBackend(),
+                                                                      search_radius = _ -> large_radius)
                     else
                         # Collect the neighbors with both the safe and the unsafe version.
                         neighbors = [Int[] for _ in axes(coords, 2)]
@@ -653,6 +713,58 @@
                                                                           nhs, 1;
                                                                           init = 0,
                                                                           search_radius = large_radius)
+                        @test_throws "must not exceed" foreach_point_neighbor((_...) -> nothing,
+                                                                              coords,
+                                                                              coords,
+                                                                              nhs,
+                                                                              parallelization_backend = SerialBackend(),
+                                                                              search_radius = _ -> large_radius)
+                    end
+                end
+
+                # Query each point with its own search radius in `foreach_point_neighbor`.
+                @testset "Variable query `search_radius`" begin
+                    # Collect the sorted neighbor lists of all `system_coords`
+                    # with the safe or the unsafe version of `foreach_point_neighbor`.
+                    function collect_neighbors(foreach_function, system_coords, radius;
+                                               kwargs...)
+                        neighbors = [Int[] for _ in axes(system_coords, 2)]
+
+                        foreach_function(system_coords, coords, nhs; search_radius = radius,
+                                         kwargs...) do point, neighbor, pos_diff, distance
+                            push!(neighbors[point], neighbor)
+                        end
+
+                        return sort.(neighbors)
+                    end
+
+                    if nhs isa PrecomputedNeighborhoodSearch
+                        # The precomputed NHS skips the distance check, so varying radii
+                        # are not supported.
+                        error_str = "requires the query `search_radius` to equal its search radius"
+                        @test_throws error_str foreach_point_neighbor((_...) -> nothing,
+                                                                      coords,
+                                                                      coords, nhs,
+                                                                      parallelization_backend = SerialBackend(),
+                                                                      search_radius = i -> query_radii[i])
+                    else
+                        radius_function = i -> query_radii[i]
+
+                        # Test a subset of points to make sure that the radius function
+                        # receives the point index and not the loop position.
+                        for points in (axes(coords, 2), 2:3:n_points),
+                            foreach_function in (foreach_point_neighbor,
+                             foreach_point_neighbor_unsafe)
+
+                            neighbors = collect_neighbors(foreach_function, coords,
+                                                          radius_function; points)
+
+                            @test neighbors[points] == neighbors_expected_variable[points]
+
+                            # All other points must not be visited.
+                            other_points = setdiff(axes(coords, 2), points)
+                            @test all(isempty, neighbors[other_points])
+                        end
                     end
                 end
             end
