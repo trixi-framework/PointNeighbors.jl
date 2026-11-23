@@ -27,11 +27,12 @@ export foreach_point_neighbor, foreach_point_neighbor_unsafe,
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch,
        TreeNeighborhoodSearch
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeCellList
+export MaximumRadius, AverageRadius, QueryRadius
 export DynamicVectorOfVectors
 export ParallelUpdate, SemiParallelUpdate, SerialIncrementalUpdate, SerialUpdate,
        ParallelIncrementalUpdate
 export requires_update
-export initialize!, update!, initialize_grid!, update_grid!
+export initialize!, update!, initialize_grid!, update_grid!, initialize_tree!, update_tree!
 export SerialBackend, PolyesterBackend, ThreadsDynamicBackend, ThreadsStaticBackend,
        default_backend
 export PeriodicBox, copy_neighborhood_search
