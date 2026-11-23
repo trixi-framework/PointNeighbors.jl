@@ -12,7 +12,8 @@ Trivial neighborhood search that simply loops over all points.
                             with [`copy_neighborhood_search`](@ref).
                             Note that the type of `search_radius` determines the type used
                             for the distance computations.
-- `eachpoint = 1:0`:        Iterator for all point indices. Usually just `1:n_points`.
+- `eachpoint = 1:0`:        Iterator over the indices in the neighbor coordinate array.
+                            Usually `1:n_points_neighbor`.
                             The default of `1:0` is useful together with
                             [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a

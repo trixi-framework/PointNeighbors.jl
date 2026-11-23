@@ -1,6 +1,38 @@
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "All Neighborhood Searches" begin
+    @testset "Copy searches for unequal point-set sizes" begin
+        trivial = TrivialNeighborhoodSearch{2}()
+        grid = GridNeighborhoodSearch{2}(update_strategy = SerialIncrementalUpdate())
+        templates = (trivial, grid,
+                     PrecomputedNeighborhoodSearch{2}(update_neighborhood_search = grid),
+                     PrecomputedNeighborhoodSearch{2}(update_neighborhood_search = trivial))
+
+        one_point = reshape([1.0, 0.0], 2, 1)
+        three_points = [0.0 1.0 2.0; 0.0 0.0 0.0]
+        for template in templates
+            for (x, y, expected) in ((one_point, three_points, [[2]]),
+                 (three_points, one_point, [Int[], [1], Int[]]))
+                nhs = copy_neighborhood_search(template, 0.5, size(x, 2), size(y, 2))
+
+                # Move every neighbor to a different cell to exercise the grid's update buffer.
+                initialize!(nhs, x, y .+ 10.0)
+                update!(nhs, x, y)
+
+                neighbors = [Int[] for _ in axes(x, 2)]
+                foreach_point_neighbor(x, y, nhs) do point, neighbor, _, _
+                    push!(neighbors[point], neighbor)
+                end
+                @test neighbors == expected
+            end
+        end
+
+        for nhs in (copy_neighborhood_search(trivial, 0.5, 3; eachpoint = 2:2),
+             copy_neighborhood_search(trivial, 0.5, 1, 3; eachpoint = 2:2))
+            @test nhs.eachpoint == 2:2
+        end
+    end
+
     @testset "periodicity rounding errors" begin
         for T in (Float32, Float64)
             box = PeriodicBox(; min_corner = SVector(T(0), T(0)),
