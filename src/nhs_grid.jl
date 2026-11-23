@@ -64,7 +64,8 @@ since not sorting makes our implementation a lot faster (although less paralleli
     to avoid the use of double precision values (for example when working with GPUs).
     When using a `periodic_box`, its type must match the type of the `search_radius`.
 """
-struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighborhoodSearch
+struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB, RC, PC} <:
+       AbstractNeighborhoodSearch
     cell_list       :: CL
     search_radius   :: ELTYPE
     periodic_box    :: PB
@@ -72,6 +73,10 @@ struct GridNeighborhoodSearch{NDIMS, US, CL, ELTYPE, PB, UB} <: AbstractNeighbor
     cell_size       :: NTuple{NDIMS, ELTYPE} # Required to calculate cell index
     update_buffer   :: UB                    # Multithreaded buffer for `update!`
     update_strategy :: US
+    # Only used for mixed precision with a `SortingGridNeighborhoodSearch`,
+    # empty otherwise. See `update_relative_coords!`.
+    relative_coords :: RC # Coordinates of the sorted points relative to their cell
+    point_cells     :: PC # Cell of each sorted point
 end
 
 function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
@@ -125,8 +130,12 @@ function GridNeighborhoodSearch{NDIMS}(; search_radius = 0.0, n_points = 0,
         end
     end
 
+    relative_coords = SVector{NDIMS, typeof(search_radius)}[]
+    point_cells = SVector{NDIMS, Int32}[]
+
     return GridNeighborhoodSearch(cell_list, search_radius, periodic_box, n_cells,
-                                  cell_size, update_buffer, update_strategy)
+                                  cell_size, update_buffer, update_strategy,
+                                  relative_coords, point_cells)
 end
 
 @inline Base.ndims(::GridNeighborhoodSearch{NDIMS}) where {NDIMS} = NDIMS
@@ -684,6 +693,11 @@ function initialize_grid!(neighborhood_search::CompactGridNHS, y::AbstractMatrix
     update!(cell_list.cells, point_to_cell, size(y, 2), backend;
             active_values = eachindex_y)
 
+    # Mixed precision with a `SortingGridNeighborhoodSearch`.
+    if uses_relative_coords(y, neighborhood_search)
+        update_relative_coords!(neighborhood_search, y, length(eachindex_y), backend)
+    end
+
     return neighborhood_search
 end
 
@@ -722,6 +736,19 @@ can omit the index array of the cell list because it simplifies to a range.
     points.
     The first coordinate array `x` can be arbitrary.
 
+# Mixed precision
+When the coordinates `y` have a more precise type than the `search_radius`
+(for example, `Float64` coordinates with a `Float32` search radius on GPUs),
+`initialize!` and `update!` also store the coordinates of the sorted points relative to
+the corner of their cell in the type of the `search_radius`.
+
+When a `CombinedGridNeighborhoodSearch` is created from a `SortingGridNeighborhoodSearch`,
+the neighbor loops of its point set pairs (see [`grid_nhs_pair`](@ref)) compute
+`pos_diff` and `distance` only from the relative coordinates of both points,
+without any operations in the type of the coordinates, which is much faster on consumer
+GPUs with poor double precision performance.
+This is following the approach of [Domínguez et al., 2022](@cite Dominguez2022).
+
 # Arguments
 - `NDIMS`: Number of dimensions.
 
@@ -753,6 +780,64 @@ end
 
 @inline function point_permutation(neighborhood_search::SortingGridNeighborhoodSearch)
     return neighborhood_search.cell_list.cells.permutation
+end
+
+# Mixed precision: coordinates of a more precise type than the search radius.
+# Then, a `SortingGridNeighborhoodSearch` stores the relative coordinates of the sorted
+# points (see `update_relative_coords!`).
+# Other neighborhood searches never store relative coordinates.
+@inline uses_relative_coords(coords, neighborhood_search) = false
+
+@inline function uses_relative_coords(coords,
+                                      neighborhood_search::SortingGridNeighborhoodSearch)
+    ELTYPE = eltype(neighborhood_search)
+    return promote_type(eltype(coords), ELTYPE) != ELTYPE
+end
+
+# Store the coordinates of the sorted points relative to the corner of their cell
+# in the type of the search radius, together with the (periodic) cell of each point.
+# These relative coordinates are not much larger than the distance between neighboring
+# points, so they can be stored in single precision without introducing large relative
+# errors in the distance computation, as would be the case when storing the absolute
+# coordinates in single precision.
+# Only the first `n_active_points` sorted points are active.
+function update_relative_coords!(neighborhood_search, y, n_active_points, backend)
+    (; relative_coords, point_cells, cell_list, periodic_box, n_cells) = neighborhood_search
+
+    resize!(relative_coords, size(y, 2))
+    resize!(point_cells, size(y, 2))
+
+    # Compute the cell corners in the type of the coordinates.
+    min_corner = convert.(eltype(y), cell_list.min_corner)
+
+    cell_size = if isnothing(periodic_box)
+        SVector(convert.(eltype(y), neighborhood_search.cell_size))
+    else
+        # With periodicity, the neighbor loop treats the neighbors in cells on the other
+        # side of the periodic box as if they were in the cells next to the point's cell,
+        # which requires that the corners of cells that are `n_cells` apart are exactly
+        # one box size apart. Therefore, compute the cell size from the size of the periodic
+        # box in the type of the coordinates, and not from the (less precise) `cell_size`.
+        convert.(eltype(y), periodic_box.size) ./ SVector(n_cells)
+    end
+
+    permutation = point_permutation(neighborhood_search)
+    @threaded backend for i in Base.OneTo(n_active_points)
+        # The active points have been bounds checked in `initialize_grid!`.
+        point = @inbounds permutation[i]
+        point_coords = @inbounds extract_svector(y, Val(ndims(neighborhood_search)), point)
+
+        # Use the cell without periodicity for the corner, so that the periodic images
+        # of a point have the same relative coordinates.
+        cell = SVector(nonperiodic_cell_coords(point_coords, neighborhood_search))
+        cell_corner = min_corner + (cell .- 1) .* cell_size
+
+        @inbounds relative_coords[i] = convert.(eltype(neighborhood_search),
+                                                point_coords - cell_corner)
+        @inbounds point_cells[i] = periodic_cell_index(cell, neighborhood_search)
+    end
+
+    return neighborhood_search
 end
 
 function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;

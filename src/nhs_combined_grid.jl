@@ -155,3 +155,64 @@ end
                                     neighborhood_search.neighbor_search, point,
                                     point_coords, search_radius, init)
 end
+
+# With sorted points and coordinates of a more precise type than the search radius
+# (mixed precision), use the cell-relative coordinates of both point sets
+# (see `update_relative_coords!`).
+# Neither the coordinates of the point nor of its neighbors are loaded and no
+# operations are performed in the type of the coordinates.
+@propagate_inbounds function mapreduce_neighbor_inner(f, op, neighbor_coords,
+                                                      neighborhood_search::GridNHSPair{<:SortingGridNeighborhoodSearch},
+                                                      point, point_coords,
+                                                      search_radius, init)
+    (; system_search, neighbor_search) = neighborhood_search
+
+    # The relative coordinates are only computed in `update!` when the coordinates
+    # have a more precise type than the search radius.
+    if !uses_relative_coords(point_coords, system_search) ||
+       !uses_relative_coords(neighbor_coords, neighbor_search)
+        return mapreduce_neighbor_inner(f, op, neighbor_coords, neighbor_search, point,
+                                        point_coords, search_radius, init)
+    end
+
+    # Making the following `@inbounds` is not safe because we don't know if `point`
+    # is in bounds of the relative coordinates of the system point set.
+    point_relative_coords = system_search.relative_coords[point]
+    cell = Tuple(system_search.point_cells[point])
+    reduced = init
+
+    for neighbor_cell_ in neighboring_cells(cell, neighbor_search)
+        neighbor_cell = Tuple(neighbor_cell_)
+
+        # Making the following `@inbounds` is not safe because we don't know if
+        # `neighbor_cell` is in bounds of the grid.
+        neighbors = points_in_cell(neighbor_cell, neighbor_search)
+
+        # The relative coordinates are relative to the corners of the cells, so we have
+        # to add the vector from the corner of the neighbor cell to the corner of the
+        # point's cell. This is exact because `cell .- neighbor_cell` is -1, 0 or 1.
+        # With periodicity, `neighbor_cell` can be outside of the periodic box,
+        # and the neighbors are then treated as their periodic images in this cell.
+        # Therefore, `compute_periodic_distance` is not needed.
+        cell_offset = SVector((cell .- neighbor_cell) .* neighbor_search.cell_size)
+
+        for neighbor in neighbors
+            # Making the following `@inbounds` is not safe because we don't know
+            # if `neighbor` (extracted from the cell list) is in bounds.
+            neighbor_relative_coords = neighbor_search.relative_coords[neighbor]
+            pos_diff = point_relative_coords - neighbor_relative_coords + cell_offset
+            distance2 = dot(pos_diff, pos_diff)
+
+            if distance2 <= search_radius^2
+                distance = sqrt(distance2)
+
+                # Inline to avoid loss of performance compared to not using this function
+                # and unrolling everything.
+                value = @inline f(point, neighbor, pos_diff, distance)
+                reduced = @inline op(reduced, value)
+            end
+        end
+    end
+
+    return reduced
+end
