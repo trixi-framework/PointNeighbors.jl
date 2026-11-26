@@ -12,7 +12,8 @@ Trivial neighborhood search that simply loops over all points.
                             with [`copy_neighborhood_search`](@ref).
                             Note that the type of `search_radius` determines the type used
                             for the distance computations.
-- `eachpoint = 1:0`:        Iterator for all point indices. Usually just `1:n_points`.
+- `eachpoint = 1:0`:        Iterator over the indices in the neighbor coordinate array.
+                            Usually `1:n_points_neighbor`.
                             The default of `1:0` is useful together with
                             [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
@@ -63,7 +64,8 @@ end
 # Create a copy of a neighborhood search but with a different search radius and different
 # number of points.
 function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch,
-                                  search_radius, n_points; eachpoint = 1:n_points)
+                                  search_radius, n_points_system, n_points_neighbor;
+                                  eachpoint = 1:n_points_neighbor)
     return TrivialNeighborhoodSearch{ndims(nhs)}(; search_radius, eachpoint,
                                                  periodic_box = nhs.periodic_box)
 end

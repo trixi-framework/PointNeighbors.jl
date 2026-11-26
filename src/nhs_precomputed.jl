@@ -30,17 +30,22 @@ to strip the internal neighborhood search, which is not needed anymore.
                             with [`copy_neighborhood_search`](@ref).
                             Note that the type of `search_radius` determines the type used
                             for the distance computations.
-- `n_points = 0`:           Total number of points. The default of `0` is useful together
-                            with [`copy_neighborhood_search`](@ref).
+- `n_points = 0`:           Number of points in the query coordinate array (the first array
+                            passed to [`initialize!`](@ref)), with one neighbor list per
+                            query point. The default of `0` is useful together with
+                            [`copy_neighborhood_search`](@ref).
 - `periodic_box = nothing`: In order to use a (rectangular) periodic domain, pass a
                             [`PeriodicBox`](@ref).
 - `update_strategy`:        Strategy to parallelize `update!` of the internally used
                             `GridNeighborhoodSearch`. See [`GridNeighborhoodSearch`](@ref)
                             for available options. This is only used for the default value
                             of `update_neighborhood_search` below.
-- `update_neighborhood_search = GridNeighborhoodSearch{NDIMS}(; periodic_box, update_strategy)`:
+- `update_neighborhood_search`:
                             The neighborhood search used to compute the neighbor lists.
-                            By default, a [`GridNeighborhoodSearch`](@ref) is used.
+                            By default, a [`GridNeighborhoodSearch`](@ref) is sized with
+                            `n_points` as well. If the two point sets differ in size, pass an
+                            internal search sized for the neighbor set or use
+                            [`copy_neighborhood_search`](@ref) with both sizes.
                             If the precomputed NHS is to be used on the GPU, make sure to
                             either freeze it after initialization and never update it again,
                             or pass a GPU-compatible neighborhood search here.
@@ -263,16 +268,19 @@ end
 end
 
 function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
-                                  search_radius, n_points; eachpoint = 1:n_points)
+                                  search_radius, n_points_system, n_points_neighbor;
+                                  eachpoint = 1:n_points_neighbor)
     update_neighborhood_search = copy_neighborhood_search(nhs.neighborhood_search,
-                                                          search_radius, n_points;
+                                                          search_radius, n_points_system,
+                                                          n_points_neighbor;
                                                           eachpoint)
 
     # For `Vector{Vector}` backend use `max_neighbors(NDIMS)` as fallback.
     # This should never be used because this backend doesn't require a `max_neighbors`.
     max_neighbors_ = max_inner_length(nhs.neighbor_lists, max_neighbors(ndims(nhs)))
     transpose_backend = transposed_backend(nhs.neighbor_lists)
-    return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points,
+    return PrecomputedNeighborhoodSearch{ndims(nhs)}(; search_radius,
+                                                     n_points = n_points_system,
                                                      periodic_box = nhs.periodic_box,
                                                      update_neighborhood_search,
                                                      backend = typeof(nhs.neighbor_lists),

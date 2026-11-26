@@ -90,7 +90,8 @@ function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborho
         n_particles = size(coordinates, 2)
 
         neighborhood_searches_copy = copy_neighborhood_search.(neighborhood_searches,
-                                                               search_radius, n_particles)
+                                                               search_radius, n_particles,
+                                                               n_particles)
 
         for i in eachindex(neighborhood_searches_copy)
             neighborhood_search_ = neighborhood_searches_copy[i]

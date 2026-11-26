@@ -1,6 +1,36 @@
 # This file contains tests for the generic functions in `src/neighborhood_search.jl` and
 # tests comparing all NHS implementations against the `TrivialNeighborhoodSearch`.
 @testset verbose=true "All Neighborhood Searches" begin
+    @testset "Copy searches for unequal point-set sizes" begin
+        trivial = TrivialNeighborhoodSearch{2}()
+        grid = GridNeighborhoodSearch{2}(update_strategy = SerialIncrementalUpdate())
+        templates = (trivial, grid,
+                     PrecomputedNeighborhoodSearch{2}(update_neighborhood_search = grid),
+                     PrecomputedNeighborhoodSearch{2}(update_neighborhood_search = trivial))
+
+        one_point = reshape([1.0, 0.0], 2, 1)
+        three_points = [0.0 1.0 2.0; 0.0 0.0 0.0]
+        for template in templates
+            for (x, y, expected) in ((one_point, three_points, [[2]]),
+                 (three_points, one_point, [Int[], [1], Int[]]))
+                nhs = copy_neighborhood_search(template, 0.5, size(x, 2), size(y, 2))
+
+                # Move every neighbor to a different cell to exercise the grid's update buffer.
+                initialize!(nhs, x, y .+ 10.0)
+                update!(nhs, x, y)
+
+                neighbors = [Int[] for _ in axes(x, 2)]
+                foreach_point_neighbor(x, y, nhs) do point, neighbor, _, _
+                    push!(neighbors[point], neighbor)
+                end
+                @test neighbors == expected
+            end
+        end
+
+        nhs = copy_neighborhood_search(trivial, 0.5, 1, 3; eachpoint = 2:2)
+        @test nhs.eachpoint == 2:2
+    end
+
     @testset "periodicity rounding errors" begin
         for T in (Float32, Float64)
             box = PeriodicBox(; min_corner = SVector(T(0), T(0)),
@@ -199,7 +229,8 @@
                                               cell_list = TreeCellList(min_corner = periodic_boxes[i].min_corner,
                                                                        max_corner = periodic_boxes[i].max_corner))
             ]
-            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points,
+                                                   n_points)
             append!(neighborhood_searches, copied_nhs)
 
             names_copied = [name * " copied" for name in names]
@@ -411,7 +442,8 @@
                                                                        max_corner,
                                                                        backend = Vector{Vector{Int32}}))
             ]
-            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points,
+                                                   n_points)
             append!(neighborhood_searches, copied_nhs)
 
             names_copied = [name * " copied" for name in names]
@@ -552,7 +584,7 @@
 
                     # Test the reduction over an empty neighborhood.
                     empty_nhs = copy_neighborhood_search(nhs, search_radius,
-                                                         size(coords, 2))
+                                                         size(coords, 2), 0)
 
                     # Initialize the NHS with an empty set of neighbors.
                     empty_coords = similar(coords, size(coords, 1), 0)

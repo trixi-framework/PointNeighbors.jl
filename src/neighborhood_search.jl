@@ -79,15 +79,18 @@ See also [`initialize!`](@ref).
 end
 
 """
-    copy_neighborhood_search(search::AbstractNeighborhoodSearch, search_radius, n_points;
-                             eachpoint = 1:n_points)
+    copy_neighborhood_search(search::AbstractNeighborhoodSearch, search_radius,
+                             n_points_system, n_points_neighbor;
+                             eachpoint = 1:n_points_neighbor)
 
 Create a new **uninitialized** neighborhood search of the same type and with the same
-configuration options as `search`, but with a different search radius and number of points.
+configuration options as `search`, but with a different search radius and point-set sizes.
 
-The [`TrivialNeighborhoodSearch`](@ref) also requires an iterator `eachpoint`, which most
-of the time will be `1:n_points`. If the `TrivialNeighborhoodSearch` is never going to be
-used, the keyword argument `eachpoint` can be ignored.
+`n_points_system` and `n_points_neighbor` are the numbers of points in the first (query)
+and second (neighbor) coordinate arrays passed to [`initialize!`](@ref), respectively.
+
+For [`TrivialNeighborhoodSearch`](@ref), `eachpoint` is an iterator over the indices of
+the neighbor coordinate array to visit. It defaults to `1:n_points_neighbor`.
 
 This is useful when a simulation code requires multiple neighborhood searches of the same
 kind. One can then just pass an empty neighborhood search as a template and use
@@ -98,15 +101,25 @@ different search radii and different numbers of points.
 nhs = GridNeighborhoodSearch{2}()
 
 # Inside the simulation code, generate similar neighborhood searches
-nhs1 = copy_neighborhood_search(nhs, 1.0, 100)
+nhs1 = copy_neighborhood_search(nhs, 1.0, 100, 200)
 
 # output
 GridNeighborhoodSearch{2, Float64, ...}(...)
 ```
 """
 @inline function copy_neighborhood_search(search::AbstractNeighborhoodSearch,
-                                          search_radius, n_points; eachpoint = 1:n_points)
+                                          search_radius, n_points_system, n_points_neighbor;
+                                          eachpoint = 1:n_points_neighbor)
     return nothing
+end
+
+# TODO deprecated, remove in a future release
+@inline function copy_neighborhood_search(search::AbstractNeighborhoodSearch,
+                                          search_radius, n_points; eachpoint = 1:n_points)
+    Base.depwarn("`copy_neighborhood_search(search, search_radius, n_points)` is deprecated. " *
+                 "Pass the query and neighbor point counts as separate arguments.",
+                 :copy_neighborhood_search)
+    return copy_neighborhood_search(search, search_radius, n_points, n_points; eachpoint)
 end
 
 @inline function freeze_neighborhood_search(search::AbstractNeighborhoodSearch)

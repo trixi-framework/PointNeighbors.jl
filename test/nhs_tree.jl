@@ -369,7 +369,7 @@
                                  root_cell_size = 0.5)
         nhs = TreeNeighborhoodSearch{2}(; cell_list, update_strategy = SerialUpdate())
 
-        copy = copy_neighborhood_search(nhs, 0.1, 10)
+        copy = copy_neighborhood_search(nhs, 0.1, 10, 10)
 
         @test copy.search_radius == 0.1
         @test copy.cell_list.min_corner == cell_list.min_corner
@@ -390,7 +390,7 @@
         # With periodicity.
         periodic_box = PeriodicBox(min_corner = [0.0, 0.0], max_corner = [1.0, 2.0])
         nhs = TreeNeighborhoodSearch{2}(; cell_list, periodic_box)
-        copy = copy_neighborhood_search(nhs, 0.1, 10)
+        copy = copy_neighborhood_search(nhs, 0.1, 10, 10)
 
         @test copy.periodic_box === periodic_box
         @test copy.cell_list.n_roots == (10, 20)
