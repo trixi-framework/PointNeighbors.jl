@@ -64,7 +64,8 @@ end
 # Create a copy of a neighborhood search but with a different search radius and different
 # number of points.
 function copy_neighborhood_search(nhs::TrivialNeighborhoodSearch,
-                                  search_radius, n_points; eachpoint = 1:n_points)
+                                  search_radius, n_points_system, n_points_neighbor;
+                                  eachpoint = 1:n_points_neighbor)
     return TrivialNeighborhoodSearch{ndims(nhs)}(; search_radius, eachpoint,
                                                  periodic_box = nhs.periodic_box)
 end

@@ -21,7 +21,7 @@
     @testset "`copy_neighborhood_search" begin
         # Basic copy
         nhs = GridNeighborhoodSearch{2}()
-        copy = copy_neighborhood_search(nhs, 1.0, 10)
+        copy = copy_neighborhood_search(nhs, 1.0, 10, 10)
 
         @test ndims(copy) == 2
         @test PointNeighbors.search_radius(copy) == 1.0
@@ -33,7 +33,7 @@
         max_corner = (1.0, 1.0)
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
                                                                      max_corner))
-        copy = copy_neighborhood_search(nhs, 1.0, 10)
+        copy = copy_neighborhood_search(nhs, 1.0, 10, 10)
 
         @test copy.cell_list isa FullGridCellList
         @test copy.cell_list.cells isa PointNeighbors.DynamicVectorOfVectors
@@ -43,7 +43,7 @@
         nhs = GridNeighborhoodSearch{2}(cell_list = FullGridCellList(; min_corner,
                                                                      max_corner,
                                                                      backend = Vector{Vector{Int32}}))
-        copy = copy_neighborhood_search(nhs, 0.5, 27)
+        copy = copy_neighborhood_search(nhs, 0.5, 27, 27)
 
         @test copy.cell_list.cells isa Vector
         @test copy.update_strategy == SemiParallelUpdate()
@@ -53,7 +53,7 @@
                                                                      max_corner,
                                                                      max_points_per_cell = 101),
                                         update_strategy = SerialUpdate())
-        copy = copy_neighborhood_search(nhs, 1.0, 10)
+        copy = copy_neighborhood_search(nhs, 1.0, 10, 10)
 
         @test copy.update_strategy == SerialUpdate()
         @test size(copy.cell_list.cells.backend, 1) == 101

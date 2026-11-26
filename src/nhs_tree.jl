@@ -177,8 +177,9 @@ end
     return reduced
 end
 
-function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius, n_points;
-                                  eachpoint = 1:n_points)
+function copy_neighborhood_search(nhs::TreeNeighborhoodSearch, search_radius,
+                                  n_points_system, n_points_neighbor;
+                                  eachpoint = 1:n_points_neighbor)
     # Use root cells of the size of the search radius.
     cell_list = copy_cell_list(nhs.cell_list, search_radius)
 

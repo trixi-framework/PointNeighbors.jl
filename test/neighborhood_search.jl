@@ -27,10 +27,8 @@
             end
         end
 
-        for nhs in (copy_neighborhood_search(trivial, 0.5, 3; eachpoint = 2:2),
-             copy_neighborhood_search(trivial, 0.5, 1, 3; eachpoint = 2:2))
-            @test nhs.eachpoint == 2:2
-        end
+        nhs = copy_neighborhood_search(trivial, 0.5, 1, 3; eachpoint = 2:2)
+        @test nhs.eachpoint == 2:2
     end
 
     @testset "periodicity rounding errors" begin
@@ -231,7 +229,8 @@
                                               cell_list = TreeCellList(min_corner = periodic_boxes[i].min_corner,
                                                                        max_corner = periodic_boxes[i].max_corner))
             ]
-            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points,
+                                                   n_points)
             append!(neighborhood_searches, copied_nhs)
 
             names_copied = [name * " copied" for name in names]
@@ -443,7 +442,8 @@
                                                                        max_corner,
                                                                        backend = Vector{Vector{Int32}}))
             ]
-            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points)
+            copied_nhs = copy_neighborhood_search.(template_nhs, search_radius, n_points,
+                                                   n_points)
             append!(neighborhood_searches, copied_nhs)
 
             names_copied = [name * " copied" for name in names]
@@ -584,7 +584,7 @@
 
                     # Test the reduction over an empty neighborhood.
                     empty_nhs = copy_neighborhood_search(nhs, search_radius,
-                                                         size(coords, 2))
+                                                         size(coords, 2), 0)
 
                     # Initialize the NHS with an empty set of neighbors.
                     empty_coords = similar(coords, size(coords, 1), 0)

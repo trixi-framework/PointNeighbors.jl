@@ -637,13 +637,14 @@ end
     return Tuple(floor_to_int.(coords ./ cell_size))
 end
 
-function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius, n_points;
-                                  eachpoint = 1:n_points)
+function copy_neighborhood_search(nhs::GridNeighborhoodSearch, search_radius,
+                                  n_points_system, n_points_neighbor;
+                                  eachpoint = 1:n_points_neighbor)
     (; periodic_box) = nhs
 
     cell_list = copy_cell_list(nhs.cell_list, search_radius, periodic_box)
 
-    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points, periodic_box,
-                                              cell_list,
+    return GridNeighborhoodSearch{ndims(nhs)}(; search_radius, n_points = n_points_neighbor,
+                                              periodic_box, cell_list,
                                               update_strategy = nhs.update_strategy)
 end

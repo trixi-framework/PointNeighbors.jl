@@ -268,11 +268,6 @@ end
 end
 
 function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
-                                  search_radius, n_points; eachpoint = 1:n_points)
-    return copy_neighborhood_search(nhs, search_radius, n_points, n_points; eachpoint)
-end
-
-function copy_neighborhood_search(nhs::PrecomputedNeighborhoodSearch,
                                   search_radius, n_points_system, n_points_neighbor;
                                   eachpoint = 1:n_points_neighbor)
     update_neighborhood_search = copy_neighborhood_search(nhs.neighborhood_search,
