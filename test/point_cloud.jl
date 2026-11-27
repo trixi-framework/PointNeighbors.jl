@@ -1,5 +1,4 @@
 using Random
-using StaticArrays: SMatrix
 
 # Generate a rectangular point cloud, optionally with a perturbation in the point positions
 # and rotated by `rotation_angle` degrees (see `rotation_matrix` below).
@@ -55,26 +54,21 @@ end
 # Rotation by `angle` degrees. In 3D, rotate around the z-axis and then around the x-axis,
 # so that no lattice axis is aligned with a coordinate axis anymore.
 # In 1D, there is nothing to rotate.
-rotation_matrix(angle, ::Val{1}) = SMatrix{1, 1}(1.0)
+# The matrices are built from their columns with `hcat` of `SVector`s, which yields an
+# `SMatrix` without requiring StaticArrays.jl in the environment.
+rotation_matrix(angle, ::Val{1}) = hcat(SVector(1.0))
 
 function rotation_matrix(angle, ::Val{2})
     s, c = sincosd(angle)
 
-    # Arguments are in column-major order, so the matrix below has to be read transposed.
-    return SMatrix{2, 2}(c, s,
-                         -s, c)
+    return hcat(SVector(c, s), SVector(-s, c))
 end
 
 function rotation_matrix(angle, ::Val{3})
     s, c = sincosd(angle)
 
-    # Arguments are in column-major order, so the matrices below have to be read transposed.
-    rotation_z = SMatrix{3, 3}(c, s, 0.0,
-                               -s, c, 0.0,
-                               0.0, 0.0, 1.0)
-    rotation_x = SMatrix{3, 3}(1.0, 0.0, 0.0,
-                               0.0, c, s,
-                               0.0, -s, c)
+    rotation_z = hcat(SVector(c, s, 0.0), SVector(-s, c, 0.0), SVector(0.0, 0.0, 1.0))
+    rotation_x = hcat(SVector(1.0, 0.0, 0.0), SVector(0.0, c, s), SVector(0.0, -s, c))
 
     return rotation_x * rotation_z
 end

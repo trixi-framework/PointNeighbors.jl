@@ -9,7 +9,7 @@ implementations and update strategies. Load it with
 
 ```julia
 using PointNeighbors, BenchmarkTools, TrixiParticles
-include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors), "benchmarks", "benchmarks.jl"));
 ```
 
 ## Benchmark Runners

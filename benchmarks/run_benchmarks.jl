@@ -4,12 +4,12 @@ using BenchmarkTools
 include("../test/point_cloud.jl")
 
 """
-    run_benchmarks(benchmark, n_points_per_dimension, iterations, neighborhood_searches;
-                   search_radius_factor = 3.0,
-                   parallelization_backend = PolyesterBackend(),
-                   names = ["Neighborhood search 1" "Neighborhood search 2" ...],
-                   seed = 1, perturbation_factor_position = 1.0,
-                   sort_displacement = 0.01, shuffle = false)
+    run_benchmark(benchmark, n_points_per_dimension, iterations, neighborhood_searches;
+                  search_radius_factor = 3.0,
+                  parallelization_backend = PolyesterBackend(),
+                  names = ["Neighborhood search 1" "Neighborhood search 2" ...],
+                  seed = 1, perturbation_factor_position = 1.0,
+                  sort_displacement = 0.01, shuffle = false)
 
 Run a benchmark with several neighborhood searches multiple times for increasing numbers
 of points and return the results as `(n_particles_vec, times)`, where `n_particles_vec`
@@ -61,7 +61,7 @@ See also
 # Examples
 ```julia
 using PointNeighbors
-include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors), "benchmarks", "benchmarks.jl"));
 
 run_benchmark(benchmark_count_neighbors, (10, 10), 3,
               [TrivialNeighborhoodSearch{2}(), GridNeighborhoodSearch{2}()])
@@ -70,8 +70,8 @@ run_benchmark(benchmark_count_neighbors, (10, 10), 3,
 function run_benchmark(benchmark, n_points_per_dimension, iterations, neighborhood_searches;
                        search_radius_factor = 3.0,
                        parallelization_backend = PolyesterBackend(),
-                       names = ["Neighborhood search $i"
-                                for i in 1:length(neighborhood_searches)]',
+                       names = permutedims(["Neighborhood search $i"
+                                            for i in 1:length(neighborhood_searches)]),
                        seed = 1, perturbation_factor_position = 1.0,
                        sort_displacement = 0.01, shuffle = false)
     if !(search_radius_factor isa AbstractFloat && isfinite(search_radius_factor) &&
@@ -169,7 +169,7 @@ See [`run_benchmark`](@ref) for a list of additional available keywords.
 # Examples
 ```julia
 using PointNeighbors
-include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors), "benchmarks", "benchmarks.jl"));
 
 run_benchmark_default(benchmark_n_body, (10, 10), 3)
 ```
@@ -227,7 +227,7 @@ See [`run_benchmark`](@ref) for a list of additional available keywords.
 # Examples
 ```julia
 using PointNeighbors
-include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors), "benchmarks", "benchmarks.jl"));
 
 run_benchmark_gpu(benchmark_n_body, (10, 10), 3)
 ```
@@ -272,7 +272,7 @@ See [`run_benchmark`](@ref) for a list of available keywords.
 # Examples
 ```julia
 using PointNeighbors
-include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors), "benchmarks", "benchmarks.jl"));
 
 run_benchmark_full_grid(benchmark_n_body, (10, 10), 3)
 ```
@@ -317,7 +317,7 @@ See [`run_benchmark`](@ref) for a list of additional available keywords.
 # Examples
 ```julia
 using PointNeighbors
-include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors), "benchmarks", "benchmarks.jl"));
 
 run_benchmark_precomputed(benchmark_n_body, (10, 10), 3)
 ```
@@ -346,8 +346,8 @@ Benchmark [`benchmark_update_alternating`](@ref) with the update strategies
 [`SemiParallelUpdate`](@ref), as well as with a [`PrecomputedNeighborhoodSearch`](@ref)
 using [`ParallelUpdate`](@ref) internally.
 
-The benchmark alternates between two perturbed point clouds. In 3D, approximately 0.7% of
-the particles change cells between them, representative of an SPH update. This fraction is
+The benchmark alternates between two perturbed point clouds. Approximately 0.4% of the
+particles change cells between them, representative of an SPH update. This fraction is
 not relevant for [`ParallelUpdate`](@ref), which reinitializes all particles on every
 update.
 
@@ -370,7 +370,7 @@ See [`run_benchmark`](@ref) for a list of additional available keywords.
 # Examples
 ```julia
 using PointNeighbors
-include(joinpath(pkgdir(PointNeighbors),  "benchmarks", "benchmarks.jl"));
+include(joinpath(pkgdir(PointNeighbors), "benchmarks", "benchmarks.jl"));
 
 run_benchmark_updates((10, 10, 10), 3)
 ```
