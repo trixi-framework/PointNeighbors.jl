@@ -23,7 +23,7 @@ include("gpu.jl")
 
 export foreach_point_neighbor, foreach_point_neighbor_unsafe,
        foreach_neighbor, foreach_neighbor_unsafe,
-       mapreduce_neighbor, mapreduce_neighbor_unsafe
+       mapreduce_neighbor, mapreduce_neighbor_unsafe, foreach_point, foreach_point_unsafe
 export TrivialNeighborhoodSearch, GridNeighborhoodSearch, PrecomputedNeighborhoodSearch,
        TreeNeighborhoodSearch
 export DictionaryCellList, FullGridCellList, SpatialHashingCellList, TreeCellList
