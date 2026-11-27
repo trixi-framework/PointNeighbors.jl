@@ -56,8 +56,9 @@
             n_points = Base.size(coords, 2)
 
             grid_nhs = GridNeighborhoodSearch{NDIMS}(; search_radius, n_points)
-            cells(x, nhs) = [PointNeighbors.cell_coords(SVector{NDIMS}(x[:, i]), nhs)
-                             for i in axes(x, 2)]
+            cells(x,
+                  nhs) = [PointNeighbors.cell_coords(SVector{NDIMS}(x[:, i]), nhs)
+                          for i in axes(x, 2)]
 
             @testset "Without displacement" begin
                 permutation = almost_sorted_permutation(coords, grid_nhs, 0)
@@ -162,7 +163,7 @@
         @testset verbose=true "`max_neighbors` is passed through" begin
             # Two neighbors are not enough for any of the point clouds.
             for run_benchmark_ in (run_benchmark_default, run_benchmark_gpu,
-                                   run_benchmark_precomputed)
+                 run_benchmark_precomputed)
                 @test_throws ErrorException run_benchmark_(benchmark_count_neighbors,
                                                            size, 1; max_neighbors = 2)
             end
