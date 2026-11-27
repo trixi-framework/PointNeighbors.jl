@@ -2,6 +2,7 @@ using PointNeighbors
 using PointNeighbors.Adapt
 using TrixiParticles
 using BenchmarkTools
+using Random
 
 # Create a dummy semidiscretization type to be able to use a specific neighborhood search
 struct DummySemidiscretization{N, P, IT}
@@ -34,6 +35,18 @@ end
     return semi.neighborhood_search
 end
 
+# Wrap an integration array (`v`, `u` or `dv`) like `wrap_v` and `wrap_u` of
+# TrixiParticles.jl do. On CPUs, this is a `PtrArray` with the number of variables as
+# a static size, so the benchmark measures the same code as a simulation.
+# With a plain `Matrix`, the interaction is about 8% slower and varies by up to 17%
+# between Julia processes for unknown reasons.
+# The `PtrArray` does not keep `array` alive, so the caller has to preserve `array`
+# with `GC.@preserve`. On GPUs, `wrap_array` returns a reshaped array.
+function wrap_integration_array(array)
+    n_variables = TrixiParticles.StaticInt(size(array, 1))
+    return TrixiParticles.wrap_array(array, 1:length(array), (n_variables, size(array, 2)))
+end
+
 """
     benchmark_wcsph(neighborhood_search, coordinates;
                     parallelization_backend = default_backend(coordinates))
@@ -55,9 +68,16 @@ function benchmark_wcsph(neighborhood_search, coordinates;
                              mass = convert(ELTYPE, 0.1) * particle_spacing,
                              particle_spacing)
 
+    # Use the same perturbation every time to make comparisons fair and reproducible.
+    rng = Random.Xoshiro(1)
+
+    # Perturb the initial velocity so that approaching particle pairs exercise the
+    # `vr < 0` branch of ArtificialViscosityMonaghan.
+    fluid.velocity .+= convert(ELTYPE, 1.0e-3) .* randn(rng, ELTYPE, size(fluid.velocity))
+
     # Make sure that the computed forces are not all zero
     for i in eachindex(fluid.density)
-        fluid.density[i] += rand(eltype(fluid.density))
+        fluid.density[i] += randn(rng, eltype(fluid.density))
     end
 
     sound_speed = convert(ELTYPE, 10.0)
@@ -89,16 +109,25 @@ function benchmark_wcsph(neighborhood_search, coordinates;
 
     semi = DummySemidiscretization(nhs, parallelization_backend, true)
 
-    v = Adapt.adapt(parallelization_backend,
-                    vcat(fluid.velocity, fluid.density'))
-    u = Adapt.adapt(parallelization_backend, fluid.coordinates)
-    dv = zero(v)
+    v_array = Adapt.adapt(parallelization_backend,
+                          vcat(fluid.velocity, fluid.density'))
+    u_array = Adapt.adapt(parallelization_backend, fluid.coordinates)
+    dv_array = zero(v_array)
 
-    # Initialize the system
-    TrixiParticles.initialize!(system, semi)
-    TrixiParticles.compute_pressure!(system, v, semi)
+    GC.@preserve v_array u_array dv_array begin
+        v = wrap_integration_array(v_array)
+        u = wrap_integration_array(u_array)
+        dv = wrap_integration_array(dv_array)
 
-    return @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system, $semi)
+        # Initialize the system
+        TrixiParticles.initialize!(system, semi)
+        TrixiParticles.compute_pressure!(system, v, semi)
+
+        runtime = @belapsed TrixiParticles.interact!($dv, $v, $u, $v, $u, $system, $system,
+                                                     $semi)
+    end
+
+    return runtime
 end
 
 """
@@ -115,10 +144,18 @@ The right-hand side of the TLSPH equations consists of two main parts:
 """
 function benchmark_tlsph(neighborhood_search, coordinates;
                          parallelization_backend = default_backend(coordinates))
-    (dv, v, system,
+    (dv_array, v_array, system,
      semi) = setup_tlsph(neighborhood_search, coordinates, parallelization_backend)
 
-    return @belapsed TrixiParticles.interact_structure_structure!($dv, $v, $system, $semi)
+    GC.@preserve v_array dv_array begin
+        v = wrap_integration_array(v_array)
+        dv = wrap_integration_array(dv_array)
+
+        runtime = @belapsed TrixiParticles.interact_structure_structure!($dv, $v, $system,
+                                                                         $semi)
+    end
+
+    return runtime
 end
 
 """
